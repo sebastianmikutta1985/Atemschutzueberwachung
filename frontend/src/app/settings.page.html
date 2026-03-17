@@ -8,7 +8,12 @@
       </p>
     </div>
     <div class="hero__meta">
+      <div class="pill" *ngIf="authInfo">
+        <span class="pill__label">Organisation</span>
+        <span class="pill__value">{{ authInfo.orgName }} ({{ authInfo.orgCode }})</span>
+      </div>
       <button class="ghost" type="button" [routerLink]="['/']">Zurueck</button>
+      <button class="ghost" type="button" (click)="logout()">Abmelden</button>
     </div>
   </header>
 

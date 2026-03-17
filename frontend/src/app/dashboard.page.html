@@ -12,12 +12,24 @@
         <span class="pill__label">Systemzeit</span>
         <span class="pill__value">{{ currentEpoch | date: 'HH:mm:ss' }}</span>
       </div>
+      <div class="pill" *ngIf="authInfo">
+        <span class="pill__label">Organisation</span>
+        <span class="pill__value">{{ authInfo.orgName }} ({{ authInfo.orgCode }})</span>
+      </div>
       <div class="pill" [class.pill--live]="currentEinsatz">
         <span class="pill__label">Einsatz</span>
         <span class="pill__value">{{ currentEinsatz ? 'Aktiv' : 'Keiner' }}</span>
       </div>
       <button class="ghost" type="button" (click)="loadActiveEinsatz()">Aktualisieren</button>
-      <button class="ghost" type="button" [routerLink]="['/einstellungen']">Einstellungen</button>
+      <button
+        class="ghost"
+        type="button"
+        [routerLink]="['/einstellungen']"
+        *ngIf="authInfo?.role === 'admin'"
+      >
+        Einstellungen
+      </button>
+      <button class="ghost" type="button" (click)="logout()">Abmelden</button>
     </div>
   </header>
 
