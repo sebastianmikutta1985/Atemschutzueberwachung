@@ -6,6 +6,8 @@
   min-height: 100vh;
   padding: 40px clamp(16px, 4vw, 56px) 64px;
   color: var(--ink-900);
+  position: relative;
+  z-index: 1;
 }
 
 .hero {
@@ -47,13 +49,15 @@
 
 .pill {
   background: var(--card);
-  border: 1px solid var(--ink-200);
+  border: 1px solid var(--glass-border);
   border-radius: 999px;
   padding: 10px 16px;
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 120px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 24px -18px rgba(15, 23, 42, 0.45);
 }
 
 .pill__label {
@@ -84,8 +88,9 @@
   background: var(--card);
   border-radius: 20px;
   padding: 24px;
-  border: 1px solid color-mix(in srgb, var(--ink-900) 8%, transparent);
-  box-shadow: 0 20px 40px -30px rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(20px);
 }
 
 .card h2 {
@@ -103,7 +108,11 @@
 }
 
 .settings__form button {
-  width: auto;
+  width: fit-content;
+  padding: 10px 16px;
+  min-height: 40px;
+  justify-self: start;
+  align-self: start;
 }
 
 label {
@@ -123,21 +132,23 @@ fieldset {
 }
 
 input {
-  background: #fff;
-  border: 1px solid var(--ink-200);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--glass-border);
   border-radius: 12px;
   padding: 10px 12px;
   font-size: 0.95rem;
   transition: border 0.2s ease;
+  backdrop-filter: blur(10px);
 }
 
 select {
-  background: #fff;
-  border: 1px solid var(--ink-200);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--glass-border);
   border-radius: 12px;
   padding: 10px 12px;
   font-size: 0.95rem;
   transition: border 0.2s ease;
+  backdrop-filter: blur(10px);
 }
 
 fieldset[disabled] input,
@@ -170,7 +181,7 @@ button {
   border-radius: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
 }
 
 button:disabled {
@@ -181,22 +192,29 @@ button:disabled {
 
 button:not(:disabled):hover {
   transform: translateY(-1px);
+  filter: brightness(1.02);
+}
+
+button:not(:disabled):active {
+  transform: translateY(0);
+  filter: brightness(0.98);
 }
 
 .primary {
-  background: var(--accent);
+  background: linear-gradient(135deg, #3a6b96, #2b4f70);
   color: #fff;
-  box-shadow: 0 10px 20px -12px rgba(255, 125, 80, 0.8);
+  box-shadow: 0 10px 20px -12px rgba(47, 95, 137, 0.5);
 }
 
 .ghost {
-  background: transparent;
-  border: 1px solid var(--ink-200);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--glass-border);
   color: var(--ink-700);
+  backdrop-filter: blur(10px);
 }
 
 .danger {
-  background: var(--danger);
+  background: linear-gradient(135deg, #d04141, #9f1f1f);
   color: #fff;
 }
 
@@ -243,9 +261,10 @@ button:not(:disabled):hover {
   gap: 14px;
   padding: 18px;
   border-radius: 18px;
-  background: #fff;
-  border: 1px solid color-mix(in srgb, var(--ink-900) 8%, transparent);
-  box-shadow: 0 12px 30px -24px rgba(15, 23, 42, 0.45);
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 12px 30px -24px rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(18px);
 }
 
 .trupp__top {
@@ -379,9 +398,11 @@ button:not(:disabled):hover {
   justify-content: space-between;
   gap: 16px;
   align-items: center;
-  background: color-mix(in srgb, var(--accent) 10%, #fff);
+  background: rgba(255, 255, 255, 0.75);
   border-radius: 16px;
   padding: 14px 16px;
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(14px);
 }
 
 .muted {
@@ -405,14 +426,16 @@ button:not(:disabled):hover {
 
 .modal__panel {
   position: relative;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.85);
   border-radius: 20px;
   padding: 24px;
   min-width: min(380px, 90vw);
   max-width: min(720px, 92vw);
   max-height: min(70vh, 620px);
   overflow: auto;
-  box-shadow: 0 30px 60px -30px rgba(15, 23, 42, 0.7);
+  box-shadow: var(--glass-shadow);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(24px);
   display: grid;
   gap: 12px;
 }
@@ -439,13 +462,15 @@ button:not(:disabled):hover {
 }
 
 .details-row {
-  border: 1px solid var(--ink-200);
+  border: 1px solid var(--glass-border);
   border-radius: 12px;
   padding: 10px 12px;
   display: grid;
   grid-template-columns: minmax(200px, 1fr) minmax(220px, 1.1fr);
   gap: 16px;
   align-items: start;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
 }
 
 .details-title {
@@ -492,6 +517,7 @@ button:not(:disabled):hover {
 .settings__form {
   display: grid;
   gap: 12px;
+  align-content: start;
 }
 
 .settings__list {
@@ -549,6 +575,7 @@ button:not(:disabled):hover {
 
   .settings__form button {
     width: 100%;
+    justify-self: stretch;
   }
 
   .card {

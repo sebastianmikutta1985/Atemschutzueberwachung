@@ -117,7 +117,7 @@
           </div>
           <label>
             Startzeit
-            <input type="datetime-local" [(ngModel)]="truppForm.startzeit" />
+            <input type="datetime-local" step="1" [(ngModel)]="truppForm.startzeit" />
           </label>
           <div class="row">
             <label>
@@ -212,7 +212,8 @@
             class="ghost"
             type="button"
             (click)="addDruckmessung(trupp, trupp.person1Id)"
-            [disabled]="trupp.endzeit || trupp.druckCountPerson1 >= 3"
+            *ngIf="!trupp.endzeit"
+            [disabled]="trupp.druckCountPerson1 >= 3"
           >
             Druck P1 ({{ trupp.druckCountPerson1 }}/3)
           </button>
@@ -220,7 +221,8 @@
             class="ghost"
             type="button"
             (click)="addDruckmessung(trupp, trupp.person2Id)"
-            [disabled]="trupp.endzeit || trupp.druckCountPerson2 >= 3"
+            *ngIf="!trupp.endzeit"
+            [disabled]="trupp.druckCountPerson2 >= 3"
           >
             Druck P2 ({{ trupp.druckCountPerson2 }}/3)
           </button>
@@ -269,7 +271,7 @@
         <div class="trupp__actions">
           <button class="ghost" type="button" (click)="openEinsatzDetails(einsatz)">Details</button>
           <button class="danger" type="button" *ngIf="einsatz.status !== 'aktiv'" (click)="deleteEinsatz(einsatz)">
-            Loeschen
+            Löschen
           </button>
         </div>
       </div>
@@ -318,7 +320,7 @@
               {{ traeger.aktiv ? 'Deaktivieren' : 'Aktivieren' }}
             </button>
             <button class="danger" type="button" (click)="deleteGeraetetraeger(traeger)">
-              Loeschen
+              Löschen
             </button>
           </div>
         </div>
@@ -402,7 +404,7 @@
               {{ item.aktiv ? 'Deaktivieren' : 'Aktivieren' }}
             </button>
             <button class="danger" type="button" (click)="deleteTruppName(item)">
-              Loeschen
+              Löschen
             </button>
           </div>
         </div>
