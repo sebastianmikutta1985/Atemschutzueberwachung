@@ -1,0 +1,148 @@
+<div class="page">
+  <header class="hero">
+    <div class="hero__text">
+      <p class="hero__eyebrow">Einstellungen</p>
+      <h1>Stammdaten verwalten</h1>
+      <p class="hero__sub">
+        Atemschutzgeraetetraeger und Trupps pflegen.
+      </p>
+    </div>
+    <div class="hero__meta">
+      <button class="ghost" type="button" [routerLink]="['/']">Zurueck</button>
+    </div>
+  </header>
+
+  <section class="card settings">
+    <div class="list__head">
+      <h2>Einstellungen: Atemschutzgeraetetraeger</h2>
+      <div class="muted">{{ geraetetraeger.length }} Eintraege</div>
+    </div>
+    <div class="settings__grid">
+      <div class="settings__form">
+        <label>
+          Vorname
+          <input type="text" [(ngModel)]="geraetetraegerForm.vorname" />
+        </label>
+        <label>
+          Nachname
+          <input type="text" [(ngModel)]="geraetetraegerForm.nachname" />
+        </label>
+        <label>
+          Funkrufname (optional)
+          <input type="text" [(ngModel)]="geraetetraegerForm.funkrufname" />
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" [(ngModel)]="geraetetraegerForm.aktiv" />
+          Aktiv
+        </label>
+        <button class="primary" type="button" (click)="addGeraetetraeger()">Speichern</button>
+      </div>
+
+      <div class="settings__list">
+        <div class="trupp" *ngFor="let traeger of geraetetraeger">
+          <div class="trupp__status" [attr.data-status]="traeger.aktiv ? 'gruen' : 'beendet'">
+            {{ traeger.aktiv ? 'AKTIV' : 'INAKTIV' }}
+          </div>
+          <div class="trupp__info">
+            <div class="trupp__title">
+              {{ traeger.nachname }} {{ traeger.vorname }}
+            </div>
+            <div class="muted">{{ traeger.funkrufname || 'Kein Funkrufname' }}</div>
+          </div>
+          <div class="trupp__actions">
+            <button class="ghost" type="button" (click)="toggleGeraetetraeger(traeger)">
+              {{ traeger.aktiv ? 'Deaktivieren' : 'Aktivieren' }}
+            </button>
+            <button class="danger" type="button" (click)="deleteGeraetetraeger(traeger)">
+              Löschen
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card settings">
+    <div class="list__head">
+      <h2>Einstellungen: Trupps</h2>
+      <div class="muted">{{ truppnamen.length }} Eintraege</div>
+    </div>
+    <div class="settings__grid">
+      <div class="settings__form">
+        <label>
+          Truppname
+          <input type="text" [(ngModel)]="truppNameForm.name" />
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" [(ngModel)]="truppNameForm.aktiv" />
+          Aktiv
+        </label>
+        <button class="primary" type="button" (click)="addTruppName()">Speichern</button>
+      </div>
+
+      <div class="settings__list">
+        <div class="trupp" *ngFor="let item of truppnamen; let i = index">
+          <div class="trupp__status" [attr.data-status]="item.aktiv ? 'gruen' : 'beendet'">
+            {{ item.aktiv ? 'AKTIV' : 'INAKTIV' }}
+          </div>
+          <div class="trupp__info">
+            <div class="trupp__title" *ngIf="editingTruppNameId !== item.id">{{ item.name }}</div>
+            <input
+              *ngIf="editingTruppNameId === item.id"
+              type="text"
+              [(ngModel)]="editingTruppNameValue"
+            />
+            <div class="muted">Trupp-Vorlage</div>
+          </div>
+          <div class="trupp__actions">
+            <button class="ghost" type="button" (click)="moveTruppName(i, -1)" [disabled]="i === 0">
+              Nach oben
+            </button>
+            <button
+              class="ghost"
+              type="button"
+              (click)="moveTruppName(i, 1)"
+              [disabled]="i === truppnamen.length - 1"
+            >
+              Nach unten
+            </button>
+          </div>
+          <div class="trupp__actions">
+            <button
+              class="ghost"
+              type="button"
+              *ngIf="editingTruppNameId !== item.id"
+              (click)="startEditTruppName(item)"
+            >
+              Umbenennen
+            </button>
+            <button
+              class="primary"
+              type="button"
+              *ngIf="editingTruppNameId === item.id"
+              (click)="saveEditTruppName(item)"
+            >
+              Speichern
+            </button>
+            <button
+              class="ghost"
+              type="button"
+              *ngIf="editingTruppNameId === item.id"
+              (click)="cancelEditTruppName()"
+            >
+              Abbrechen
+            </button>
+          </div>
+          <div class="trupp__actions">
+            <button class="ghost" type="button" (click)="toggleTruppName(item)">
+              {{ item.aktiv ? 'Deaktivieren' : 'Aktivieren' }}
+            </button>
+            <button class="danger" type="button" (click)="deleteTruppName(item)">
+              Löschen
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
