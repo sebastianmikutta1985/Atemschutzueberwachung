@@ -1,8 +1,36 @@
+# .NET
 bin/
 obj/
 **/bin/
 **/obj/
-node_modules/
-dist/
-.vscode/
+
+# Angular / Node
+/dist/
+/out-tsc/
+/tmp/
+/coverage/
+/e2e/test-output/
+/.angular/
+.angular/
+/node_modules/
+/package-lock.json
+/yarn.lock
+
+# Angular CLI and build artefacts
+/.angular-cli.json
+/.ng/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+/.env
 .env
+
+# Editor
+.vscode/
