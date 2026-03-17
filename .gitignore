@@ -3,6 +3,8 @@ bin/
 obj/
 **/bin/
 **/obj/
+.nuget/
+packages/
 
 # Angular / Node
 /dist/
