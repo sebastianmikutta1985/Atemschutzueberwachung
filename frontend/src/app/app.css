@@ -15,6 +15,7 @@
   justify-content: space-between;
   flex-wrap: wrap;
   margin-bottom: 32px;
+  position: static;
 }
 
 .hero__eyebrow {
@@ -74,7 +75,7 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 24px;
   margin-bottom: 24px;
 }
@@ -233,7 +234,7 @@ button:not(:disabled):hover {
 }
 
 .list__body--grid {
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: 16px;
 }
 
@@ -363,6 +364,16 @@ button:not(:disabled):hover {
   gap: 12px;
 }
 
+.trupp__bottom button {
+  font-size: 0.95rem;
+  line-height: 1.1;
+  color: var(--ink-700);
+}
+
+.trupp__bottom button.primary {
+  color: #fff;
+}
+
 .info {
   display: flex;
   justify-content: space-between;
@@ -489,6 +500,10 @@ button:not(:disabled):hover {
 }
 
 @media (max-width: 900px) {
+  .page {
+    padding: 32px 20px 48px;
+  }
+
   .trupp__top {
     grid-template-columns: 1fr;
   }
@@ -500,15 +515,99 @@ button:not(:disabled):hover {
   .settings__grid {
     grid-template-columns: 1fr;
   }
+
+  .list__body--grid {
+    grid-template-columns: repeat(2, minmax(240px, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hero__meta {
+    width: 100%;
+  }
+
+  .pill {
+    width: 100%;
+  }
+
   .list__body--grid {
     grid-template-columns: 1fr;
   }
 
   .trupp__bottom {
     grid-template-columns: 1fr;
+  }
+
+  .trupp__metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .settings__form button {
+    width: 100%;
+  }
+
+  .card {
+    padding: 18px;
+  }
+
+  .list {
+    padding: 18px;
+  }
+
+  .modal__panel {
+    min-width: min(320px, 92vw);
+    padding: 18px;
+    max-height: 76vh;
+  }
+}
+
+@media (max-width: 520px) {
+  .page {
+    padding: 24px 14px 40px;
+  }
+
+  .hero__text h1 {
+    font-size: 2rem;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trupp {
+    padding: 14px;
+  }
+
+  .details-row {
+    padding: 10px;
+  }
+}
+
+@media (max-width: 380px) {
+  .hero__text h1 {
+    font-size: 1.75rem;
+  }
+
+  .hero__sub {
+    font-size: 0.92rem;
+  }
+
+  button {
+    padding: 10px 12px;
+  }
+
+  input,
+  select {
+    font-size: 0.9rem;
+  }
+
+  .pill__value {
+    font-size: 1rem;
   }
 }
 
