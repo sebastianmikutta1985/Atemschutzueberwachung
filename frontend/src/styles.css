@@ -1,18 +1,20 @@
 :root {
-  --bg: radial-gradient(circle at top, #f4f6f9 0%, #eef1f5 45%, #e6ebf2 100%);
-  --card: rgba(255, 255, 255, 0.82);
-  --accent: #2f5f89;
-  --ok: #2f9e6f;
-  --warn: #d6a12b;
-  --danger: #c02a2a;
-  --ink-900: #111827;
-  --ink-700: #374151;
-  --ink-600: #4b5563;
-  --ink-500: #6b7280;
-  --ink-400: #9ca3af;
-  --ink-200: #e5e7eb;
-  --glass-border: rgba(255, 255, 255, 0.6);
-  --glass-shadow: 0 20px 50px -35px rgba(15, 23, 42, 0.6);
+  --bg: radial-gradient(circle at top, #eef2f6 0%, #e4e9f1 55%, #d6dde7 100%);
+  --card: rgba(255, 255, 255, 0.88);
+  --accent: #2a5164;
+  --ok: #1f7a5b;
+  --warn: #b8841d;
+  --danger: #a92222;
+  --ink-900: #0b1220;
+  --ink-700: #25303b;
+  --ink-600: #3b4652;
+  --ink-500: #5b6672;
+  --ink-400: #8a96a3;
+  --ink-200: #dde3ea;
+  --glass-border: rgba(15, 23, 42, 0.08);
+  --glass-shadow: 0 16px 36px -28px rgba(10, 18, 32, 0.5);
+  --glass-glow: 0 0 0 1px rgba(255, 255, 255, 0.2) inset;
+  --panel-edge: rgba(10, 18, 32, 0.14);
 }
 
 * {
@@ -21,7 +23,7 @@
 
 body {
   margin: 0;
-  font-family: "SF Pro Display", "SF Pro Text", "Inter", "Helvetica Neue", sans-serif;
+  font-family: "Manrope", "Source Sans 3", "Segoe UI", sans-serif;
   background: var(--bg);
   color: var(--ink-900);
 }
