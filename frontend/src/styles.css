@@ -1,0 +1,24 @@
+﻿:root {
+  --bg: radial-gradient(circle at top, #fff1e6 0%, #f7f4f0 40%, #eef1f4 100%);
+  --card: #ffffff;
+  --accent: #ff6b3d;
+  --ok: #0ea866;
+  --warn: #f3c43b;
+  --danger: #e5484d;
+  --ink-900: #1b1f24;
+  --ink-700: #3b4652;
+  --ink-600: #4a5563;
+  --ink-500: #6b7280;
+  --ink-400: #9ca3af;
+  --ink-200: #e5e7eb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Manrope", "Segoe UI", sans-serif;
+  background: var(--bg);
+}
