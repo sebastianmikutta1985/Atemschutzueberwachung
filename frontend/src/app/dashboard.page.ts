@@ -2,7 +2,9 @@ import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, NgZone, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
+import { environment } from '../environments/environment';
+import { AuthStore } from './auth.store';
 import { DruckInfo, Einsatz, Geraetetraeger, Trupp, TruppName } from './models';
 
 @Component({
@@ -11,7 +13,7 @@ import { DruckInfo, Einsatz, Geraetetraeger, Trupp, TruppName } from './models';
   templateUrl: './dashboard.page.html'
 })
 export class DashboardPage implements OnInit, OnDestroy {
-  private readonly baseUrl = 'http://localhost:5000/api';
+  private readonly baseUrl = environment.apiBaseUrl;
   private timerId?: number;
 
   currentEinsatz: Einsatz | null = null;
@@ -63,7 +65,8 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   constructor(
     private http: HttpClient,
-    private zone: NgZone
+    private zone: NgZone,
+    private router: Router
   ) {}
 
   ngOnInit(): void {
@@ -81,6 +84,23 @@ export class DashboardPage implements OnInit, OnDestroy {
     if (this.timerId) {
       window.clearInterval(this.timerId);
     }
+  }
+
+  get authInfo(): { orgName: string; orgCode: string; role: string } | null {
+    const auth = AuthStore.load();
+    if (!auth) {
+      return null;
+    }
+    return { orgName: auth.orgName, orgCode: auth.orgCode, role: auth.role };
+  }
+
+  logout(): void {
+    this.http.post(`${this.baseUrl}/auth/logout`, {}).subscribe({
+      complete: () => {
+        AuthStore.clear();
+        this.router.navigateByUrl('/login');
+      }
+    });
   }
 
   loadActiveEinsatz(): void {

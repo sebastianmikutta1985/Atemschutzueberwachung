@@ -2,7 +2,9 @@ import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
+import { environment } from '../environments/environment';
+import { AuthStore } from './auth.store';
 import { Geraetetraeger, TruppName } from './models';
 
 @Component({
@@ -11,7 +13,7 @@ import { Geraetetraeger, TruppName } from './models';
   templateUrl: './settings.page.html'
 })
 export class SettingsPage implements OnInit {
-  private readonly baseUrl = 'http://localhost:5000/api';
+  private readonly baseUrl = environment.apiBaseUrl;
 
   geraetetraeger: Geraetetraeger[] = [];
   truppnamen: TruppName[] = [];
@@ -31,11 +33,28 @@ export class SettingsPage implements OnInit {
   editingTruppNameId: string | null = null;
   editingTruppNameValue = '';
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, private router: Router) {}
 
   ngOnInit(): void {
     this.loadGeraetetraeger();
     this.loadTruppnamen();
+  }
+
+  get authInfo(): { orgName: string; orgCode: string } | null {
+    const auth = AuthStore.load();
+    if (!auth) {
+      return null;
+    }
+    return { orgName: auth.orgName, orgCode: auth.orgCode };
+  }
+
+  logout(): void {
+    this.http.post(`${this.baseUrl}/auth/logout`, {}).subscribe({
+      complete: () => {
+        AuthStore.clear();
+        this.router.navigateByUrl('/login');
+      }
+    });
   }
 
   loadGeraetetraeger(): void {

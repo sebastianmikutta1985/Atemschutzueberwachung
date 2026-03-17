@@ -1,0 +1,27 @@
+<div class="page">
+  <header class="hero">
+    <div class="hero__text">
+      <p class="hero__eyebrow">Anmeldung</p>
+      <h1>Schnell einsatzbereit</h1>
+      <p class="hero__sub">Organisation und PIN eingeben.</p>
+    </div>
+  </header>
+
+  <section class="card">
+    <div class="card__body">
+      <label>
+        Organisationscode
+        <input type="text" [(ngModel)]="orgaCode" placeholder="Z. B. FFW123" />
+      </label>
+      <label>
+        PIN
+        <input type="password" [(ngModel)]="pin" placeholder="PIN" />
+      </label>
+      <div class="muted" *ngIf="error">{{ error }}</div>
+      <button class="primary" type="button" (click)="login()" [disabled]="loading">
+        {{ loading ? 'Bitte warten...' : 'Anmelden' }}
+      </button>
+      <div class="muted">Als Hersteller? <a [routerLink]="['/hersteller']">Hersteller-Portal</a></div>
+    </div>
+  </section>
+</div>
