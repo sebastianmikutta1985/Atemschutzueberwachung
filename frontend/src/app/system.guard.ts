@@ -7,5 +7,5 @@ export const systemGuard: CanActivateFn = () => {
   if (token) {
     return true;
   }
-  return inject(Router).createUrlTree(['/hersteller']);
+  return inject(Router).createUrlTree(['/admin-login']);
 };

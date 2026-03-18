@@ -1,83 +1,83 @@
 <div class="page">
-  <header class="hero">
-    <div class="hero__text">
-      <p class="hero__eyebrow">Hersteller-Portal</p>
-      <h1>Organisationen verwalten</h1>
-      <p class="hero__sub">Anlegen, sperren, PINs zuruecksetzen.</p>
-    </div>
-    <div class="hero__meta">
-      <button class="ghost" type="button" [routerLink]="['/login']">Zurueck</button>
-      <button class="ghost" type="button" *ngIf="systemToken" (click)="logoutSystem()">Abmelden</button>
-    </div>
-  </header>
-
-  <section class="card" *ngIf="!systemToken">
-    <div class="card__body">
-      <label>
-        Hersteller-Secret
-        <input type="password" [(ngModel)]="systemSecret" />
-      </label>
-      <div class="muted" *ngIf="error">{{ error }}</div>
-      <button class="primary" type="button" (click)="loginSystem()">Anmelden</button>
-    </div>
-  </section>
-
-  <section class="card" *ngIf="systemToken">
-    <div class="list__head">
-      <h2>Neue Organisation</h2>
-    </div>
-    <div class="card__body">
-      <label>
-        Name
-        <input type="text" [(ngModel)]="orgForm.name" />
-      </label>
-      <div class="row">
-        <label>
-          Admin-PIN
-          <input type="text" [(ngModel)]="orgForm.adminPin" />
-        </label>
-        <label>
-          Benutzer-PIN
-          <input type="text" [(ngModel)]="orgForm.userPin" />
-        </label>
+    <header class="hero">
+      <div class="hero__text">
+        <p class="hero__eyebrow">Hersteller-Portal</p>
+        <h1>Organisationen verwalten</h1>
+        <p class="hero__sub">Anlegen, sperren, PINs zuruecksetzen.</p>
       </div>
-      <label>
-        Status
-        <select [(ngModel)]="orgForm.status">
-          <option value="aktiv">aktiv</option>
-          <option value="gesperrt">gesperrt</option>
-        </select>
-      </label>
-      <div class="muted" *ngIf="error">{{ error }}</div>
-      <button class="primary" type="button" (click)="createOrg()">Organisation anlegen</button>
-    </div>
-  </section>
+      <div class="hero__meta">
+        <button class="ghost btn-icon" type="button" [routerLink]="['/login']">Zurueck</button>
+        <button class="ghost btn-icon" type="button" *ngIf="systemToken" (click)="logoutSystem()">Abmelden</button>
+      </div>
+    </header>
 
-  <section class="card list" *ngIf="systemToken">
-    <div class="list__head">
-      <h2>Organisationen</h2>
-      <div class="muted">{{ orgs.length }} Eintraege</div>
-    </div>
-    <div class="list__body" *ngIf="orgs.length === 0">
-      <p class="muted">Keine Organisationen vorhanden.</p>
-    </div>
-    <div class="list__body" *ngIf="orgs.length > 0">
-      <div class="trupp" *ngFor="let org of orgs">
-        <div class="trupp__status" [attr.data-status]="org.status === 'aktiv' ? 'gruen' : 'beendet'">
-          {{ org.status === 'aktiv' ? 'AKTIV' : 'GESPERRT' }}
+    <section class="card" *ngIf="!systemToken">
+      <div class="card__body">
+        <label>
+          Hersteller-Secret
+          <input type="password" [(ngModel)]="systemSecret" />
+        </label>
+        <div class="muted" *ngIf="error">{{ error }}</div>
+      <button class="primary btn-icon" type="button" (click)="loginSystem()">Anmelden</button>
+      </div>
+    </section>
+
+    <section class="card" *ngIf="systemToken">
+      <div class="list__head">
+        <h2>Neue Organisation</h2>
+      </div>
+      <div class="card__body">
+        <label>
+          Name
+          <input type="text" [(ngModel)]="orgForm.name" />
+        </label>
+        <div class="row">
+          <label>
+            Admin-PIN
+            <input type="text" [(ngModel)]="orgForm.adminPin" />
+          </label>
+          <label>
+            Benutzer-PIN
+            <input type="text" [(ngModel)]="orgForm.userPin" />
+          </label>
         </div>
-        <div class="trupp__info">
-          <div class="trupp__title">{{ org.name }}</div>
-          <div class="muted">Code: {{ org.code }}</div>
-        </div>
-        <div class="trupp__actions">
-          <button class="ghost" type="button" (click)="toggleStatus(org)">
-            {{ org.status === 'aktiv' ? 'Sperren' : 'Aktivieren' }}
-          </button>
-          <button class="ghost" type="button" (click)="resetPin(org, 'admin')">Admin-PIN</button>
-          <button class="ghost" type="button" (click)="resetPin(org, 'user')">Benutzer-PIN</button>
+        <label>
+          Status
+          <select [(ngModel)]="orgForm.status">
+            <option value="aktiv">aktiv</option>
+            <option value="gesperrt">gesperrt</option>
+          </select>
+        </label>
+        <div class="muted" *ngIf="error">{{ error }}</div>
+      <button class="primary btn-icon" type="button" (click)="createOrg()">Organisation anlegen</button>
+      </div>
+    </section>
+
+    <section class="card list" *ngIf="systemToken">
+      <div class="list__head">
+        <h2>Organisationen</h2>
+        <div class="muted">{{ orgs.length }} Eintraege</div>
+      </div>
+      <div class="list__body" *ngIf="orgs.length === 0">
+        <p class="muted">Keine Organisationen vorhanden.</p>
+      </div>
+      <div class="list__body" *ngIf="orgs.length > 0">
+        <div class="trupp" *ngFor="let org of orgs">
+          <div class="trupp__status" [attr.data-status]="org.status === 'aktiv' ? 'gruen' : 'beendet'">
+            {{ org.status === 'aktiv' ? 'AKTIV' : 'GESPERRT' }}
+          </div>
+          <div class="trupp__info">
+            <div class="trupp__title">{{ org.name }}</div>
+            <div class="muted">Code: {{ org.code }}</div>
+          </div>
+          <div class="trupp__actions">
+            <button class="ghost" type="button" (click)="toggleStatus(org)">
+              {{ org.status === 'aktiv' ? 'Sperren' : 'Aktivieren' }}
+            </button>
+            <button class="ghost" type="button" (click)="resetPin(org, 'admin')">Admin-PIN</button>
+            <button class="ghost" type="button" (click)="resetPin(org, 'user')">Benutzer-PIN</button>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 </div>

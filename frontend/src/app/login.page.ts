@@ -15,10 +15,25 @@ export class LoginPage {
   private readonly baseUrl = environment.apiBaseUrl;
   orgaCode = '';
   pin = '';
+  remember = false;
   error = '';
   loading = false;
 
   constructor(private http: HttpClient, private router: Router) {}
+
+  ngOnInit(): void {
+    const saved = localStorage.getItem('ats_login');
+    if (saved) {
+      try {
+        const data = JSON.parse(saved) as { orgaCode?: string; pin?: string; remember?: boolean };
+        this.orgaCode = data.orgaCode ?? '';
+        this.pin = data.pin ?? '';
+        this.remember = Boolean(data.remember);
+      } catch {
+        // ignore
+      }
+    }
+  }
 
   login(): void {
     this.error = '';
@@ -36,6 +51,14 @@ export class LoginPage {
       )
       .subscribe({
         next: (res) => {
+          if (this.remember) {
+            localStorage.setItem(
+              'ats_login',
+              JSON.stringify({ orgaCode: code, pin, remember: true })
+            );
+          } else {
+            localStorage.removeItem('ats_login');
+          }
           AuthStore.save({
             token: res.token,
             role: res.role,
