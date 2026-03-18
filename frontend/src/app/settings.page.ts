@@ -1,24 +1,26 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
 import { Geraetetraeger, OrgSettings, TruppName } from './models';
+import { RealtimeService } from './realtime.service';
 
 @Component({
   selector: 'app-settings-page',
   imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './settings.page.html'
 })
-export class SettingsPage implements OnInit {
+export class SettingsPage implements OnInit, OnDestroy {
   private readonly baseUrl = environment.apiBaseUrl;
 
   geraetetraeger: Geraetetraeger[] = [];
   truppnamen: TruppName[] = [];
   orgSettings: OrgSettings | null = null;
   dragIndex: number | null = null;
+  private unsubscribeRealtime?: () => void;
 
   geraetetraegerForm = {
     vorname: '',
@@ -39,16 +41,37 @@ export class SettingsPage implements OnInit {
     defaultMaxzeitMin: 30
   };
   orgSettingsMessage = '';
+  importMessage = '';
+  importRows: { vorname: string; nachname: string; funkrufname: string; aktiv: boolean }[] = [];
 
   editingTruppNameId: string | null = null;
   editingTruppNameValue = '';
 
-  constructor(private http: HttpClient, private router: Router) {}
+  constructor(private http: HttpClient, private router: Router, private realtime: RealtimeService) {}
 
   ngOnInit(): void {
     this.loadGeraetetraeger();
     this.loadTruppnamen();
     this.loadOrgSettings();
+
+    this.realtime.start();
+    this.unsubscribeRealtime = this.realtime.onUpdate((type) => {
+      if (type === 'geraetetraeger') {
+        this.loadGeraetetraeger();
+      }
+      if (type === 'truppnamen') {
+        this.loadTruppnamen();
+      }
+      if (type === 'settings') {
+        this.loadOrgSettings();
+      }
+    });
+  }
+
+  ngOnDestroy(): void {
+    if (this.unsubscribeRealtime) {
+      this.unsubscribeRealtime();
+    }
   }
 
   get authInfo(): { orgName: string; orgCode: string } | null {
@@ -63,6 +86,7 @@ export class SettingsPage implements OnInit {
     this.http.post(`${this.baseUrl}/auth/logout`, {}).subscribe({
       complete: () => {
         AuthStore.clear();
+        this.realtime.stop();
         this.router.navigateByUrl('/login');
       }
     });
@@ -132,6 +156,137 @@ export class SettingsPage implements OnInit {
       this.geraetetraegerForm.aktiv = true;
       this.loadGeraetetraeger();
     });
+  }
+
+  importGeraetetraeger(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+    this.importMessage = 'Import läuft...';
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || '');
+      this.importRows = this.parseCsvRows(text);
+      if (this.importRows.length === 0) {
+        this.importMessage = 'Keine gültigen Zeilen gefunden.';
+        return;
+      }
+      const plan = this.buildImportPlan();
+      this.importMessage = `CSV geladen. Neu: ${plan.toCreate.length}, Übersprungen: ${plan.skipped}.`;
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  downloadCsvBeispiel(): void {
+    const sample = [
+      'Vorname;Nachname;Funkrufname;Aktiv',
+      'Max;Mustermann;Funk 1;true',
+      'Anna;Musterfrau;;false'
+    ].join('\n');
+    const blob = new Blob(['\uFEFF' + sample], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'geraetetraeger_import.csv';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  previewCsvImport(): void {
+    if (!this.importRows.length) {
+      this.importMessage = 'Bitte zuerst eine CSV auswählen.';
+      return;
+    }
+    const plan = this.buildImportPlan();
+    this.importMessage = `Vorschau: ${plan.toCreate.length} neu, ${plan.skipped} übersprungen.`;
+  }
+
+  runCsvImport(): void {
+    if (!this.importRows.length) {
+      this.importMessage = 'Bitte zuerst eine CSV auswählen.';
+      return;
+    }
+    const plan = this.buildImportPlan();
+    if (plan.toCreate.length === 0) {
+      this.importMessage = 'Keine neuen Einträge zum Import.';
+      return;
+    }
+    this.importMessage = 'Import läuft...';
+    let done = 0;
+    let failed = 0;
+    plan.toCreate.forEach((row) => {
+      this.http
+        .post<Geraetetraeger>(`${this.baseUrl}/geraetetraeger`, row)
+        .subscribe({
+          next: () => {
+            done += 1;
+          },
+          error: () => {
+            failed += 1;
+          },
+          complete: () => {
+            if (done + failed === plan.toCreate.length) {
+              this.importMessage = `Import fertig. Erfolgreich: ${done}, Fehler: ${failed}.`;
+              this.importRows = [];
+              this.loadGeraetetraeger();
+            }
+          }
+        });
+    });
+  }
+
+  private parseCsvRows(text: string): { vorname: string; nachname: string; funkrufname: string; aktiv: boolean }[] {
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) {
+      return [];
+    }
+    const rows = lines.map((line) => line.split(';').map((c) => c.trim()));
+    const maybeHeader = rows[0].map((c) => c.toLowerCase());
+    const hasHeader =
+      maybeHeader.includes('vorname') || maybeHeader.includes('nachname') || maybeHeader.includes('funkrufname');
+    const dataRows = hasHeader ? rows.slice(1) : rows;
+
+    return dataRows
+      .filter((r) => r.length >= 2)
+      .map((r) => {
+        const vorname = r[0] || '';
+        const nachname = r[1] || '';
+        const funkrufname = r[2] || '';
+        const aktivRaw = (r[3] || 'true').toLowerCase();
+        const aktiv = !(aktivRaw === 'false' || aktivRaw === '0' || aktivRaw === 'nein' || aktivRaw === 'inaktiv');
+        return { vorname, nachname, funkrufname, aktiv };
+      })
+      .filter((r) => r.vorname && r.nachname);
+  }
+
+  private buildImportPlan(): { toCreate: { vorname: string; nachname: string; funkrufname: string; aktiv: boolean }[]; skipped: number } {
+    const normalize = (value: string) => value.trim().toLowerCase();
+    const key = (v: { vorname: string; nachname: string; funkrufname: string }) =>
+      `${normalize(v.nachname)}|${normalize(v.vorname)}|${normalize(v.funkrufname || '')}`;
+
+    const existingKeys = new Set(
+      this.geraetetraeger.map((g) =>
+        key({ vorname: g.vorname, nachname: g.nachname, funkrufname: g.funkrufname ?? '' })
+      )
+    );
+
+    const seen = new Set<string>();
+    const toCreate: { vorname: string; nachname: string; funkrufname: string; aktiv: boolean }[] = [];
+    let skipped = 0;
+
+    for (const row of this.importRows) {
+      const rowKey = key(row);
+      if (existingKeys.has(rowKey) || seen.has(rowKey)) {
+        skipped += 1;
+        continue;
+      }
+      seen.add(rowKey);
+      toCreate.push(row);
+    }
+
+    return { toCreate, skipped };
   }
 
   toggleGeraetetraeger(traeger: Geraetetraeger): void {
