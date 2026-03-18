@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f08c2a"/>
+      <stop offset="1" stop-color="#b0302f"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="#241714"/>
+  <path d="M64 18c22 10 38 30 38 56 0 26-16 40-38 54-22-14-38-28-38-54 0-26 16-46 38-56z" fill="url(#bg)"/>
+  <path d="M64 30c16 7 26 21 26 41 0 20-12 30-26 40-14-10-26-20-26-40 0-20 10-34 26-41z" fill="#2a1612" opacity="0.55"/>
+
+  <!-- Atemschutzmaske -->
+  <g fill="#f6efe8">
+    <rect x="44" y="50" width="40" height="30" rx="10"/>
+    <rect x="40" y="56" width="12" height="18" rx="6"/>
+    <rect x="76" y="56" width="12" height="18" rx="6"/>
+    <rect x="58" y="76" width="12" height="12" rx="4"/>
+  </g>
+
+  <!-- Visor -->
+  <rect x="52" y="55" width="24" height="12" rx="6" fill="#2a1612" opacity="0.6"/>
+  <rect x="54" y="57" width="20" height="8" rx="4" fill="url(#glass)"/>
+</svg>
