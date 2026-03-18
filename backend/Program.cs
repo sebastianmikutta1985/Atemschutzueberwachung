@@ -29,6 +29,7 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.EnsureCreated();
     await EnsureOrganizationsTable(db);
+    await EnsureOrganizationDefaults(db);
     await EnsureUserAccountsTable(db);
     await EnsureSessionsTable(db);
     await EnsureSystemSessionsTable(db);
@@ -51,6 +52,60 @@ var systemSecret = builder.Configuration["SYSTEM_SECRET"] ?? "changeme";
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }))
     .WithOpenApi();
+
+// Settings (Organization defaults)
+app.MapGet("/api/settings", async (HttpContext http, AppDbContext db) =>
+{
+    var auth = await GetAuthAsync(http, db);
+    if (auth == null)
+    {
+        return Results.Unauthorized();
+    }
+    var org = await db.Organizations.FirstOrDefaultAsync(o => o.Id == auth.OrgId);
+    if (org == null)
+    {
+        return Results.NotFound();
+    }
+    return Results.Ok(new OrgSettingsDto(
+        org.DefaultStartdruckPerson1Bar,
+        org.DefaultStartdruckPerson2Bar,
+        org.DefaultWarnzeitMin,
+        org.DefaultMaxzeitMin
+    ));
+}).WithOpenApi();
+
+app.MapPut("/api/settings", async (HttpContext http, OrgSettingsUpdate dto, AppDbContext db) =>
+{
+    var auth = await GetAuthAsync(http, db);
+    if (auth == null)
+    {
+        return Results.Unauthorized();
+    }
+    if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Forbid();
+    }
+    if (dto.DefaultStartdruckPerson1Bar <= 0 || dto.DefaultStartdruckPerson2Bar <= 0 || dto.DefaultWarnzeitMin <= 0 || dto.DefaultMaxzeitMin <= 0)
+    {
+        return Results.BadRequest(new { error = "Werte muessen groesser 0 sein." });
+    }
+    var org = await db.Organizations.FirstOrDefaultAsync(o => o.Id == auth.OrgId);
+    if (org == null)
+    {
+        return Results.NotFound();
+    }
+    org.DefaultStartdruckPerson1Bar = dto.DefaultStartdruckPerson1Bar;
+    org.DefaultStartdruckPerson2Bar = dto.DefaultStartdruckPerson2Bar;
+    org.DefaultWarnzeitMin = dto.DefaultWarnzeitMin;
+    org.DefaultMaxzeitMin = dto.DefaultMaxzeitMin;
+    await db.SaveChangesAsync();
+    return Results.Ok(new OrgSettingsDto(
+        org.DefaultStartdruckPerson1Bar,
+        org.DefaultStartdruckPerson2Bar,
+        org.DefaultWarnzeitMin,
+        org.DefaultMaxzeitMin
+    ));
+}).WithOpenApi();
 
 // Auth
 app.MapPost("/api/auth/login", async (LoginRequest dto, AppDbContext db) =>
@@ -592,11 +647,22 @@ app.MapPost("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Htt
     var person1 = await db.Geraetetraeger.FirstOrDefaultAsync(t => t.Id == dto.Person1Id && t.OrganizationId == auth.OrgId);
     var person2 = await db.Geraetetraeger.FirstOrDefaultAsync(t => t.Id == dto.Person2Id && t.OrganizationId == auth.OrgId);
     var truppName = await db.Truppnamen.FirstOrDefaultAsync(t => t.Id == dto.TruppNameId && t.OrganizationId == auth.OrgId);
+    var orgDefaults = await db.Organizations.FirstOrDefaultAsync(o => o.Id == auth.OrgId);
 
     if (person1 == null || person2 == null || truppName == null)
     {
         return Results.BadRequest(new { error = "Trupp und Personen muessen aus der Liste gewaehlt werden." });
     }
+
+    var defP1 = orgDefaults?.DefaultStartdruckPerson1Bar ?? 300;
+    var defP2 = orgDefaults?.DefaultStartdruckPerson2Bar ?? 300;
+    var defWarn = orgDefaults?.DefaultWarnzeitMin ?? 25;
+    var defMax = orgDefaults?.DefaultMaxzeitMin ?? 30;
+
+    var startP1 = dto.StartdruckPerson1Bar > 0 ? dto.StartdruckPerson1Bar : defP1;
+    var startP2 = dto.StartdruckPerson2Bar > 0 ? dto.StartdruckPerson2Bar : defP2;
+    var warnMin = dto.WarnzeitMin > 0 ? dto.WarnzeitMin : defWarn;
+    var maxMin = dto.MaxzeitMin > 0 ? dto.MaxzeitMin : defMax;
 
     var trupp = new Trupp
     {
@@ -608,12 +674,12 @@ app.MapPost("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Htt
         Person2Id = person2.Id,
         Person1Name = person1.AnzeigeName,
         Person2Name = person2.AnzeigeName,
-        StartdruckBar = dto.StartdruckPerson1Bar,
-        StartdruckPerson1Bar = dto.StartdruckPerson1Bar,
-        StartdruckPerson2Bar = dto.StartdruckPerson2Bar,
+        StartdruckBar = startP1,
+        StartdruckPerson1Bar = startP1,
+        StartdruckPerson2Bar = startP2,
         Startzeit = dto.Startzeit ?? DateTime.Now,
-        WarnzeitMin = dto.WarnzeitMin,
-        MaxzeitMin = dto.MaxzeitMin
+        WarnzeitMin = warnMin,
+        MaxzeitMin = maxMin
     };
 
     db.Trupps.Add(trupp);
@@ -872,10 +938,34 @@ static async Task EnsureOrganizationsTable(AppDbContext db)
             Name TEXT NOT NULL,
             Code TEXT NOT NULL UNIQUE,
             Status TEXT NOT NULL,
-            CreatedAt TEXT NOT NULL
+            CreatedAt TEXT NOT NULL,
+            DefaultStartdruckPerson1Bar INTEGER NOT NULL DEFAULT 300,
+            DefaultStartdruckPerson2Bar INTEGER NOT NULL DEFAULT 300,
+            DefaultWarnzeitMin INTEGER NOT NULL DEFAULT 25,
+            DefaultMaxzeitMin INTEGER NOT NULL DEFAULT 30
         );
         """;
     await cmd.ExecuteNonQueryAsync();
+}
+
+static async Task EnsureOrganizationDefaults(AppDbContext db)
+{
+    var defaults = new[]
+    {
+        ("DefaultStartdruckPerson1Bar", "INTEGER NOT NULL DEFAULT 300"),
+        ("DefaultStartdruckPerson2Bar", "INTEGER NOT NULL DEFAULT 300"),
+        ("DefaultWarnzeitMin", "INTEGER NOT NULL DEFAULT 25"),
+        ("DefaultMaxzeitMin", "INTEGER NOT NULL DEFAULT 30")
+    };
+
+    foreach (var (name, ddl) in defaults)
+    {
+        var has = await HasColumn(db, "Organizations", name);
+        if (!has)
+        {
+            await db.Database.ExecuteSqlRawAsync($"ALTER TABLE Organizations ADD COLUMN {name} {ddl};");
+        }
+    }
 }
 
 static async Task EnsureUserAccountsTable(AppDbContext db)
@@ -1291,6 +1381,10 @@ class Organization
     public string Code { get; set; } = string.Empty;
     public string Status { get; set; } = "aktiv";
     public DateTime CreatedAt { get; set; }
+    public int DefaultStartdruckPerson1Bar { get; set; } = 300;
+    public int DefaultStartdruckPerson2Bar { get; set; } = 300;
+    public int DefaultWarnzeitMin { get; set; } = 25;
+    public int DefaultMaxzeitMin { get; set; } = 30;
 }
 
 class UserAccount
@@ -1340,6 +1434,8 @@ record DruckmessungCreate(Guid PersonId, int DruckBar);
 record AlarmEventCreate(string Typ, string? Nachricht);
 record LoginRequest(string OrgaCode, string Pin);
 record SystemLoginRequest(string Secret);
+record OrgSettingsDto(int DefaultStartdruckPerson1Bar, int DefaultStartdruckPerson2Bar, int DefaultWarnzeitMin, int DefaultMaxzeitMin);
+record OrgSettingsUpdate(int DefaultStartdruckPerson1Bar, int DefaultStartdruckPerson2Bar, int DefaultWarnzeitMin, int DefaultMaxzeitMin);
 record OrgCreate(string Name, string AdminPin, string UserPin, string? Status);
 record OrgUpdate(string? Name, string? AdminPin, string? UserPin, string? Status);
 record AuthContext(Guid OrgId, string Role, string OrgName, string OrgCode);

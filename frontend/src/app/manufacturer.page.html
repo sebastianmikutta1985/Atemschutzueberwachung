@@ -3,10 +3,10 @@
       <div class="hero__text">
         <p class="hero__eyebrow">Hersteller-Portal</p>
         <h1>Organisationen verwalten</h1>
-        <p class="hero__sub">Anlegen, sperren, PINs zuruecksetzen.</p>
+        <p class="hero__sub">Anlegen, sperren, PINs zurücksetzen.</p>
       </div>
       <div class="hero__meta">
-        <button class="ghost btn-icon" type="button" [routerLink]="['/login']">Zurueck</button>
+        <button class="ghost btn-icon" type="button" [routerLink]="['/login']">Zurück</button>
         <button class="ghost btn-icon" type="button" *ngIf="systemToken" (click)="logoutSystem()">Abmelden</button>
       </div>
     </header>
@@ -56,7 +56,7 @@
     <section class="card list" *ngIf="systemToken">
       <div class="list__head">
         <h2>Organisationen</h2>
-        <div class="muted">{{ orgs.length }} Eintraege</div>
+        <div class="muted">{{ orgs.length }} Einträge</div>
       </div>
       <div class="list__body" *ngIf="orgs.length === 0">
         <p class="muted">Keine Organisationen vorhanden.</p>

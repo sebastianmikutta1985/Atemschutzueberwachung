@@ -1,11 +1,12 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, NgZone, OnDestroy, OnInit } from '@angular/core';
+import { Component, ElementRef, HostListener, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
-import { DruckInfo, Einsatz, Geraetetraeger, Trupp, TruppName } from './models';
+import { DruckInfo, Einsatz, Geraetetraeger, OrgSettings, Trupp, TruppName } from './models';
+import * as XLSX from 'xlsx';
 
 @Component({
   selector: 'app-dashboard-page',
@@ -15,6 +16,8 @@ import { DruckInfo, Einsatz, Geraetetraeger, Trupp, TruppName } from './models';
 export class DashboardPage implements OnInit, OnDestroy {
   private readonly baseUrl = environment.apiBaseUrl;
   private timerId?: number;
+  @ViewChild('druckInput') druckInput?: ElementRef<HTMLInputElement>;
+  openSelect: 'trupp' | 'p1' | 'p2' | null = null;
 
   currentEinsatz: Einsatz | null = null;
   trupps: Trupp[] = [];
@@ -24,6 +27,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   currentEpoch = Date.now();
   private notifiedWarn = new Set<string>();
   private notifiedMax = new Set<string>();
+  private defaultsApplied = false;
 
   einsatzForm = {
     name: '',
@@ -53,6 +57,7 @@ export class DashboardPage implements OnInit, OnDestroy {
     value: number | null;
     last: DruckInfo[];
   } | null = null;
+  druckModalError = '';
 
   detailsModal: {
     open: boolean;
@@ -77,8 +82,67 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.loadActiveEinsatz();
     this.loadGeraetetraeger();
     this.loadTruppnamen();
+    this.loadOrgSettings();
     this.loadLetzteEinsaetze();
     this.startClock();
+  }
+
+  @HostListener('document:click')
+  closeOpenSelect(): void {
+    this.openSelect = null;
+  }
+
+  toggleSelect(key: 'trupp' | 'p1' | 'p2', event: MouseEvent): void {
+    event.stopPropagation();
+    if (!this.currentEinsatz) {
+      return;
+    }
+    this.openSelect = this.openSelect === key ? null : key;
+  }
+
+  selectTruppName(id: string): void {
+    if (this.isTruppNameInActiveTrupp(id)) {
+      return;
+    }
+    this.truppForm.truppNameId = id;
+    this.openSelect = null;
+  }
+
+  selectPerson(id: string, target: 'p1' | 'p2'): void {
+    if (this.isPersonInActiveTrupp(id)) {
+      return;
+    }
+    if (target === 'p1') {
+      if (id === this.truppForm.person2Id) {
+        return;
+      }
+      this.truppForm.person1Id = id;
+    } else {
+      if (id === this.truppForm.person1Id) {
+        return;
+      }
+      this.truppForm.person2Id = id;
+    }
+    this.openSelect = null;
+  }
+
+  truppNameLabel(id: string): string {
+    if (!id) {
+      return 'Bitte wählen';
+    }
+    const found = this.truppnamen.find((t) => t.id === id);
+    return found?.name ?? 'Bitte wählen';
+  }
+
+  personLabel(id: string): string {
+    if (!id) {
+      return 'Bitte wählen';
+    }
+    const found = this.geraetetraeger.find((t) => t.id === id);
+    if (!found) {
+      return 'Bitte wählen';
+    }
+    return `${found.nachname} ${found.vorname}${found.funkrufname ? ' (' + found.funkrufname + ')' : ''}`;
   }
 
   ngOnDestroy(): void {
@@ -136,6 +200,18 @@ export class DashboardPage implements OnInit, OnDestroy {
       ) {
         const firstActive = list.find((t) => t.aktiv !== false);
         this.truppForm.truppNameId = firstActive?.id ?? '';
+      }
+    });
+  }
+
+  loadOrgSettings(): void {
+    this.http.get<OrgSettings>(`${this.baseUrl}/settings`).subscribe((settings) => {
+      if (!this.defaultsApplied) {
+        this.truppForm.startdruckPerson1Bar = settings.defaultStartdruckPerson1Bar;
+        this.truppForm.startdruckPerson2Bar = settings.defaultStartdruckPerson2Bar;
+        this.truppForm.warnzeitMin = settings.defaultWarnzeitMin;
+        this.truppForm.maxzeitMin = settings.defaultMaxzeitMin;
+        this.defaultsApplied = true;
       }
     });
   }
@@ -221,6 +297,67 @@ export class DashboardPage implements OnInit, OnDestroy {
           this.detailsModal.trupps = sorted;
           this.detailsModal.loading = false;
         }
+      });
+  }
+
+  exportEinsatz(einsatz: Einsatz): void {
+    this.http
+      .get<Trupp[]>(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`)
+      .subscribe((list) => {
+        const formatMessungen = (values: DruckInfo[]) =>
+          values.map((m) => `${m.druckBar} bar @ ${m.zeit}`).join(' | ');
+
+        const einsatzSheet = XLSX.utils.aoa_to_sheet([
+          ['Einsatz'],
+          ['Name', 'Ort', 'Alarmzeit', 'Status', 'Endzeit'],
+          [einsatz.name, einsatz.ort, einsatz.alarmzeit, einsatz.status, einsatz.endzeit ?? '']
+        ]);
+
+        const truppRows = [
+          [
+            'Bezeichnung',
+            'Person 1',
+            'Person 2',
+            'Startzeit',
+            'Endzeit',
+            'Startdruck P1',
+            'Startdruck P2',
+            'Warnzeit (min)',
+            'Maxzeit (min)',
+            'Messungen P1',
+            'Messungen P2'
+          ],
+          ...list.map((t) => [
+            t.bezeichnung,
+            t.person1Name,
+            t.person2Name,
+            t.startzeit,
+            t.endzeit ?? '',
+            t.startdruckPerson1Bar,
+            t.startdruckPerson2Bar,
+            t.warnzeitMin,
+            t.maxzeitMin,
+            formatMessungen(t.druckMessungenPerson1 || []),
+            formatMessungen(t.druckMessungenPerson2 || [])
+          ])
+        ];
+
+        const truppSheet = XLSX.utils.aoa_to_sheet(truppRows);
+
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, einsatzSheet, 'Einsatz');
+        XLSX.utils.book_append_sheet(workbook, truppSheet, 'Trupps');
+
+        const safeName = (einsatz.name || 'einsatz').replace(/[^a-z0-9-_]+/gi, '_');
+        const filename = `${safeName}_${einsatz.id}.xlsx`;
+        XLSX.writeFile(workbook, filename, { compression: true });
+
+        const subject = `ATS Export - ${einsatz.name}`;
+        const body = `Bitte Einsatz-Export im Anhang einfügen.\n\nEinsatz: ${einsatz.name}\nOrt: ${einsatz.ort}\nAlarm: ${einsatz.alarmzeit}`;
+        const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        window.setTimeout(() => {
+          window.location.href = mailto;
+        }, 200);
       });
   }
 
@@ -313,10 +450,15 @@ export class DashboardPage implements OnInit, OnDestroy {
       value: null,
       last
     };
+    this.druckModalError = '';
+    window.setTimeout(() => {
+      this.druckInput?.nativeElement.focus();
+    }, 0);
   }
 
   closeDruckModal(): void {
     this.druckModal = null;
+    this.druckModalError = '';
   }
 
   saveDruckModal(): void {
@@ -325,6 +467,12 @@ export class DashboardPage implements OnInit, OnDestroy {
     }
     const value = Number(this.druckModal.value);
     if (!Number.isFinite(value) || value <= 0) {
+      return;
+    }
+    const maxAllowed = this.maxDruckForModal();
+    if (maxAllowed !== null && value > maxAllowed) {
+      this.druckModalError = `Maximal ${maxAllowed} bar.`;
+      this.pushToast(`Druck zu hoch: maximal ${maxAllowed} bar.`, 'warn');
       return;
     }
     this.http
@@ -336,6 +484,19 @@ export class DashboardPage implements OnInit, OnDestroy {
         this.closeDruckModal();
         this.loadTrupps();
       });
+  }
+
+  maxDruckForModal(): number | null {
+    if (!this.druckModal) {
+      return null;
+    }
+    const last = this.druckModal.last;
+    if (last && last.length > 0) {
+      return last[0].druckBar;
+    }
+    return this.druckModal.personId === this.druckModal.trupp.person1Id
+      ? this.druckModal.trupp.startdruckPerson1Bar
+      : this.druckModal.trupp.startdruckPerson2Bar;
   }
 
   isPersonInActiveTrupp(personId: string): boolean {

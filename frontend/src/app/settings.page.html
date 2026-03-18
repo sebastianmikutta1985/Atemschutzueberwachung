@@ -4,7 +4,7 @@
         <p class="hero__eyebrow">Einstellungen</p>
         <h1>Stammdaten verwalten</h1>
         <p class="hero__sub">
-          Atemschutzgeraetetraeger und Trupps pflegen.
+          Atemschutzgeräteträger und Trupps pflegen.
         </p>
       </div>
       <div class="hero__meta">
@@ -12,15 +12,15 @@
           <span class="pill__label">Organisation</span>
           <span class="pill__value">{{ authInfo.orgName }} ({{ authInfo.orgCode }})</span>
         </div>
-        <button class="ghost btn-icon" type="button" [routerLink]="['/']">Zurueck</button>
+        <button class="ghost btn-icon" type="button" [routerLink]="['/']">Zurück</button>
         <button class="ghost btn-icon" type="button" (click)="logout()">Abmelden</button>
       </div>
     </header>
 
   <section class="card settings">
     <div class="list__head">
-      <h2>Einstellungen: Atemschutzgeraetetraeger</h2>
-      <div class="muted">{{ geraetetraeger.length }} Eintraege</div>
+      <h2>Einstellungen: Atemschutzgeräteträger</h2>
+      <div class="muted">{{ geraetetraeger.length }} Einträge</div>
     </div>
     <div class="settings__grid">
       <div class="settings__form">
@@ -70,7 +70,7 @@
   <section class="card settings">
     <div class="list__head">
       <h2>Einstellungen: Trupps</h2>
-      <div class="muted">{{ truppnamen.length }} Eintraege</div>
+      <div class="muted">{{ truppnamen.length }} Einträge</div>
     </div>
     <div class="settings__grid">
       <div class="settings__form">
@@ -86,7 +86,15 @@
       </div>
 
       <div class="settings__list">
-        <div class="trupp" *ngFor="let item of truppnamen; let i = index">
+        <div
+          class="trupp trupp--draggable"
+          *ngFor="let item of truppnamen; let i = index"
+          [class.trupp--dragging]="dragIndex === i"
+          draggable="true"
+          (dragstart)="onDragStart(i, $event)"
+          (dragover)="onDragOver($event)"
+          (drop)="onDrop(i, $event)"
+        >
           <div class="trupp__status" [attr.data-status]="item.aktiv ? 'gruen' : 'beendet'">
             {{ item.aktiv ? 'AKTIV' : 'INAKTIV' }}
           </div>
@@ -99,20 +107,7 @@
             />
             <div class="muted">Trupp-Vorlage</div>
           </div>
-          <div class="trupp__actions">
-            <button class="ghost" type="button" (click)="moveTruppName(i, -1)" [disabled]="i === 0">
-              Nach oben
-            </button>
-            <button
-              class="ghost"
-              type="button"
-              (click)="moveTruppName(i, 1)"
-              [disabled]="i === truppnamen.length - 1"
-            >
-              Nach unten
-            </button>
-          </div>
-          <div class="trupp__actions">
+          <div class="trupp__actions trupp__actions--row">
             <button
               class="ghost"
               type="button"
@@ -137,14 +132,73 @@
             >
               Abbrechen
             </button>
-          </div>
-          <div class="trupp__actions">
             <button class="ghost" type="button" (click)="toggleTruppName(item)">
               {{ item.aktiv ? 'Deaktivieren' : 'Aktivieren' }}
             </button>
             <button class="danger" type="button" (click)="deleteTruppName(item)">
               Löschen
             </button>
+          </div>
+          <div class="trupp__actions trupp__actions--mobile">
+            <button class="ghost" type="button" (click)="moveTruppName(i, -1)" [disabled]="i === 0">
+              Hoch
+            </button>
+            <button
+              class="ghost"
+              type="button"
+              (click)="moveTruppName(i, 1)"
+              [disabled]="i === truppnamen.length - 1"
+            >
+              Runter
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card settings">
+    <div class="list__head">
+      <h2>Einstellungen: Standardwerte</h2>
+      <div class="muted">Default für neue Trupps</div>
+    </div>
+    <div class="settings__grid">
+      <div class="settings__form">
+        <label>
+          Startdruck Person 1 (bar)
+          <input type="number" min="0" [(ngModel)]="orgSettingsForm.defaultStartdruckPerson1Bar" />
+        </label>
+        <label>
+          Startdruck Person 2 (bar)
+          <input type="number" min="0" [(ngModel)]="orgSettingsForm.defaultStartdruckPerson2Bar" />
+        </label>
+        <label>
+          Warnzeit nach (min)
+          <input type="number" min="0" [(ngModel)]="orgSettingsForm.defaultWarnzeitMin" />
+        </label>
+        <label>
+          Maxzeit (min)
+          <input type="number" min="0" [(ngModel)]="orgSettingsForm.defaultMaxzeitMin" />
+        </label>
+        <button class="primary" type="button" (click)="saveOrgSettings()">Speichern</button>
+        <div class="muted" *ngIf="orgSettingsMessage">{{ orgSettingsMessage }}</div>
+      </div>
+      <div class="settings__list">
+        <div class="trupp">
+          <div class="trupp__info">
+            <div class="trupp__title">Aktive Standardwerte</div>
+            <div class="muted">
+              Startdruck P1: {{ orgSettingsForm.defaultStartdruckPerson1Bar }} bar
+            </div>
+            <div class="muted">
+              Startdruck P2: {{ orgSettingsForm.defaultStartdruckPerson2Bar }} bar
+            </div>
+            <div class="muted">
+              Warnzeit: {{ orgSettingsForm.defaultWarnzeitMin }} min
+            </div>
+            <div class="muted">
+              Maxzeit: {{ orgSettingsForm.defaultMaxzeitMin }} min
+            </div>
           </div>
         </div>
       </div>

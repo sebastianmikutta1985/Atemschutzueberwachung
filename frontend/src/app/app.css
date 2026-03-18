@@ -154,16 +154,88 @@ select {
   font-size: 0.95rem;
   transition: border 0.2s ease;
   backdrop-filter: blur(10px);
+  width: 100%;
+  max-width: 100%;
+  text-overflow: ellipsis;
 }
 
 select option,
 select optgroup {
   background: #3b251d;
   color: #fff6ea;
+  max-width: 100%;
 }
 
 select option:disabled {
   color: rgba(255, 246, 234, 0.45);
+}
+
+.select {
+  position: relative;
+  width: 100%;
+}
+
+.select__button {
+  width: 100%;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff6ea;
+  border-radius: 12px;
+  padding: 10px 36px 10px 12px;
+  font-size: 0.95rem;
+  backdrop-filter: blur(10px);
+  position: relative;
+}
+
+.select__button::after {
+  content: "▾";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-500);
+}
+
+.select__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #3b251d;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  box-shadow: 0 16px 30px -18px rgba(0, 0, 0, 0.6);
+  z-index: 30;
+  max-height: 240px;
+  overflow: auto;
+  padding: 6px;
+}
+
+.select__option {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: #fff6ea;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 0;
+  font-weight: 500;
+}
+
+.select__option:disabled {
+  color: rgba(255, 246, 234, 0.45);
+  cursor: not-allowed;
+}
+
+.select__option:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.select--disabled .select__button {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink-500);
+  cursor: not-allowed;
 }
 
 fieldset[disabled] input,
@@ -431,6 +503,9 @@ button:not(:disabled):active {
   display: grid;
   grid-template-columns: repeat(3, minmax(120px, 1fr));
   gap: 12px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .trupp__bottom button {
@@ -441,6 +516,29 @@ button:not(:disabled):active {
 
 .trupp__bottom button.primary {
   color: #fff;
+}
+
+.trupp__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.trupp__actions--row {
+  align-items: center;
+}
+
+.trupp__actions--mobile {
+  display: none;
+  gap: 8px;
+}
+
+.trupp--draggable {
+  cursor: grab;
+}
+
+.trupp--dragging {
+  opacity: 0.6;
 }
 
 .info {
@@ -457,6 +555,11 @@ button:not(:disabled):active {
 
 .muted {
   color: var(--ink-500);
+  font-size: 0.85rem;
+}
+
+.form-error {
+  color: var(--warn);
   font-size: 0.85rem;
 }
 
@@ -642,6 +745,10 @@ button:not(:disabled):active {
 
   .trupp__metrics {
     grid-template-columns: 1fr;
+  }
+
+  .trupp__actions--mobile {
+    display: flex;
   }
 
   .einsatz-inline {
