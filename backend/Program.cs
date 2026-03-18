@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -11,7 +12,8 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins("http://localhost:4200")
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 
@@ -21,6 +23,7 @@ var connectionString = $"Data Source={Path.Combine(dataDir, "ats.db")}";
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(connectionString));
+builder.Services.AddSignalR();
 
 var app = builder.Build();
 
@@ -53,10 +56,12 @@ var systemSecret = builder.Configuration["SYSTEM_SECRET"] ?? "changeme";
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }))
     .WithOpenApi();
 
+app.MapHub<UpdatesHub>("/hubs/updates");
+
 // Settings (Organization defaults)
 app.MapGet("/api/settings", async (HttpContext http, AppDbContext db) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -74,9 +79,9 @@ app.MapGet("/api/settings", async (HttpContext http, AppDbContext db) =>
     ));
 }).WithOpenApi();
 
-app.MapPut("/api/settings", async (HttpContext http, OrgSettingsUpdate dto, AppDbContext db) =>
+app.MapPut("/api/settings", async (HttpContext http, OrgSettingsUpdate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -99,6 +104,7 @@ app.MapPut("/api/settings", async (HttpContext http, OrgSettingsUpdate dto, AppD
     org.DefaultWarnzeitMin = dto.DefaultWarnzeitMin;
     org.DefaultMaxzeitMin = dto.DefaultMaxzeitMin;
     await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "settings");
     return Results.Ok(new OrgSettingsDto(
         org.DefaultStartdruckPerson1Bar,
         org.DefaultStartdruckPerson2Bar,
@@ -156,7 +162,7 @@ app.MapPost("/api/auth/login", async (LoginRequest dto, AppDbContext db) =>
 
 app.MapGet("/api/auth/me", async (HttpContext http, AppDbContext db) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -171,7 +177,7 @@ app.MapGet("/api/auth/me", async (HttpContext http, AppDbContext db) =>
 
 app.MapPost("/api/auth/logout", async (HttpContext http, AppDbContext db) =>
 {
-    var token = GetBearerToken(http);
+    var token = AuthHelpers.GetBearerToken(http);
     if (string.IsNullOrWhiteSpace(token))
     {
         return Results.Ok();
@@ -209,7 +215,7 @@ app.MapPost("/api/system/login", async (SystemLoginRequest dto, AppDbContext db)
 
 app.MapGet("/api/system/orgs", async (HttpContext http, AppDbContext db) =>
 {
-    if (!await IsSystemAuthorized(http, db))
+    if (!await AuthHelpers.IsSystemAuthorized(http, db))
     {
         return Results.Unauthorized();
     }
@@ -219,7 +225,7 @@ app.MapGet("/api/system/orgs", async (HttpContext http, AppDbContext db) =>
 
 app.MapPost("/api/system/orgs", async (HttpContext http, OrgCreate dto, AppDbContext db) =>
 {
-    if (!await IsSystemAuthorized(http, db))
+    if (!await AuthHelpers.IsSystemAuthorized(http, db))
     {
         return Results.Unauthorized();
     }
@@ -260,7 +266,7 @@ app.MapPost("/api/system/orgs", async (HttpContext http, OrgCreate dto, AppDbCon
 
 app.MapPut("/api/system/orgs/{id:guid}", async (Guid id, HttpContext http, OrgUpdate dto, AppDbContext db) =>
 {
-    if (!await IsSystemAuthorized(http, db))
+    if (!await AuthHelpers.IsSystemAuthorized(http, db))
     {
         return Results.Unauthorized();
     }
@@ -293,7 +299,7 @@ app.MapPut("/api/system/orgs/{id:guid}", async (Guid id, HttpContext http, OrgUp
 
 app.MapDelete("/api/system/orgs/{id:guid}", async (Guid id, HttpContext http, AppDbContext db) =>
 {
-    if (!await IsSystemAuthorized(http, db))
+    if (!await AuthHelpers.IsSystemAuthorized(http, db))
     {
         return Results.Unauthorized();
     }
@@ -315,7 +321,7 @@ app.MapDelete("/api/system/orgs/{id:guid}", async (Guid id, HttpContext http, Ap
 // Geraetetraeger
 app.MapGet("/api/geraetetraeger", async (HttpContext http, AppDbContext db) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -328,9 +334,9 @@ app.MapGet("/api/geraetetraeger", async (HttpContext http, AppDbContext db) =>
     return Results.Ok(list);
 }).WithOpenApi();
 
-app.MapPost("/api/geraetetraeger", async (HttpContext http, GeraetetraegerCreate dto, AppDbContext db) =>
+app.MapPost("/api/geraetetraeger", async (HttpContext http, GeraetetraegerCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -351,12 +357,13 @@ app.MapPost("/api/geraetetraeger", async (HttpContext http, GeraetetraegerCreate
 
     db.Geraetetraeger.Add(entity);
     await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "geraetetraeger");
     return Results.Ok(entity);
 }).WithOpenApi();
 
-app.MapPut("/api/geraetetraeger/{id:guid}", async (Guid id, HttpContext http, GeraetetraegerUpdate dto, AppDbContext db) =>
+app.MapPut("/api/geraetetraeger/{id:guid}", async (Guid id, HttpContext http, GeraetetraegerUpdate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -377,12 +384,13 @@ app.MapPut("/api/geraetetraeger/{id:guid}", async (Guid id, HttpContext http, Ge
     entity.Aktiv = dto.Aktiv;
 
     await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "geraetetraeger");
     return Results.Ok(entity);
 }).WithOpenApi();
 
-app.MapDelete("/api/geraetetraeger/{id:guid}", async (Guid id, HttpContext http, AppDbContext db) =>
+app.MapDelete("/api/geraetetraeger/{id:guid}", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -399,13 +407,14 @@ app.MapDelete("/api/geraetetraeger/{id:guid}", async (Guid id, HttpContext http,
 
     db.Geraetetraeger.Remove(entity);
     await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "geraetetraeger");
     return Results.Ok();
 }).WithOpenApi();
 
 // Truppnamen (Vorlagen)
 app.MapGet("/api/truppnamen", async (HttpContext http, AppDbContext db) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -418,9 +427,9 @@ app.MapGet("/api/truppnamen", async (HttpContext http, AppDbContext db) =>
     return Results.Ok(list);
 }).WithOpenApi();
 
-app.MapPost("/api/truppnamen", async (HttpContext http, TruppNameCreate dto, AppDbContext db) =>
+app.MapPost("/api/truppnamen", async (HttpContext http, TruppNameCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -441,12 +450,13 @@ app.MapPost("/api/truppnamen", async (HttpContext http, TruppNameCreate dto, App
 
     db.Truppnamen.Add(entity);
     await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "truppnamen");
     return Results.Ok(entity);
 }).WithOpenApi();
 
-app.MapPut("/api/truppnamen/{id:guid}", async (Guid id, HttpContext http, TruppNameUpdate dto, AppDbContext db) =>
+app.MapPut("/api/truppnamen/{id:guid}", async (Guid id, HttpContext http, TruppNameUpdate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -465,12 +475,13 @@ app.MapPut("/api/truppnamen/{id:guid}", async (Guid id, HttpContext http, TruppN
     entity.Aktiv = dto.Aktiv;
     entity.OrderIndex = dto.OrderIndex;
     await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "truppnamen");
     return Results.Ok(entity);
 }).WithOpenApi();
 
-app.MapDelete("/api/truppnamen/{id:guid}", async (Guid id, HttpContext http, AppDbContext db) =>
+app.MapDelete("/api/truppnamen/{id:guid}", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -487,12 +498,13 @@ app.MapDelete("/api/truppnamen/{id:guid}", async (Guid id, HttpContext http, App
 
     db.Truppnamen.Remove(entity);
     await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "truppnamen");
     return Results.Ok();
 }).WithOpenApi();
 
-app.MapPost("/api/truppnamen/reorder", async (HttpContext http, TruppNameReorder dto, AppDbContext db) =>
+app.MapPost("/api/truppnamen/reorder", async (HttpContext http, TruppNameReorder dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -518,13 +530,14 @@ app.MapPost("/api/truppnamen/reorder", async (HttpContext http, TruppNameReorder
     }
 
     await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "truppnamen");
     return Results.Ok();
 }).WithOpenApi();
 
 // Einsatz
-app.MapPost("/api/einsaetze", async (HttpContext http, EinsatzCreate dto, AppDbContext db) =>
+app.MapPost("/api/einsaetze", async (HttpContext http, EinsatzCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -541,12 +554,13 @@ app.MapPost("/api/einsaetze", async (HttpContext http, EinsatzCreate dto, AppDbC
 
     db.Einsaetze.Add(einsatz);
     await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "einsatz");
     return Results.Ok(einsatz);
 }).WithOpenApi();
 
 app.MapGet("/api/einsaetze/aktiv", async (HttpContext http, AppDbContext db) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -560,7 +574,7 @@ app.MapGet("/api/einsaetze/aktiv", async (HttpContext http, AppDbContext db) =>
 
 app.MapGet("/api/einsaetze/letzte", async (HttpContext http, int? limit, AppDbContext db) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -574,9 +588,9 @@ app.MapGet("/api/einsaetze/letzte", async (HttpContext http, int? limit, AppDbCo
     return Results.Ok(letzte);
 }).WithOpenApi();
 
-app.MapPost("/api/einsaetze/{id:guid}/beenden", async (Guid id, HttpContext http, AppDbContext db) =>
+app.MapPost("/api/einsaetze/{id:guid}/beenden", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -600,12 +614,13 @@ app.MapPost("/api/einsaetze/{id:guid}/beenden", async (Guid id, HttpContext http
     }
 
     await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "einsatz");
     return Results.Ok(einsatz);
 }).WithOpenApi();
 
-app.MapDelete("/api/einsaetze/{id:guid}", async (Guid id, HttpContext http, AppDbContext db) =>
+app.MapDelete("/api/einsaetze/{id:guid}", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -627,13 +642,14 @@ app.MapDelete("/api/einsaetze/{id:guid}", async (Guid id, HttpContext http, AppD
 
     db.Einsaetze.Remove(einsatz);
     await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "einsatz");
     return Results.Ok();
 }).WithOpenApi();
 
 // Trupps
-app.MapPost("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpContext http, TruppCreate dto, AppDbContext db) =>
+app.MapPost("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpContext http, TruppCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -684,12 +700,13 @@ app.MapPost("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Htt
 
     db.Trupps.Add(trupp);
     await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "trupp");
     return Results.Ok(trupp);
 }).WithOpenApi();
 
 app.MapGet("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpContext http, AppDbContext db) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -747,9 +764,9 @@ app.MapGet("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Http
     return Results.Ok(result);
 }).WithOpenApi();
 
-app.MapPost("/api/trupps/{id:guid}/beenden", async (Guid id, HttpContext http, AppDbContext db) =>
+app.MapPost("/api/trupps/{id:guid}/beenden", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -762,12 +779,13 @@ app.MapPost("/api/trupps/{id:guid}/beenden", async (Guid id, HttpContext http, A
 
     trupp.Endzeit = DateTime.Now;
     await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "trupp");
     return Results.Ok(trupp);
 }).WithOpenApi();
 
-app.MapPost("/api/trupps/{id:guid}/druckmessungen", async (Guid id, HttpContext http, DruckmessungCreate dto, AppDbContext db) =>
+app.MapPost("/api/trupps/{id:guid}/druckmessungen", async (Guid id, HttpContext http, DruckmessungCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -806,12 +824,13 @@ app.MapPost("/api/trupps/{id:guid}/druckmessungen", async (Guid id, HttpContext 
 
     db.Druckmessungen.Add(messung);
     await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "druck");
     return Results.Ok(messung);
 }).WithOpenApi();
 
 app.MapPost("/api/trupps/{id:guid}/events", async (Guid id, HttpContext http, AlarmEventCreate dto, AppDbContext db) =>
 {
-    var auth = await GetAuthAsync(http, db);
+    var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
     {
         return Results.Unauthorized();
@@ -1156,59 +1175,6 @@ static bool VerifyPin(string pin, string hash)
     return CryptographicOperations.FixedTimeEquals(actual, expected);
 }
 
-static string? GetBearerToken(HttpContext http)
-{
-    var auth = http.Request.Headers.Authorization.ToString();
-    if (auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-    {
-        return auth.Substring("Bearer ".Length).Trim();
-    }
-    return null;
-}
-
-static async Task<AuthContext?> GetAuthAsync(HttpContext http, AppDbContext db)
-{
-    var token = GetBearerToken(http);
-    if (string.IsNullOrWhiteSpace(token))
-    {
-        return null;
-    }
-
-    var session = await db.Sessions.FirstOrDefaultAsync(s => s.Token == token);
-    if (session == null || session.ExpiresAt <= DateTime.UtcNow)
-    {
-        return null;
-    }
-
-    var org = await db.Organizations.FindAsync(session.OrganizationId);
-    if (org == null || !string.Equals(org.Status, "aktiv", StringComparison.OrdinalIgnoreCase))
-    {
-        return null;
-    }
-
-    return new AuthContext(org.Id, session.Role, org.Name, org.Code);
-}
-
-static async Task<bool> IsSystemAuthorized(HttpContext http, AppDbContext db)
-{
-    var auth = http.Request.Headers.Authorization.ToString();
-    if (!auth.StartsWith("System ", StringComparison.OrdinalIgnoreCase))
-    {
-        return false;
-    }
-    var token = auth.Substring("System ".Length).Trim();
-    if (string.IsNullOrWhiteSpace(token))
-    {
-        return false;
-    }
-    var session = await db.SystemSessions.FirstOrDefaultAsync(s => s.Token == token);
-    if (session == null || session.ExpiresAt <= DateTime.UtcNow)
-    {
-        return false;
-    }
-    return true;
-}
-
 static async Task UpdatePin(AppDbContext db, Guid orgId, string role, string pin)
 {
     var account = await db.UserAccounts.FirstOrDefaultAsync(u => u.OrganizationId == orgId && u.Role == role);
@@ -1283,6 +1249,71 @@ static async Task EnsureAlarmEventsTable(AppDbContext db)
         );
         """;
     await cmd.ExecuteNonQueryAsync();
+}
+
+static async Task NotifyOrgAsync(IHubContext<UpdatesHub> hub, Guid orgId, string type)
+{
+    await hub.Clients.Group($"org-{orgId}").SendAsync("update", type);
+}
+
+static class AuthHelpers
+{
+    public static string? GetBearerToken(HttpContext http)
+    {
+        var auth = http.Request.Headers.Authorization.ToString();
+        if (auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            return auth.Substring("Bearer ".Length).Trim();
+        }
+        return null;
+    }
+
+    public static async Task<AuthContext?> GetAuthAsync(HttpContext http, AppDbContext db)
+    {
+        var token = GetBearerToken(http);
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            token = http.Request.Query["access_token"].ToString();
+        }
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return null;
+        }
+
+        var session = await db.Sessions.FirstOrDefaultAsync(s => s.Token == token);
+        if (session == null || session.ExpiresAt <= DateTime.UtcNow)
+        {
+            return null;
+        }
+
+        var org = await db.Organizations.FindAsync(session.OrganizationId);
+        if (org == null || !string.Equals(org.Status, "aktiv", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return new AuthContext(org.Id, session.Role, org.Name, org.Code);
+    }
+
+    public static async Task<bool> IsSystemAuthorized(HttpContext http, AppDbContext db)
+    {
+        var auth = http.Request.Headers.Authorization.ToString();
+        if (!auth.StartsWith("System ", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        var token = auth.Substring("System ".Length).Trim();
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return false;
+        }
+        var session = await db.SystemSessions.FirstOrDefaultAsync(s => s.Token == token);
+        if (session == null || session.ExpiresAt <= DateTime.UtcNow)
+        {
+            return false;
+        }
+        return true;
+    }
 }
 
 class AppDbContext : DbContext
@@ -1440,6 +1471,37 @@ record OrgCreate(string Name, string AdminPin, string UserPin, string? Status);
 record OrgUpdate(string? Name, string? AdminPin, string? UserPin, string? Status);
 record AuthContext(Guid OrgId, string Role, string OrgName, string OrgCode);
 
+class UpdatesHub(AppDbContext db) : Hub
+{
+    public override async Task OnConnectedAsync()
+    {
+        var http = Context.GetHttpContext();
+        if (http == null)
+        {
+            Context.Abort();
+            return;
+        }
+        var auth = await AuthHelpers.GetAuthAsync(http, db);
+        if (auth == null)
+        {
+            Context.Abort();
+            return;
+        }
+        Context.Items["orgId"] = auth.OrgId;
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"org-{auth.OrgId}");
+        await base.OnConnectedAsync();
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        if (Context.Items.TryGetValue("orgId", out var orgValue) && orgValue is Guid orgId)
+        {
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"org-{orgId}");
+        }
+        await base.OnDisconnectedAsync(exception);
+    }
+}
+
 record TruppDto(
     Guid Id,
     Guid EinsatzId,
@@ -1461,3 +1523,4 @@ record TruppDto(
 );
 
 record DruckInfo(int DruckBar, DateTime Zeit);
+

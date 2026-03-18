@@ -41,6 +41,14 @@
           Aktiv
         </label>
         <button class="primary" type="button" (click)="addGeraetetraeger()">Speichern</button>
+        <div class="muted">CSV-Import (Vorname;Nachname;Funkrufname;Aktiv)</div>
+        <input type="file" accept=".csv,text/csv" (change)="importGeraetetraeger($event)" />
+        <div class="trupp__actions trupp__actions--row">
+          <button class="ghost" type="button" (click)="downloadCsvBeispiel()">Beispiel CSV</button>
+          <button class="ghost" type="button" (click)="previewCsvImport()">CSV prüfen</button>
+          <button class="primary" type="button" (click)="runCsvImport()">CSV importieren</button>
+        </div>
+        <div class="muted" *ngIf="importMessage">{{ importMessage }}</div>
       </div>
 
       <div class="settings__list">

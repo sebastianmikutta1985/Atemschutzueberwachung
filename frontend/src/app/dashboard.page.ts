@@ -6,6 +6,7 @@ import { Router, RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
 import { DruckInfo, Einsatz, Geraetetraeger, OrgSettings, Trupp, TruppName } from './models';
+import { RealtimeService } from './realtime.service';
 import * as XLSX from 'xlsx';
 
 @Component({
@@ -18,6 +19,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   private timerId?: number;
   @ViewChild('druckInput') druckInput?: ElementRef<HTMLInputElement>;
   openSelect: 'trupp' | 'p1' | 'p2' | null = null;
+  private unsubscribeRealtime?: () => void;
 
   currentEinsatz: Einsatz | null = null;
   trupps: Trupp[] = [];
@@ -72,7 +74,8 @@ export class DashboardPage implements OnInit, OnDestroy {
   constructor(
     private http: HttpClient,
     private zone: NgZone,
-    private router: Router
+    private router: Router,
+    private realtime: RealtimeService
   ) {}
 
   ngOnInit(): void {
@@ -85,6 +88,14 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.loadOrgSettings();
     this.loadLetzteEinsaetze();
     this.startClock();
+
+    this.realtime.start();
+    this.unsubscribeRealtime = this.realtime.onUpdate((type) => {
+      if (type === 'einsatz' || type === 'trupp' || type === 'druck') {
+        this.loadActiveEinsatz();
+        this.loadLetzteEinsaetze();
+      }
+    });
   }
 
   @HostListener('document:click')
@@ -149,6 +160,9 @@ export class DashboardPage implements OnInit, OnDestroy {
     if (this.timerId) {
       window.clearInterval(this.timerId);
     }
+    if (this.unsubscribeRealtime) {
+      this.unsubscribeRealtime();
+    }
   }
 
   get authInfo(): { orgName: string; orgCode: string; role: string } | null {
@@ -163,6 +177,7 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.http.post(`${this.baseUrl}/auth/logout`, {}).subscribe({
       complete: () => {
         AuthStore.clear();
+        this.realtime.stop();
         this.router.navigateByUrl('/login');
       }
     });
