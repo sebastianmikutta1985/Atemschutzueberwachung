@@ -21,6 +21,8 @@ export class SettingsPage implements OnInit, OnDestroy {
   orgSettings: OrgSettings | null = null;
   dragIndex: number | null = null;
   private unsubscribeRealtime?: () => void;
+  private unsubscribeStatus?: () => void;
+  liveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
 
   geraetetraegerForm = {
     vorname: '',
@@ -43,6 +45,9 @@ export class SettingsPage implements OnInit, OnDestroy {
   orgSettingsMessage = '';
   importMessage = '';
   importRows: { vorname: string; nachname: string; funkrufname: string; aktiv: boolean }[] = [];
+  private lastLiveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
+  toasts: { id: number; text: string; type: 'warn' }[] = [];
+  private toastId = 0;
 
   editingTruppNameId: string | null = null;
   editingTruppNameValue = '';
@@ -66,12 +71,30 @@ export class SettingsPage implements OnInit, OnDestroy {
         this.loadOrgSettings();
       }
     });
+    this.unsubscribeStatus = this.realtime.onStatus((status) => {
+      if (status === 'disconnected' && this.lastLiveStatus !== 'disconnected') {
+        this.pushToast('Offline – keine Live-Daten', 'warn');
+      }
+      this.lastLiveStatus = status;
+      this.liveStatus = status;
+    });
   }
 
   ngOnDestroy(): void {
     if (this.unsubscribeRealtime) {
       this.unsubscribeRealtime();
     }
+    if (this.unsubscribeStatus) {
+      this.unsubscribeStatus();
+    }
+  }
+
+  private pushToast(text: string, type: 'warn'): void {
+    const id = ++this.toastId;
+    this.toasts = [...this.toasts, { id, text, type }];
+    window.setTimeout(() => {
+      this.toasts = this.toasts.filter((t) => t.id !== id);
+    }, 6000);
   }
 
   get authInfo(): { orgName: string; orgCode: string } | null {

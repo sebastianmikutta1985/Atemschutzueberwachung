@@ -8,6 +8,12 @@
         </p>
       </div>
       <div class="hero__meta">
+        <div class="pill" [attr.data-live]="liveStatus">
+          <span class="pill__label">Live</span>
+          <span class="pill__value">
+            {{ liveStatus === 'connected' ? 'Verbunden' : liveStatus === 'connecting' ? 'Verbinde...' : 'Offline' }}
+          </span>
+        </div>
         <div class="pill" *ngIf="authInfo">
           <span class="pill__label">Organisation</span>
           <span class="pill__value">{{ authInfo.orgName }} ({{ authInfo.orgCode }})</span>
@@ -212,4 +218,10 @@
       </div>
     </div>
   </section>
+</div>
+
+<div class="toast-stack" *ngIf="toasts.length">
+  <div class="toast" *ngFor="let t of toasts" [class.toast--warn]="t.type === 'warn'">
+    {{ t.text }}
+  </div>
 </div>

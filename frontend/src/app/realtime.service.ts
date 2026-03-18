@@ -7,6 +7,7 @@ import { AuthStore } from './auth.store';
 export class RealtimeService {
   private connection: signalR.HubConnection | null = null;
   private listeners: Array<(type: string) => void> = [];
+  private statusListeners: Array<(status: 'connected' | 'connecting' | 'disconnected') => void> = [];
   private baseUrl = environment.apiBaseUrl.replace(/\/api\/?$/, '');
 
   start(): void {
@@ -24,13 +25,28 @@ export class RealtimeService {
       .withAutomaticReconnect()
       .build();
 
+    this.connection.onreconnecting(() => {
+      this.statusListeners.forEach((fn) => fn('connecting'));
+    });
+    this.connection.onreconnected(() => {
+      this.statusListeners.forEach((fn) => fn('connected'));
+    });
+    this.connection.onclose(() => {
+      this.statusListeners.forEach((fn) => fn('disconnected'));
+    });
+
     this.connection.on('update', (type: string) => {
       this.listeners.forEach((fn) => fn(type));
     });
 
-    this.connection.start().catch(() => {
-      // ignore connection errors
-    });
+    this.connection
+      .start()
+      .then(() => {
+        this.statusListeners.forEach((fn) => fn('connected'));
+      })
+      .catch(() => {
+        this.statusListeners.forEach((fn) => fn('disconnected'));
+      });
   }
 
   stop(): void {
@@ -48,6 +64,13 @@ export class RealtimeService {
     this.listeners.push(fn);
     return () => {
       this.listeners = this.listeners.filter((f) => f !== fn);
+    };
+  }
+
+  onStatus(fn: (status: 'connected' | 'connecting' | 'disconnected') => void): () => void {
+    this.statusListeners.push(fn);
+    return () => {
+      this.statusListeners = this.statusListeners.filter((f) => f !== fn);
     };
   }
 }
