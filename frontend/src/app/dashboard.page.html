@@ -1,10 +1,10 @@
 <div class="page">
     <header class="hero">
       <div class="hero__text">
-        <p class="hero__eyebrow">Einsatzuebersicht</p>
+        <p class="hero__eyebrow">Einsatzübersicht</p>
         <h1>Willkommen im ATS-Portal</h1>
         <p class="hero__sub">
-          Schnelle Lageuebersicht fuer Trupps, Zeiten und Warnstufen.
+          Schnelle Lageübersicht für Trupps, Zeiten und Warnstufen.
         </p>
       </div>
       <div class="hero__meta">
@@ -43,7 +43,7 @@
         </label>
         <label>
           Ort
-          <input type="text" [(ngModel)]="einsatzForm.ort" placeholder="Hauptstrasse 12" />
+          <input type="text" [(ngModel)]="einsatzForm.ort" placeholder="Hauptstraße 12" />
         </label>
         <label>
           Alarmzeit
@@ -74,50 +74,80 @@
         <fieldset [disabled]="!currentEinsatz">
           <label>
             Trupp
-            <select [(ngModel)]="truppForm.truppNameId">
-              <option value="">Bitte waehlen</option>
-              <option
-                *ngFor="let t of activeTruppnamen"
-                [value]="t.id"
-                [disabled]="isTruppNameInActiveTrupp(t.id)"
+            <div class="select" [class.select--disabled]="!currentEinsatz">
+              <button
+                class="select__button"
+                type="button"
+                (click)="toggleSelect('trupp', $event)"
               >
-                {{ t.name }}
-              </option>
-            </select>
+                {{ truppNameLabel(truppForm.truppNameId) }}
+              </button>
+              <div class="select__panel" *ngIf="openSelect === 'trupp'">
+                <button
+                  class="select__option"
+                  type="button"
+                  *ngFor="let t of activeTruppnamen"
+                  [disabled]="isTruppNameInActiveTrupp(t.id)"
+                  (click)="selectTruppName(t.id)"
+                >
+                  {{ t.name }}
+                </button>
+              </div>
+            </div>
           </label>
           <label>
             Person 1
-            <select [(ngModel)]="truppForm.person1Id">
-              <option value="">Bitte waehlen</option>
-              <option
-                *ngFor="let t of geraetetraeger"
-                [value]="t.id"
-                [disabled]="
-                  t.aktiv === false ||
-                  t.id === truppForm.person2Id ||
-                  isPersonInActiveTrupp(t.id)
-                "
+            <div class="select" [class.select--disabled]="!currentEinsatz">
+              <button
+                class="select__button"
+                type="button"
+                (click)="toggleSelect('p1', $event)"
               >
-                {{ t.nachname }} {{ t.vorname }}{{ t.funkrufname ? ' (' + t.funkrufname + ')' : '' }}
-              </option>
-            </select>
+                {{ personLabel(truppForm.person1Id) }}
+              </button>
+              <div class="select__panel" *ngIf="openSelect === 'p1'">
+                <button
+                  class="select__option"
+                  type="button"
+                  *ngFor="let t of geraetetraeger"
+                  [disabled]="
+                    t.aktiv === false ||
+                    t.id === truppForm.person2Id ||
+                    isPersonInActiveTrupp(t.id)
+                  "
+                  (click)="selectPerson(t.id, 'p1')"
+                >
+                  {{ t.nachname }} {{ t.vorname }}{{ t.funkrufname ? ' (' + t.funkrufname + ')' : '' }}
+                </button>
+              </div>
+            </div>
           </label>
           <label>
             Person 2
-            <select [(ngModel)]="truppForm.person2Id">
-              <option value="">Bitte waehlen</option>
-              <option
-                *ngFor="let t of geraetetraeger"
-                [value]="t.id"
-                [disabled]="
-                  t.aktiv === false ||
-                  t.id === truppForm.person1Id ||
-                  isPersonInActiveTrupp(t.id)
-                "
+            <div class="select" [class.select--disabled]="!currentEinsatz">
+              <button
+                class="select__button"
+                type="button"
+                (click)="toggleSelect('p2', $event)"
               >
-                {{ t.nachname }} {{ t.vorname }}{{ t.funkrufname ? ' (' + t.funkrufname + ')' : '' }}
-              </option>
-            </select>
+                {{ personLabel(truppForm.person2Id) }}
+              </button>
+              <div class="select__panel" *ngIf="openSelect === 'p2'">
+                <button
+                  class="select__option"
+                  type="button"
+                  *ngFor="let t of geraetetraeger"
+                  [disabled]="
+                    t.aktiv === false ||
+                    t.id === truppForm.person1Id ||
+                    isPersonInActiveTrupp(t.id)
+                  "
+                  (click)="selectPerson(t.id, 'p2')"
+                >
+                  {{ t.nachname }} {{ t.vorname }}{{ t.funkrufname ? ' (' + t.funkrufname + ')' : '' }}
+                </button>
+              </div>
+            </div>
           </label>
           <div class="row">
             <label>
@@ -135,7 +165,7 @@
           </label>
           <div class="row">
             <label>
-              Warnzeit (min)
+              Warnzeit nach (min)
               <input type="number" min="0" [(ngModel)]="truppForm.warnzeitMin" />
             </label>
             <label>
@@ -155,7 +185,7 @@
             !truppForm.person2Id
           "
         >
-          Trupp hinzufuegen
+          Trupp hinzufügen
         </button>
       </div>
     </section>
@@ -277,11 +307,11 @@
 
   <section class="card list">
     <div class="list__head">
-      <h2>Letzte Einsaetze</h2>
-      <div class="muted">{{ letzteEinsaetze.length }} Eintraege</div>
+      <h2>Letzte Einsätze</h2>
+      <div class="muted">{{ letzteEinsaetze.length }} Einträge</div>
     </div>
     <div class="list__body" *ngIf="letzteEinsaetze.length === 0">
-      <p class="muted">Noch keine Einsaetze gespeichert.</p>
+      <p class="muted">Noch keine Einsätze gespeichert.</p>
     </div>
     <div class="list__body" *ngIf="letzteEinsaetze.length > 0">
       <div class="trupp" *ngFor="let einsatz of letzteEinsaetze">
@@ -306,6 +336,7 @@
         </div>
         <div class="trupp__actions">
           <button class="ghost" type="button" (click)="openEinsatzDetails(einsatz)">Details</button>
+          <button class="ghost" type="button" (click)="exportEinsatz(einsatz)">Export</button>
           <button class="danger" type="button" *ngIf="einsatz.status !== 'aktiv'" (click)="deleteEinsatz(einsatz)">
             Löschen
           </button>
@@ -327,8 +358,15 @@
     <p class="muted">{{ druckModal!.trupp.bezeichnung }} – {{ druckModal!.personName }}</p>
     <label>
       Druck (bar)
-      <input type="number" min="0" [(ngModel)]="druckModal!.value" />
+      <input
+        #druckInput
+        type="number"
+        min="0"
+        [max]="maxDruckForModal() ?? null"
+        [(ngModel)]="druckModal!.value"
+      />
     </label>
+    <div class="form-error" *ngIf="druckModalError">{{ druckModalError }}</div>
     <div class="modal__last" *ngIf="druckModal?.last?.length">
       <div class="muted">Letzte Messungen</div>
       <ul>
@@ -394,7 +432,7 @@
     </div>
 
     <div class="modal__actions">
-      <button class="primary" type="button" (click)="closeEinsatzDetails()">Schliessen</button>
+      <button class="primary" type="button" (click)="closeEinsatzDetails()">Schließen</button>
     </div>
   </div>
 </div>

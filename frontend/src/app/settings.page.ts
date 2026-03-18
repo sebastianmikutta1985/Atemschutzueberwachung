@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
-import { Geraetetraeger, TruppName } from './models';
+import { Geraetetraeger, OrgSettings, TruppName } from './models';
 
 @Component({
   selector: 'app-settings-page',
@@ -17,6 +17,8 @@ export class SettingsPage implements OnInit {
 
   geraetetraeger: Geraetetraeger[] = [];
   truppnamen: TruppName[] = [];
+  orgSettings: OrgSettings | null = null;
+  dragIndex: number | null = null;
 
   geraetetraegerForm = {
     vorname: '',
@@ -30,6 +32,14 @@ export class SettingsPage implements OnInit {
     aktiv: true
   };
 
+  orgSettingsForm = {
+    defaultStartdruckPerson1Bar: 300,
+    defaultStartdruckPerson2Bar: 300,
+    defaultWarnzeitMin: 25,
+    defaultMaxzeitMin: 30
+  };
+  orgSettingsMessage = '';
+
   editingTruppNameId: string | null = null;
   editingTruppNameValue = '';
 
@@ -38,6 +48,7 @@ export class SettingsPage implements OnInit {
   ngOnInit(): void {
     this.loadGeraetetraeger();
     this.loadTruppnamen();
+    this.loadOrgSettings();
   }
 
   get authInfo(): { orgName: string; orgCode: string } | null {
@@ -66,6 +77,39 @@ export class SettingsPage implements OnInit {
   loadTruppnamen(): void {
     this.http.get<TruppName[]>(`${this.baseUrl}/truppnamen`).subscribe((list) => {
       this.truppnamen = list;
+    });
+  }
+
+  loadOrgSettings(): void {
+    this.http.get<OrgSettings>(`${this.baseUrl}/settings`).subscribe((settings) => {
+      this.orgSettings = settings;
+      this.orgSettingsForm.defaultStartdruckPerson1Bar = settings.defaultStartdruckPerson1Bar;
+      this.orgSettingsForm.defaultStartdruckPerson2Bar = settings.defaultStartdruckPerson2Bar;
+      this.orgSettingsForm.defaultWarnzeitMin = settings.defaultWarnzeitMin;
+      this.orgSettingsForm.defaultMaxzeitMin = settings.defaultMaxzeitMin;
+    });
+  }
+
+  saveOrgSettings(): void {
+    this.orgSettingsMessage = '';
+    const payload = {
+      defaultStartdruckPerson1Bar: this.orgSettingsForm.defaultStartdruckPerson1Bar,
+      defaultStartdruckPerson2Bar: this.orgSettingsForm.defaultStartdruckPerson2Bar,
+      defaultWarnzeitMin: this.orgSettingsForm.defaultWarnzeitMin,
+      defaultMaxzeitMin: this.orgSettingsForm.defaultMaxzeitMin
+    };
+    this.http.put<OrgSettings>(`${this.baseUrl}/settings`, payload).subscribe({
+      next: (settings) => {
+        this.orgSettings = settings;
+        this.orgSettingsForm.defaultStartdruckPerson1Bar = settings.defaultStartdruckPerson1Bar;
+        this.orgSettingsForm.defaultStartdruckPerson2Bar = settings.defaultStartdruckPerson2Bar;
+        this.orgSettingsForm.defaultWarnzeitMin = settings.defaultWarnzeitMin;
+        this.orgSettingsForm.defaultMaxzeitMin = settings.defaultMaxzeitMin;
+        this.orgSettingsMessage = 'Gespeichert.';
+      },
+      error: () => {
+        this.orgSettingsMessage = 'Speichern fehlgeschlagen.';
+      }
     });
   }
 
@@ -179,6 +223,35 @@ export class SettingsPage implements OnInit {
       this.cancelEditTruppName();
       this.loadTruppnamen();
     });
+  }
+
+  onDragStart(index: number, event: DragEvent): void {
+    this.dragIndex = index;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(index));
+    }
+  }
+
+  onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  }
+
+  onDrop(index: number, event: DragEvent): void {
+    event.preventDefault();
+    const from = this.dragIndex;
+    this.dragIndex = null;
+    if (from === null || from === index) {
+      return;
+    }
+    const updated = [...this.truppnamen];
+    const [item] = updated.splice(from, 1);
+    updated.splice(index, 0, item);
+    this.truppnamen = updated;
+    this.saveTruppnamenOrder();
   }
 
   moveTruppName(index: number, direction: -1 | 1): void {

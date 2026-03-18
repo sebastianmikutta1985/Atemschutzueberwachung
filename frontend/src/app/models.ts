@@ -50,3 +50,10 @@ export interface TruppName {
   aktiv: boolean;
   orderIndex?: number;
 }
+
+export interface OrgSettings {
+  defaultStartdruckPerson1Bar: number;
+  defaultStartdruckPerson2Bar: number;
+  defaultWarnzeitMin: number;
+  defaultMaxzeitMin: number;
+}
