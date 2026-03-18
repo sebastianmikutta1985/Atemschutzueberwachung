@@ -8,6 +8,12 @@
         </p>
       </div>
       <div class="hero__meta">
+        <div class="pill" [attr.data-live]="liveStatus">
+          <span class="pill__label">Live</span>
+          <span class="pill__value">
+            {{ liveStatus === 'connected' ? 'Verbunden' : liveStatus === 'connecting' ? 'Verbinde...' : 'Offline' }}
+          </span>
+        </div>
         <div class="pill">
           <span class="pill__label">Systemzeit</span>
           <span class="pill__value">{{ currentEpoch | date: 'HH:mm:ss' }}</span>

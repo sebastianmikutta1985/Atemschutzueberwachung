@@ -20,6 +20,8 @@ export class DashboardPage implements OnInit, OnDestroy {
   @ViewChild('druckInput') druckInput?: ElementRef<HTMLInputElement>;
   openSelect: 'trupp' | 'p1' | 'p2' | null = null;
   private unsubscribeRealtime?: () => void;
+  private unsubscribeStatus?: () => void;
+  liveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
 
   currentEinsatz: Einsatz | null = null;
   trupps: Trupp[] = [];
@@ -70,6 +72,7 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   toasts: { id: number; text: string; type: 'warn' | 'max' }[] = [];
   private toastId = 0;
+  private lastLiveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
 
   constructor(
     private http: HttpClient,
@@ -95,6 +98,13 @@ export class DashboardPage implements OnInit, OnDestroy {
         this.loadActiveEinsatz();
         this.loadLetzteEinsaetze();
       }
+    });
+    this.unsubscribeStatus = this.realtime.onStatus((status) => {
+      if (status === 'disconnected' && this.lastLiveStatus !== 'disconnected') {
+        this.pushToast('Offline – keine Live-Daten', 'warn');
+      }
+      this.lastLiveStatus = status;
+      this.liveStatus = status;
     });
   }
 
@@ -162,6 +172,9 @@ export class DashboardPage implements OnInit, OnDestroy {
     }
     if (this.unsubscribeRealtime) {
       this.unsubscribeRealtime();
+    }
+    if (this.unsubscribeStatus) {
+      this.unsubscribeStatus();
     }
   }
 
