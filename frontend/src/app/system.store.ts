@@ -1,5 +1,6 @@
 export type SystemState = {
   token: string;
+  expiresAt: number;
 };
 
 const SYSTEM_KEY = 'ats_system';
@@ -26,6 +27,14 @@ export const SystemStore = {
   },
 
   token(): string | null {
-    return this.load()?.token ?? null;
+    const state = this.load();
+    if (!state) {
+      return null;
+    }
+    if (state.expiresAt && Date.now() > state.expiresAt) {
+      this.clear();
+      return null;
+    }
+    return state.token;
   }
 };

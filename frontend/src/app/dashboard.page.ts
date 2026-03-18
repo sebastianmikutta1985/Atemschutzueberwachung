@@ -43,6 +43,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   };
 
   private lastAutoStartzeit = '';
+  errorMessage = '';
 
   druckModal: {
     open: boolean;
@@ -116,7 +117,7 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   loadLetzteEinsaetze(): void {
     this.http.get<Einsatz[]>(`${this.baseUrl}/einsaetze/letzte?limit=8`).subscribe((list) => {
-      this.letzteEinsaetze = list;
+      this.letzteEinsaetze = list.filter((e) => e.status !== 'aktiv');
     });
   }
 
@@ -129,18 +130,22 @@ export class DashboardPage implements OnInit, OnDestroy {
   loadTruppnamen(): void {
     this.http.get<TruppName[]>(`${this.baseUrl}/truppnamen`).subscribe((list) => {
       this.truppnamen = list;
-      if (!this.truppForm.truppNameId || !list.some((t) => t.id === this.truppForm.truppNameId && t.aktiv)) {
-        const firstActive = list.find((t) => t.aktiv);
+      if (
+        !this.truppForm.truppNameId ||
+        !list.some((t) => t.id === this.truppForm.truppNameId && t.aktiv !== false)
+      ) {
+        const firstActive = list.find((t) => t.aktiv !== false);
         this.truppForm.truppNameId = firstActive?.id ?? '';
       }
     });
   }
 
   get activeTruppnamen(): TruppName[] {
-    return this.truppnamen.filter((t) => t.aktiv);
+    return this.truppnamen.filter((t) => t.aktiv !== false);
   }
 
   createEinsatz(): void {
+    this.errorMessage = '';
     const name = this.einsatzForm.name.trim();
     const ort = this.einsatzForm.ort.trim();
     if (!name || !ort) {
@@ -153,10 +158,19 @@ export class DashboardPage implements OnInit, OnDestroy {
       alarmzeit: this.einsatzForm.alarmzeit || null
     };
 
-    this.http.post<Einsatz>(`${this.baseUrl}/einsaetze`, payload).subscribe((einsatz) => {
-      this.currentEinsatz = einsatz;
-      this.trupps = [];
-      this.loadLetzteEinsaetze();
+    this.http.post<Einsatz>(`${this.baseUrl}/einsaetze`, payload).subscribe({
+      next: (einsatz) => {
+        this.currentEinsatz = einsatz;
+        this.trupps = [];
+        this.loadLetzteEinsaetze();
+      },
+      error: (err) => {
+        if (err?.status === 401) {
+          AuthStore.clear();
+          this.router.navigateByUrl('/login');
+        }
+        this.errorMessage = 'Einsatz konnte nicht gestartet werden.';
+      }
     });
   }
 

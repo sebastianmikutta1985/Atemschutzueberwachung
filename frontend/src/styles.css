@@ -1,20 +1,20 @@
 :root {
-  --bg: radial-gradient(circle at top, #eef2f6 0%, #e4e9f1 55%, #d6dde7 100%);
-  --card: rgba(255, 255, 255, 0.88);
-  --accent: #2a5164;
-  --ok: #1f7a5b;
-  --warn: #b8841d;
-  --danger: #a92222;
-  --ink-900: #0b1220;
-  --ink-700: #25303b;
-  --ink-600: #3b4652;
-  --ink-500: #5b6672;
-  --ink-400: #8a96a3;
-  --ink-200: #dde3ea;
-  --glass-border: rgba(15, 23, 42, 0.08);
-  --glass-shadow: 0 16px 36px -28px rgba(10, 18, 32, 0.5);
-  --glass-glow: 0 0 0 1px rgba(255, 255, 255, 0.2) inset;
-  --panel-edge: rgba(10, 18, 32, 0.14);
+  --bg: radial-gradient(circle at 20% 10%, #914a2b 0%, #6c321e 42%, #472217 75%, #2a1612 100%);
+  --card: rgba(36, 28, 24, 0.74);
+  --accent: #e07a1f;
+  --ok: #2f9e6f;
+  --warn: #f2b544;
+  --danger: #c23a3a;
+  --ink-900: #f6efe8;
+  --ink-700: #e4d8c9;
+  --ink-600: #d1c0ad;
+  --ink-500: #b7a691;
+  --ink-400: #9a8a78;
+  --ink-200: rgba(255, 255, 255, 0.12);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-shadow: 0 24px 60px -40px rgba(0, 0, 0, 0.6);
+  --glass-glow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+  --panel-edge: rgba(255, 255, 255, 0.16);
 }
 
 * {

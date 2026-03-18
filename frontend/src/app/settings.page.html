@@ -1,21 +1,21 @@
 <div class="page">
-  <header class="hero">
-    <div class="hero__text">
-      <p class="hero__eyebrow">Einstellungen</p>
-      <h1>Stammdaten verwalten</h1>
-      <p class="hero__sub">
-        Atemschutzgeraetetraeger und Trupps pflegen.
-      </p>
-    </div>
-    <div class="hero__meta">
-      <div class="pill" *ngIf="authInfo">
-        <span class="pill__label">Organisation</span>
-        <span class="pill__value">{{ authInfo.orgName }} ({{ authInfo.orgCode }})</span>
+    <header class="hero">
+      <div class="hero__text">
+        <p class="hero__eyebrow">Einstellungen</p>
+        <h1>Stammdaten verwalten</h1>
+        <p class="hero__sub">
+          Atemschutzgeraetetraeger und Trupps pflegen.
+        </p>
       </div>
-      <button class="ghost" type="button" [routerLink]="['/']">Zurueck</button>
-      <button class="ghost" type="button" (click)="logout()">Abmelden</button>
-    </div>
-  </header>
+      <div class="hero__meta">
+        <div class="pill" *ngIf="authInfo">
+          <span class="pill__label">Organisation</span>
+          <span class="pill__value">{{ authInfo.orgName }} ({{ authInfo.orgCode }})</span>
+        </div>
+        <button class="ghost btn-icon" type="button" [routerLink]="['/']">Zurueck</button>
+        <button class="ghost btn-icon" type="button" (click)="logout()">Abmelden</button>
+      </div>
+    </header>
 
   <section class="card settings">
     <div class="list__head">

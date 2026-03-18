@@ -51,7 +51,8 @@ export class ManufacturerPage implements OnInit {
     this.http.post<{ token: string }>(`${this.baseUrl}/system/login`, { secret }).subscribe({
       next: (res) => {
         this.systemToken = res.token;
-        SystemStore.save({ token: res.token });
+        const expiresAt = Date.now() + 30 * 60 * 1000;
+        SystemStore.save({ token: res.token, expiresAt });
         this.loadOrgs();
       },
       error: () => {
