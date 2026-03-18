@@ -442,3 +442,15 @@
     </div>
   </div>
 </div>
+
+<div class="modal" *ngIf="deleteModal?.open">
+  <div class="modal__backdrop" (click)="closeDeleteModal()"></div>
+  <div class="modal__panel" role="dialog" aria-modal="true">
+    <h3>Einsatz löschen</h3>
+    <p class="muted">Einsatz "{{ deleteModal!.einsatz.name }}" wirklich löschen?</p>
+    <div class="modal__actions">
+      <button class="ghost" type="button" (click)="closeDeleteModal()">Abbrechen</button>
+      <button class="danger" type="button" (click)="confirmDeleteEinsatz()">Löschen</button>
+    </div>
+  </div>
+</div>

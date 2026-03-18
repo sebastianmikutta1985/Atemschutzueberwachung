@@ -69,6 +69,7 @@ export class DashboardPage implements OnInit, OnDestroy {
     trupps: Trupp[];
     loading: boolean;
   } | null = null;
+  deleteModal: { open: boolean; einsatz: Einsatz } | null = null;
 
   toasts: { id: number; text: string; type: 'warn' | 'max' }[] = [];
   private toastId = 0;
@@ -290,11 +291,14 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   deleteEinsatz(einsatz: Einsatz): void {
-    const ok = window.confirm(`Einsatz "${einsatz.name}" wirklich loeschen?`);
-    if (!ok) {
+    this.deleteModal = { open: true, einsatz };
+  }
+
+  confirmDeleteEinsatz(): void {
+    if (!this.deleteModal) {
       return;
     }
-
+    const einsatz = this.deleteModal.einsatz;
     this.http.delete(`${this.baseUrl}/einsaetze/${einsatz.id}`).subscribe(() => {
       if (this.currentEinsatz?.id === einsatz.id) {
         this.currentEinsatz = null;
@@ -302,7 +306,12 @@ export class DashboardPage implements OnInit, OnDestroy {
       }
       this.loadLetzteEinsaetze();
       this.loadActiveEinsatz();
+      this.deleteModal = null;
     });
+  }
+
+  closeDeleteModal(): void {
+    this.deleteModal = null;
   }
 
   openEinsatzDetails(einsatz: Einsatz): void {
