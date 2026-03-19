@@ -721,6 +721,10 @@ app.MapGet("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Http
         .Where(m => m.OrganizationId == auth.OrgId && truppIds.Contains(m.TruppId))
         .OrderByDescending(m => m.Zeit)
         .ToListAsync();
+    var alarmEvents = await db.AlarmEvents
+        .Where(e => e.OrganizationId == auth.OrgId && truppIds.Contains(e.TruppId))
+        .OrderByDescending(e => e.Zeit)
+        .ToListAsync();
 
     var counts = messungen
         .GroupBy(m => new { m.TruppId, m.PersonId })
@@ -739,6 +743,8 @@ app.MapGet("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Http
             .Take(3)
             .Select(m => new DruckInfo(m.DruckBar, m.Zeit))
             .ToArray();
+        var warnAcked = alarmEvents.Any(e => e.TruppId == t.Id && e.Typ == "warn_ack");
+        var maxAcked = alarmEvents.Any(e => e.TruppId == t.Id && e.Typ == "max_ack");
 
         return new TruppDto(
             t.Id,
@@ -757,7 +763,9 @@ app.MapGet("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Http
             counts.FirstOrDefault(c => c.TruppId == t.Id && c.PersonId == t.Person1Id)?.Count ?? 0,
             counts.FirstOrDefault(c => c.TruppId == t.Id && c.PersonId == t.Person2Id)?.Count ?? 0,
             p1,
-            p2
+            p2,
+            warnAcked,
+            maxAcked
         );
     }).ToList();
 
@@ -1519,7 +1527,9 @@ record TruppDto(
     int DruckCountPerson1,
     int DruckCountPerson2,
     DruckInfo[] DruckMessungenPerson1,
-    DruckInfo[] DruckMessungenPerson2
+    DruckInfo[] DruckMessungenPerson2,
+    bool WarnAcked,
+    bool MaxAcked
 );
 
 record DruckInfo(int DruckBar, DateTime Zeit);

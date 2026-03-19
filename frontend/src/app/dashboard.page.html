@@ -2,7 +2,7 @@
     <header class="hero">
       <div class="hero__text">
         <p class="hero__eyebrow">Einsatzübersicht</p>
-        <h1>Willkommen im ATS-Portal</h1>
+        <h1>Willkommen in Ihrem AirGuard Portal</h1>
         <p class="hero__sub">
           Schnelle Lageübersicht für Trupps, Zeiten und Warnstufen.
         </p>
@@ -341,6 +341,7 @@
         <div class="trupp__actions">
           <button class="ghost" type="button" (click)="openEinsatzDetails(einsatz)">Details</button>
           <button class="ghost" type="button" (click)="exportEinsatz(einsatz)">Export</button>
+          <button class="ghost" type="button" (click)="exportEinsatzPdf(einsatz)">PDF</button>
           <button class="danger" type="button" *ngIf="einsatz.status !== 'aktiv'" (click)="deleteEinsatz(einsatz)">
             Löschen
           </button>
@@ -449,6 +450,18 @@
     <div class="modal__actions">
       <button class="ghost" type="button" (click)="closeDeleteModal()">Abbrechen</button>
       <button class="danger" type="button" (click)="confirmDeleteEinsatz()">Löschen</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" *ngIf="alarmModal?.open">
+  <div class="modal__backdrop"></div>
+  <div class="modal__panel" role="alertdialog" aria-modal="true">
+    <h3>{{ alarmModal?.type === 'max' ? 'Maxzeit erreicht' : 'Warnzeit erreicht' }}</h3>
+    <p class="muted">{{ alarmModal!.trupp.bezeichnung }}</p>
+    <div class="modal__actions">
+      <button class="ghost" type="button" (click)="closeAlarmModal()">Schließen</button>
+      <button class="primary" type="button" (click)="acknowledgeAlarm()">Bestätigen</button>
     </div>
   </div>
 </div>
