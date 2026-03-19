@@ -167,6 +167,28 @@ export class DashboardPage implements OnInit, OnDestroy {
     return `${found.nachname} ${found.vorname}${found.funkrufname ? ' (' + found.funkrufname + ')' : ''}`;
   }
 
+  get availableTruppnamen(): TruppName[] {
+    return this.activeTruppnamen.filter((t) => !this.isTruppNameInActiveTrupp(t.id));
+  }
+
+  get availablePerson1(): Geraetetraeger[] {
+    return this.geraetetraeger.filter(
+      (t) =>
+        t.aktiv !== false &&
+        t.id !== this.truppForm.person2Id &&
+        !this.isPersonInActiveTrupp(t.id)
+    );
+  }
+
+  get availablePerson2(): Geraetetraeger[] {
+    return this.geraetetraeger.filter(
+      (t) =>
+        t.aktiv !== false &&
+        t.id !== this.truppForm.person1Id &&
+        !this.isPersonInActiveTrupp(t.id)
+    );
+  }
+
   ngOnDestroy(): void {
     if (this.timerId) {
       window.clearInterval(this.timerId);
@@ -223,13 +245,6 @@ export class DashboardPage implements OnInit, OnDestroy {
   loadTruppnamen(): void {
     this.http.get<TruppName[]>(`${this.baseUrl}/truppnamen`).subscribe((list) => {
       this.truppnamen = list;
-      if (
-        !this.truppForm.truppNameId ||
-        !list.some((t) => t.id === this.truppForm.truppNameId && t.aktiv !== false)
-      ) {
-        const firstActive = list.find((t) => t.aktiv !== false);
-        this.truppForm.truppNameId = firstActive?.id ?? '';
-      }
     });
   }
 
@@ -411,6 +426,7 @@ export class DashboardPage implements OnInit, OnDestroy {
       .subscribe((list) => {
         const mapped = list.map((t) => ({
           ...t,
+          endzeit: t.endzeit ? t.endzeit : null,
           startEpoch: this.parseEpoch(t.startzeit),
           endEpoch: t.endzeit ? this.parseEpoch(t.endzeit) : null
         }));
@@ -459,14 +475,15 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.http
       .post<Trupp>(`${this.baseUrl}/einsaetze/${this.currentEinsatz.id}/trupps`, payload)
       .subscribe((created) => {
-        if (created) {
-          this.trupps = [...this.trupps, created];
-        }
-        this.truppForm.person1Id = '';
-        this.truppForm.person2Id = '';
-        this.setAutoStartzeitNow();
-        this.loadTrupps();
-      });
+      if (created) {
+        this.trupps = [...this.trupps, created];
+      }
+      this.truppForm.truppNameId = '';
+      this.truppForm.person1Id = '';
+      this.truppForm.person2Id = '';
+      this.setAutoStartzeitNow();
+      this.loadTrupps();
+    });
   }
 
   endTrupp(trupp: Trupp): void {

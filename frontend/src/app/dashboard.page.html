@@ -89,11 +89,13 @@
                 {{ truppNameLabel(truppForm.truppNameId) }}
               </button>
               <div class="select__panel" *ngIf="openSelect === 'trupp'">
+                <button class="select__option" type="button" (click)="selectTruppName('')">
+                  Bitte wählen
+                </button>
                 <button
                   class="select__option"
                   type="button"
-                  *ngFor="let t of activeTruppnamen"
-                  [disabled]="isTruppNameInActiveTrupp(t.id)"
+                  *ngFor="let t of availableTruppnamen"
                   (click)="selectTruppName(t.id)"
                 >
                   {{ t.name }}
@@ -112,15 +114,13 @@
                 {{ personLabel(truppForm.person1Id) }}
               </button>
               <div class="select__panel" *ngIf="openSelect === 'p1'">
+                <button class="select__option" type="button" (click)="selectPerson('', 'p1')">
+                  Bitte wählen
+                </button>
                 <button
                   class="select__option"
                   type="button"
-                  *ngFor="let t of geraetetraeger"
-                  [disabled]="
-                    t.aktiv === false ||
-                    t.id === truppForm.person2Id ||
-                    isPersonInActiveTrupp(t.id)
-                  "
+                  *ngFor="let t of availablePerson1"
                   (click)="selectPerson(t.id, 'p1')"
                 >
                   {{ t.nachname }} {{ t.vorname }}{{ t.funkrufname ? ' (' + t.funkrufname + ')' : '' }}
@@ -139,15 +139,13 @@
                 {{ personLabel(truppForm.person2Id) }}
               </button>
               <div class="select__panel" *ngIf="openSelect === 'p2'">
+                <button class="select__option" type="button" (click)="selectPerson('', 'p2')">
+                  Bitte wählen
+                </button>
                 <button
                   class="select__option"
                   type="button"
-                  *ngFor="let t of geraetetraeger"
-                  [disabled]="
-                    t.aktiv === false ||
-                    t.id === truppForm.person1Id ||
-                    isPersonInActiveTrupp(t.id)
-                  "
+                  *ngFor="let t of availablePerson2"
                   (click)="selectPerson(t.id, 'p2')"
                 >
                   {{ t.nachname }} {{ t.vorname }}{{ t.funkrufname ? ' (' + t.funkrufname + ')' : '' }}
@@ -284,7 +282,7 @@
             class="ghost"
             type="button"
             (click)="addDruckmessung(trupp, trupp.person1Id)"
-            *ngIf="!trupp.endzeit"
+            *ngIf="trupp.endzeit == null"
             [disabled]="trupp.druckCountPerson1 >= 3"
           >
             Druck P1 ({{ trupp.druckCountPerson1 }}/3)
@@ -293,7 +291,7 @@
             class="ghost"
             type="button"
             (click)="addDruckmessung(trupp, trupp.person2Id)"
-            *ngIf="!trupp.endzeit"
+            *ngIf="trupp.endzeit == null"
             [disabled]="trupp.druckCountPerson2 >= 3"
           >
             Druck P2 ({{ trupp.druckCountPerson2 }}/3)
@@ -302,7 +300,7 @@
             class="primary"
             type="button"
             (click)="endTrupp(trupp)"
-            *ngIf="!trupp.endzeit"
+            *ngIf="trupp.endzeit == null"
           >
             Beenden
           </button>
