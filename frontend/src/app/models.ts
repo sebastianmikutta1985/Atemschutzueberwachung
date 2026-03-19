@@ -34,6 +34,8 @@ export interface Trupp {
   druckCountPerson2: number;
   druckMessungenPerson1: DruckInfo[];
   druckMessungenPerson2: DruckInfo[];
+  warnAcked?: boolean;
+  maxAcked?: boolean;
 }
 
 export interface Geraetetraeger {

@@ -727,6 +727,10 @@ button:not(:disabled):active {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
   }
 
+  .trupp__bottom {
+    grid-template-columns: 1fr;
+  }
+
   .settings__grid {
     grid-template-columns: 1fr;
   }

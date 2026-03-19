@@ -7,6 +7,7 @@ import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
 import { DruckInfo, Einsatz, Geraetetraeger, OrgSettings, Trupp, TruppName } from './models';
 import { RealtimeService } from './realtime.service';
+import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 
 @Component({
@@ -31,6 +32,8 @@ export class DashboardPage implements OnInit, OnDestroy {
   currentEpoch = Date.now();
   private notifiedWarn = new Set<string>();
   private notifiedMax = new Set<string>();
+  private lastWarnAlert: Record<string, number> = {};
+  private lastMaxAlert: Record<string, number> = {};
   private defaultsApplied = false;
 
   einsatzForm = {
@@ -74,6 +77,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   toasts: { id: number; text: string; type: 'warn' | 'max' }[] = [];
   private toastId = 0;
   private lastLiveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
+  alarmModal: { open: boolean; trupp: Trupp; type: 'warn' | 'max' } | null = null;
 
   constructor(
     private http: HttpClient,
@@ -81,6 +85,16 @@ export class DashboardPage implements OnInit, OnDestroy {
     private router: Router,
     private realtime: RealtimeService
   ) {}
+
+  private formatDateTime(value: string | null | undefined): string {
+    if (!value) return '-';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    const pad = (v: number) => v.toString().padStart(2, '0');
+    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(
+      d.getHours()
+    )}:${pad(d.getMinutes())}:${pad(d.getSeconds())} Uhr`;
+  }
 
   ngOnInit(): void {
     const now = new Date();
@@ -357,12 +371,20 @@ export class DashboardPage implements OnInit, OnDestroy {
       .get<Trupp[]>(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`)
       .subscribe((list) => {
         const formatMessungen = (values: DruckInfo[]) =>
-          values.map((m) => `${m.druckBar} bar @ ${m.zeit}`).join(' | ');
+          values
+            .map((m) => `${m.druckBar} bar @ ${this.formatDateTime(m.zeit)}`)
+            .join(' | ');
 
         const einsatzSheet = XLSX.utils.aoa_to_sheet([
           ['Einsatz'],
           ['Name', 'Ort', 'Alarmzeit', 'Status', 'Endzeit'],
-          [einsatz.name, einsatz.ort, einsatz.alarmzeit, einsatz.status, einsatz.endzeit ?? '']
+          [
+            einsatz.name,
+            einsatz.ort,
+            this.formatDateTime(einsatz.alarmzeit),
+            einsatz.status,
+            einsatz.endzeit ? this.formatDateTime(einsatz.endzeit) : '-'
+          ]
         ]);
 
         const truppRows = [
@@ -383,8 +405,8 @@ export class DashboardPage implements OnInit, OnDestroy {
             t.bezeichnung,
             t.person1Name,
             t.person2Name,
-            t.startzeit,
-            t.endzeit ?? '',
+            this.formatDateTime(t.startzeit),
+            t.endzeit ? this.formatDateTime(t.endzeit) : '-',
             t.startdruckPerson1Bar,
             t.startdruckPerson2Bar,
             t.warnzeitMin,
@@ -410,6 +432,127 @@ export class DashboardPage implements OnInit, OnDestroy {
         window.setTimeout(() => {
           window.location.href = mailto;
         }, 200);
+      });
+  }
+
+  exportEinsatzPdf(einsatz: Einsatz): void {
+    this.http
+      .get<Trupp[]>(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`)
+      .subscribe((list) => {
+        const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
+        const margin = 40;
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        let y = 44;
+
+        const drawHeader = () => {
+          doc.setFillColor(36, 23, 20);
+          doc.rect(0, 0, pageWidth, 80, 'F');
+          doc.setTextColor(246, 239, 232);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(18);
+          doc.text('AirGuard Einsatzbericht', margin, 48);
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          doc.text(`Stand: ${new Date().toLocaleString()}`, margin, 66);
+          doc.setTextColor(33, 33, 33);
+          y = 96;
+        };
+
+        drawHeader();
+
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Einsatzdaten', margin, y);
+        y += 16;
+
+        doc.setFont('helvetica', 'normal');
+        const formatDateTime = (value: string | null | undefined) => {
+          if (!value) return '-';
+          const d = new Date(value);
+          if (Number.isNaN(d.getTime())) return value;
+          const pad = (v: number) => v.toString().padStart(2, '0');
+          return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(
+            d.getHours()
+          )}:${pad(d.getMinutes())}:${pad(d.getSeconds())} Uhr`;
+        };
+        const info = [
+          ['Einsatz', einsatz.name],
+          ['Ort', einsatz.ort],
+          ['Alarmzeit', formatDateTime(einsatz.alarmzeit)],
+          ['Status', einsatz.status],
+          ['Ende', formatDateTime(einsatz.endzeit ?? '')]
+        ];
+        for (const [label, value] of info) {
+          doc.setTextColor(90, 70, 60);
+          doc.text(`${label}:`, margin, y);
+          doc.setTextColor(33, 33, 33);
+          doc.text(String(value), margin + 90, y);
+          y += 16;
+        }
+        y += 10;
+
+        const formatMessungen = (values: DruckInfo[]) =>
+          values.map((m) => `${m.druckBar} bar @ ${m.zeit}`).join(' | ');
+
+        const addTableHeader = () => {
+          doc.setFillColor(240, 140, 42);
+          doc.setTextColor(255, 255, 255);
+          doc.setFont('helvetica', 'bold');
+          doc.rect(margin, y, pageWidth - margin * 2, 24, 'F');
+          const headers = ['Trupp', 'P1 / P2', 'Start', 'Druck', 'Warn/Max', 'Messungen'];
+          const cols = [110, 150, 145, 70, 70, pageWidth - margin * 2 - 545];
+          let x = margin + 8;
+          headers.forEach((h, i) => {
+            doc.text(h, x, y + 16);
+            x += cols[i];
+          });
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(33, 33, 33);
+          y += 28;
+        };
+
+        addTableHeader();
+
+        for (const t of list) {
+          const rowHeight = 48;
+          if (y + rowHeight > pageHeight - 40) {
+            doc.addPage();
+            drawHeader();
+            addTableHeader();
+          }
+          doc.setDrawColor(225, 220, 212);
+          doc.rect(margin, y, pageWidth - margin * 2, rowHeight);
+
+          const cols = [110, 150, 145, 70, 70, pageWidth - margin * 2 - 545];
+          let x = margin + 8;
+          doc.text(String(t.bezeichnung), x, y + 16);
+          x += cols[0];
+          doc.text(`P1: ${t.person1Name}\nP2: ${t.person2Name}`, x, y + 14);
+          x += cols[1];
+          doc.text(formatDateTime(t.startzeit), x, y + 16);
+          x += cols[2];
+          doc.text(`P1 ${t.startdruckPerson1Bar}\nP2 ${t.startdruckPerson2Bar}`, x, y + 14);
+          x += cols[3];
+          doc.text(`${t.warnzeitMin}/${t.maxzeitMin}`, x, y + 16);
+          x += cols[4];
+          const m1 = formatMessungen(t.druckMessungenPerson1 || []);
+          const m2 = formatMessungen(t.druckMessungenPerson2 || []);
+          const mText = [m1 ? `P1: ${m1}` : '', m2 ? `P2: ${m2}` : ''].filter(Boolean).join(' | ');
+          doc.text(mText || '-', x, y + 16, { maxWidth: cols[5] - 8 });
+
+          y += rowHeight;
+        }
+
+        const alarm = new Date(einsatz.alarmzeit);
+        const stamp = Number.isNaN(alarm.getTime())
+          ? new Date()
+          : alarm;
+        const pad = (v: number) => v.toString().padStart(2, '0');
+        const dateLabel = `${pad(stamp.getDate())}.${pad(stamp.getMonth() + 1)}.${stamp.getFullYear()}`;
+        const safeName = (einsatz.name || 'Einsatz')
+          .replace(/[^a-z0-9äöüÄÖÜß_\\-]+/gi, '_');
+        doc.save(`Einsatzbericht_${safeName}_${dateLabel}.pdf`);
       });
   }
 
@@ -660,22 +803,74 @@ export class DashboardPage implements OnInit, OnDestroy {
       }
       const now = this.currentEpoch;
       const elapsedMin = this.elapsedMinutes(trupp, now);
-      if (elapsedMin >= trupp.maxzeitMin && !this.notifiedMax.has(trupp.id)) {
-        this.notifiedMax.add(trupp.id);
-        this.pushToast(`Maxzeit erreicht: ${trupp.bezeichnung}`, 'max');
-        this.playBeep(2);
-        this.logEvent(trupp, 'max');
-      } else if (elapsedMin >= trupp.warnzeitMin && !this.notifiedWarn.has(trupp.id)) {
-        this.notifiedWarn.add(trupp.id);
-        this.pushToast(`Warnzeit erreicht: ${trupp.bezeichnung}`, 'warn');
-        this.playBeep(1);
-        this.logEvent(trupp, 'warn');
+      if (elapsedMin >= trupp.maxzeitMin && !trupp.maxAcked) {
+        if (this.shouldAlert(this.lastMaxAlert, trupp.id, now, 15000)) {
+          this.pushToast(`Maxzeit erreicht: ${trupp.bezeichnung}`, 'max');
+          this.playBeep(2);
+          this.triggerVibration([250, 120, 250, 120, 250]);
+          this.logEvent(trupp, 'max');
+          this.openAlarmModal(trupp, 'max');
+        }
+      } else if (elapsedMin >= trupp.warnzeitMin && !trupp.warnAcked) {
+        if (this.shouldAlert(this.lastWarnAlert, trupp.id, now, 30000)) {
+          this.pushToast(`Warnzeit erreicht: ${trupp.bezeichnung}`, 'warn');
+          this.playBeep(1);
+          this.triggerVibration([180, 120, 180]);
+          this.logEvent(trupp, 'warn');
+          this.openAlarmModal(trupp, 'warn');
+        }
       }
     }
   }
 
-  private logEvent(trupp: Trupp, type: 'warn' | 'max'): void {
+  private logEvent(trupp: Trupp, type: 'warn' | 'max' | 'warn_ack' | 'max_ack'): void {
     this.http.post(`${this.baseUrl}/trupps/${trupp.id}/events`, { type }).subscribe();
+  }
+
+  private shouldAlert(store: Record<string, number>, id: string, now: number, intervalMs: number): boolean {
+    const last = store[id] ?? 0;
+    if (now - last < intervalMs) {
+      return false;
+    }
+    store[id] = now;
+    return true;
+  }
+
+  private openAlarmModal(trupp: Trupp, type: 'warn' | 'max'): void {
+    if (this.alarmModal?.open) {
+      return;
+    }
+    this.alarmModal = { open: true, trupp, type };
+  }
+
+  acknowledgeAlarm(): void {
+    if (!this.alarmModal) {
+      return;
+    }
+    const { trupp, type } = this.alarmModal;
+    if (type === 'warn') {
+      trupp.warnAcked = true;
+      this.logEvent(trupp, 'warn_ack');
+    } else {
+      trupp.maxAcked = true;
+      this.logEvent(trupp, 'max_ack');
+    }
+    this.alarmModal = null;
+    this.loadTrupps();
+  }
+
+  closeAlarmModal(): void {
+    this.alarmModal = null;
+  }
+
+  private triggerVibration(pattern: number[]): void {
+    try {
+      if (navigator && 'vibrate' in navigator) {
+        navigator.vibrate(pattern);
+      }
+    } catch {
+      // ignore
+    }
   }
 
   private playBeep(times: number): void {
