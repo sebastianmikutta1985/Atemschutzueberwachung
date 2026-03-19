@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
+import { ThemeStore } from './theme.store';
 
 @Component({
   selector: 'app-login-page',
@@ -59,12 +60,16 @@ export class LoginPage {
           } else {
             localStorage.removeItem('ats_login');
           }
+          const themeKey = ThemeStore.keyFromCredentials(code, pin);
           AuthStore.save({
             token: res.token,
             role: res.role,
             orgName: res.orgName,
-            orgCode: res.orgCode
+            orgCode: res.orgCode,
+            themeKey
           });
+          const mode = ThemeStore.load(themeKey);
+          ThemeStore.apply(mode);
           this.router.navigateByUrl('/');
         },
         error: () => {

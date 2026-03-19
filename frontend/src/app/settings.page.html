@@ -18,6 +18,13 @@
           <span class="pill__label">Organisation</span>
           <span class="pill__value">{{ authInfo.orgName }} ({{ authInfo.orgCode }})</span>
         </div>
+        <label class="theme-toggle">
+          <input type="checkbox" [checked]="themeMode === 'dark'" (change)="toggleTheme()" />
+          <span class="theme-toggle__track">
+            <span class="theme-toggle__thumb"></span>
+          </span>
+          <span class="theme-toggle__label">Dark Mode</span>
+        </label>
         <button class="ghost btn-icon" type="button" [routerLink]="['/']">Zurück</button>
         <button class="ghost btn-icon" type="button" (click)="logout()">Abmelden</button>
       </div>

@@ -5,6 +5,7 @@ export type AuthState = {
   role: AuthRole;
   orgName: string;
   orgCode: string;
+  themeKey?: string;
 };
 
 const AUTH_KEY = 'ats_auth';
@@ -36,5 +37,9 @@ export const AuthStore = {
 
   role(): AuthRole | null {
     return this.load()?.role ?? null;
+  },
+
+  themeKey(): string | null {
+    return this.load()?.themeKey ?? null;
   }
 };

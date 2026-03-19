@@ -7,6 +7,7 @@ import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
 import { DruckInfo, Einsatz, Geraetetraeger, OrgSettings, Trupp, TruppName } from './models';
 import { RealtimeService } from './realtime.service';
+import { ThemeMode, ThemeStore } from './theme.store';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 
@@ -23,6 +24,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   private unsubscribeRealtime?: () => void;
   private unsubscribeStatus?: () => void;
   liveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
+  themeMode: ThemeMode = 'light';
 
   currentEinsatz: Einsatz | null = null;
   trupps: Trupp[] = [];
@@ -97,6 +99,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    this.loadTheme();
     const now = new Date();
     this.einsatzForm.alarmzeit = this.toLocalInputValue(now);
     this.setAutoStartzeitNow();
@@ -121,6 +124,19 @@ export class DashboardPage implements OnInit, OnDestroy {
       this.lastLiveStatus = status;
       this.liveStatus = status;
     });
+  }
+
+  private loadTheme(): void {
+    const themeKey = AuthStore.themeKey();
+    this.themeMode = ThemeStore.load(themeKey);
+    ThemeStore.apply(this.themeMode);
+  }
+
+  toggleTheme(): void {
+    const themeKey = AuthStore.themeKey();
+    this.themeMode = this.themeMode === 'dark' ? 'light' : 'dark';
+    ThemeStore.save(this.themeMode, themeKey);
+    ThemeStore.apply(this.themeMode);
   }
 
   @HostListener('document:click')
