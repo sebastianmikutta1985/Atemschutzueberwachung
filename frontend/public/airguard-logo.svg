@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 160">
+  <defs>
+    <linearGradient id="ag" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f08c2a"/>
+      <stop offset="1" stop-color="#c23a3a"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="520" height="160" rx="28" fill="none"/>
+  <g transform="translate(24 24)">
+    <rect x="0" y="0" width="112" height="112" rx="26" fill="#241714"/>
+    <path d="M56 8c20 9 34 27 34 50 0 23-14 35-34 46-20-11-34-23-34-46 0-23 14-41 34-50z" fill="url(#ag)"/>
+    <path d="M56 20c14 6 22 18 22 35 0 17-10 26-22 34-12-8-22-17-22-34 0-17 8-29 22-35z" fill="#2a1612" opacity="0.6"/>
+    <g fill="#f6efe8">
+      <rect x="36" y="46" width="40" height="30" rx="10"/>
+      <rect x="32" y="52" width="12" height="18" rx="6"/>
+      <rect x="76" y="52" width="12" height="18" rx="6"/>
+      <rect x="50" y="72" width="12" height="12" rx="4"/>
+    </g>
+    <rect x="44" y="51" width="24" height="12" rx="6" fill="#2a1612" opacity="0.6"/>
+  </g>
+  <g transform="translate(160 36)" fill="#f6efe8">
+    <text x="0" y="50" font-family="Manrope, Segoe UI, Arial, sans-serif" font-size="44" font-weight="700" letter-spacing="0.02em">AirGuard</text>
+    <text x="2" y="86" font-family="Manrope, Segoe UI, Arial, sans-serif" font-size="16" fill="#d1c0ad">Breathing Safety for Firefighters</text>
+  </g>
+</svg>
