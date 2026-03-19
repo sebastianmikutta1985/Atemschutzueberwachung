@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
+import { ThemeMode, ThemeStore } from './theme.store';
 import { Geraetetraeger, OrgSettings, TruppName } from './models';
 import { RealtimeService } from './realtime.service';
 
@@ -23,6 +24,7 @@ export class SettingsPage implements OnInit, OnDestroy {
   private unsubscribeRealtime?: () => void;
   private unsubscribeStatus?: () => void;
   liveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
+  themeMode: ThemeMode = 'light';
 
   geraetetraegerForm = {
     vorname: '',
@@ -55,6 +57,7 @@ export class SettingsPage implements OnInit, OnDestroy {
   constructor(private http: HttpClient, private router: Router, private realtime: RealtimeService) {}
 
   ngOnInit(): void {
+    this.loadTheme();
     this.loadGeraetetraeger();
     this.loadTruppnamen();
     this.loadOrgSettings();
@@ -78,6 +81,19 @@ export class SettingsPage implements OnInit, OnDestroy {
       this.lastLiveStatus = status;
       this.liveStatus = status;
     });
+  }
+
+  private loadTheme(): void {
+    const themeKey = AuthStore.themeKey();
+    this.themeMode = ThemeStore.load(themeKey);
+    ThemeStore.apply(this.themeMode);
+  }
+
+  toggleTheme(): void {
+    const themeKey = AuthStore.themeKey();
+    this.themeMode = this.themeMode === 'dark' ? 'light' : 'dark';
+    ThemeStore.save(this.themeMode, themeKey);
+    ThemeStore.apply(this.themeMode);
   }
 
   ngOnDestroy(): void {
