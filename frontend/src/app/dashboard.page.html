@@ -2,12 +2,15 @@
     <header class="hero">
       <div class="hero__text">
         <p class="hero__eyebrow">Einsatzübersicht</p>
-        <h1>Willkommen in Ihrem AirGuard Portal</h1>
+        <h1>Willkommen in Ihrem AirGuard</h1>
         <p class="hero__sub">
           Schnelle Lageübersicht für Trupps, Zeiten und Warnstufen.
         </p>
+        <button class="ghost hero__meta-toggle" type="button" (click)="toggleMobileMeta()">
+          {{ mobileMetaOpen ? 'Schnellmenü ausblenden' : 'Schnellmenü anzeigen' }}
+        </button>
       </div>
-      <div class="hero__meta">
+      <div class="hero__meta" [class.hero__meta--open]="mobileMetaOpen">
         <div class="pill" [attr.data-live]="liveStatus">
           <span class="pill__label">Live</span>
           <span class="pill__value">
@@ -160,7 +163,7 @@
               </div>
             </div>
           </label>
-          <div class="row">
+            <div class="row row--stack-sm">
             <label>
               Startdruck Person 1 (bar)
               <input type="number" min="0" [(ngModel)]="truppForm.startdruckPerson1Bar" />
@@ -174,28 +177,18 @@
             Startzeit
             <input type="datetime-local" step="1" [(ngModel)]="truppForm.startzeit" />
           </label>
-          <div class="row">
-            <label>
-              Warnzeit nach (min)
-              <input type="number" min="0" [(ngModel)]="truppForm.warnzeitMin" />
-            </label>
+            <div class="row row--stack-sm">
+              <label>
+                Warnzeit nach (min)
+                <input type="number" min="0" [(ngModel)]="truppForm.warnzeitMin" />
+              </label>
             <label>
               Maxzeit (min)
               <input type="number" min="0" [(ngModel)]="truppForm.maxzeitMin" />
             </label>
           </div>
         </fieldset>
-        <button
-          class="primary"
-          type="button"
-          (click)="addTrupp()"
-          [disabled]="
-            !currentEinsatz ||
-            !truppForm.truppNameId ||
-            !truppForm.person1Id ||
-            !truppForm.person2Id
-          "
-        >
+        <button class="primary" type="button" (click)="addTrupp()" [disabled]="!canAddTrupp()">
           Trupp hinzufügen
         </button>
       </div>
@@ -236,8 +229,8 @@
       <p class="muted">Noch keine Trupps erfasst.</p>
     </div>
 
-    <div class="list__body list__body--grid" *ngIf="trupps.length > 0">
-      <div class="trupp" *ngFor="let trupp of trupps" [attr.data-status]="statusFor(trupp, currentEpoch)">
+      <div class="list__body list__body--grid" *ngIf="trupps.length > 0">
+        <div class="trupp trupp--stack" *ngFor="let trupp of trupps" [attr.data-status]="statusFor(trupp, currentEpoch)">
         <div class="trupp__top">
           <div class="trupp__status" [attr.data-status]="statusFor(trupp, currentEpoch)">
             {{ statusFor(trupp, currentEpoch) | uppercase }}
