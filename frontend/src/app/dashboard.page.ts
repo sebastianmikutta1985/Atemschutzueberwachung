@@ -26,6 +26,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   private unsubscribeStatus?: () => void;
   liveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
   themeMode: ThemeMode = 'light';
+  mobileMetaOpen = false;
 
   currentEinsatz: Einsatz | null = null;
   trupps: Trupp[] = [];
@@ -148,9 +149,35 @@ export class DashboardPage implements OnInit, OnDestroy {
     ThemeStore.apply(this.themeMode);
   }
 
+  toggleMobileMeta(): void {
+    this.mobileMetaOpen = !this.mobileMetaOpen;
+  }
+
   @HostListener('document:click')
   closeOpenSelect(): void {
     this.openSelect = null;
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Enter' || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return;
+    }
+    if (this.druckModal || this.detailsModal || this.deleteModal || this.alarmModal) {
+      return;
+    }
+    if (this.openSelect) {
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    if (target?.tagName === 'TEXTAREA') {
+      return;
+    }
+    if (!this.canAddTrupp()) {
+      return;
+    }
+    event.preventDefault();
+    this.addTrupp();
   }
 
   toggleSelect(key: 'trupp' | 'p1' | 'p2', event: MouseEvent): void {
@@ -185,6 +212,15 @@ export class DashboardPage implements OnInit, OnDestroy {
       this.truppForm.person2Id = id;
     }
     this.openSelect = null;
+  }
+
+  canAddTrupp(): boolean {
+    return Boolean(
+      this.currentEinsatz &&
+        this.truppForm.truppNameId &&
+        this.truppForm.person1Id &&
+        this.truppForm.person2Id
+    );
   }
 
   truppNameLabel(id: string): string {
