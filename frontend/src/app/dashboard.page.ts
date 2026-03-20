@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, ElementRef, HostListener, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
@@ -85,7 +86,8 @@ export class DashboardPage implements OnInit, OnDestroy {
     private http: HttpClient,
     private zone: NgZone,
     private router: Router,
-    private realtime: RealtimeService
+    private realtime: RealtimeService,
+    private title: Title
   ) {}
 
   private formatDateTime(value: string | null | undefined): string {
@@ -100,6 +102,7 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.loadTheme();
+    this.updatePageTitle();
     const now = new Date();
     this.einsatzForm.alarmzeit = this.toLocalInputValue(now);
     this.setAutoStartzeitNow();
@@ -124,6 +127,12 @@ export class DashboardPage implements OnInit, OnDestroy {
       this.lastLiveStatus = status;
       this.liveStatus = status;
     });
+  }
+
+  private updatePageTitle(): void {
+    const auth = AuthStore.load();
+    const org = auth?.orgName ? ` - ${auth.orgName}` : '';
+    this.title.setTitle(`AirGuard${org}`);
   }
 
   private loadTheme(): void {

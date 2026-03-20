@@ -1,1 +1,15 @@
 <router-outlet></router-outlet>
+
+<div class="modal" *ngIf="idleWarningOpen">
+  <div class="modal__backdrop"></div>
+  <div class="modal__panel">
+    <h3>Inaktivität erkannt</h3>
+    <p class="muted">
+      Du wirst in Kürze automatisch abgemeldet. Bitte bestätige, wenn du weiterarbeiten möchtest.
+    </p>
+    <div class="modal__actions">
+      <button class="ghost" type="button" (click)="stayLoggedIn()">Weiterarbeiten</button>
+      <button class="danger" type="button" (click)="logoutNow()">Jetzt abmelden</button>
+    </div>
+  </div>
+</div>
