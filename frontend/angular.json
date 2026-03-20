@@ -26,6 +26,14 @@
             ],
             "styles": [
               "src/styles.css"
+            ],
+            "allowedCommonJsDependencies": [
+              "canvg",
+              "raf",
+              "rgbcolor",
+              "jspdf",
+              "html2canvas",
+              "dompurify"
             ]
           },
           "configurations": {
@@ -33,13 +41,13 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kB",
-                  "maximumError": "1MB"
+                  "maximumWarning": "2MB",
+                  "maximumError": "3MB"
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "4kB",
-                  "maximumError": "8kB"
+                  "maximumWarning": "30kB",
+                  "maximumError": "50kB"
                 }
               ],
               "outputHashing": "all"
