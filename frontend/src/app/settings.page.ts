@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
@@ -54,10 +55,16 @@ export class SettingsPage implements OnInit, OnDestroy {
   editingTruppNameId: string | null = null;
   editingTruppNameValue = '';
 
-  constructor(private http: HttpClient, private router: Router, private realtime: RealtimeService) {}
+  constructor(
+    private http: HttpClient,
+    private router: Router,
+    private realtime: RealtimeService,
+    private title: Title
+  ) {}
 
   ngOnInit(): void {
     this.loadTheme();
+    this.updatePageTitle();
     this.loadGeraetetraeger();
     this.loadTruppnamen();
     this.loadOrgSettings();
@@ -87,6 +94,12 @@ export class SettingsPage implements OnInit, OnDestroy {
     const themeKey = AuthStore.themeKey();
     this.themeMode = ThemeStore.load(themeKey);
     ThemeStore.apply(this.themeMode);
+  }
+
+  private updatePageTitle(): void {
+    const auth = AuthStore.load();
+    const org = auth?.orgName ? ` - ${auth.orgName}` : '';
+    this.title.setTitle(`AirGuard${org}`);
   }
 
   toggleTheme(): void {

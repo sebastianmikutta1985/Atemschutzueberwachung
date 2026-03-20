@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component } from '@angular/core';
+import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { environment } from '../environments/environment';
@@ -20,9 +21,10 @@ export class LoginPage {
   error = '';
   loading = false;
 
-  constructor(private http: HttpClient, private router: Router) {}
+  constructor(private http: HttpClient, private router: Router, private title: Title) {}
 
   ngOnInit(): void {
+    this.title.setTitle('AirGuard - Anmeldung');
     const saved = localStorage.getItem('ats_login');
     if (saved) {
       try {
