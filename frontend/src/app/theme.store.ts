@@ -1,6 +1,6 @@
 export type ThemeMode = 'light' | 'dark';
 
-const THEME_KEY = 'airguard_theme';
+const THEME_KEY = 'crewtrace_theme';
 
 const hash = (input: string): string => {
   let h = 5381;
@@ -21,7 +21,10 @@ export const ThemeStore = {
 
   load(themeKey?: string | null): ThemeMode {
     const raw = localStorage.getItem(this.keyFor(themeKey));
-    return raw === 'dark' ? 'dark' : 'light';
+    if (!raw) {
+      return 'dark';
+    }
+    return raw === 'light' ? 'light' : 'dark';
   },
 
   save(mode: ThemeMode, themeKey?: string | null): void {

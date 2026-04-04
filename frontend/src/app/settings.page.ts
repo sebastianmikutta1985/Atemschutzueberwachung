@@ -99,7 +99,7 @@ export class SettingsPage implements OnInit, OnDestroy {
   private updatePageTitle(): void {
     const auth = AuthStore.load();
     const org = auth?.orgName ? ` - ${auth.orgName}` : '';
-    this.title.setTitle(`AirGuard${org}`);
+    this.title.setTitle(`CrewTrace${org}`);
   }
 
   toggleTheme(): void {

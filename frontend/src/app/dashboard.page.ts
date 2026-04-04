@@ -133,7 +133,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   private updatePageTitle(): void {
     const auth = AuthStore.load();
     const org = auth?.orgName ? ` - ${auth.orgName}` : '';
-    this.title.setTitle(`AirGuard${org}`);
+    this.title.setTitle(`CrewTrace${org}`);
   }
 
   private loadTheme(): void {
@@ -487,7 +487,7 @@ export class DashboardPage implements OnInit, OnDestroy {
         const filename = `${safeName}_${einsatz.id}.xlsx`;
         XLSX.writeFile(workbook, filename, { compression: true });
 
-        const subject = `ATS Export - ${einsatz.name}`;
+        const subject = `CrewTrace Export - ${einsatz.name}`;
         const body = `Bitte Einsatz-Export im Anhang einfügen.\n\nEinsatz: ${einsatz.name}\nOrt: ${einsatz.ort}\nAlarm: ${einsatz.alarmzeit}`;
         const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
         window.setTimeout(() => {
@@ -512,7 +512,7 @@ export class DashboardPage implements OnInit, OnDestroy {
           doc.setTextColor(246, 239, 232);
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(18);
-          doc.text('AirGuard Einsatzbericht', margin, 48);
+            doc.text('CrewTrace Einsatzbericht', margin, 48);
           doc.setFontSize(10);
           doc.setFont('helvetica', 'normal');
           doc.text(`Stand: ${new Date().toLocaleString()}`, margin, 66);

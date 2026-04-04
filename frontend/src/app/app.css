@@ -28,6 +28,23 @@
   margin-bottom: 12px;
 }
 
+.brand-logo {
+  width: clamp(140px, 18vw, 220px);
+  height: auto;
+  margin-bottom: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.brand-logo--hero {
+  align-self: flex-start;
+  margin-left: auto;
+  position: absolute;
+  top: 20px;
+  right: 24px;
+}
+
 .hero__text h1 {
   font-size: clamp(2.1rem, 4vw, 3.2rem);
   font-weight: 600;
@@ -881,6 +898,13 @@ button:not(:disabled):active {
 
   .hero__sub {
     font-size: 0.88rem;
+  }
+
+  .brand-logo--hero {
+    position: static;
+    align-self: center;
+    margin-left: 0;
+    margin-top: 8px;
   }
 
   .pill__label {
