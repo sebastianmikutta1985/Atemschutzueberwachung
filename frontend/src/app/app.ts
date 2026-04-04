@@ -14,7 +14,7 @@ import { ThemeStore } from './theme.store';
 export class App implements OnInit {
   private readonly idleTimeoutMs = 2 * 60 * 60 * 1000;
   private readonly idleWarningMs = 2 * 60 * 1000;
-  private readonly idleKey = 'airguard_last_active';
+  private readonly idleKey = 'crewtrace_last_active';
   private idleTimer?: number;
   private idleWarningTimer?: number;
   private idleCheck?: number;

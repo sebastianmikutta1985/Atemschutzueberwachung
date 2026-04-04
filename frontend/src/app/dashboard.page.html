@@ -2,7 +2,7 @@
     <header class="hero">
       <div class="hero__text">
         <p class="hero__eyebrow">Einsatzübersicht</p>
-        <h1>Willkommen in Ihrem AirGuard</h1>
+        <h1>Willkommen in Ihrem CrewTrace</h1>
         <p class="hero__sub">
           Schnelle Lageübersicht für Trupps, Zeiten und Warnstufen.
         </p>
@@ -10,6 +10,7 @@
           {{ mobileMetaOpen ? 'Schnellmenü ausblenden' : 'Schnellmenü anzeigen' }}
         </button>
       </div>
+      <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
       <div class="hero__meta" [class.hero__meta--open]="mobileMetaOpen">
         <div class="pill" [attr.data-live]="liveStatus">
           <span class="pill__label">Live</span>

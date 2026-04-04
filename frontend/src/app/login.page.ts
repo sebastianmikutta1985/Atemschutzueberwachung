@@ -24,7 +24,7 @@ export class LoginPage {
   constructor(private http: HttpClient, private router: Router, private title: Title) {}
 
   ngOnInit(): void {
-    this.title.setTitle('AirGuard - Anmeldung');
+    this.title.setTitle('CrewTrace - Anmeldung');
     const saved = localStorage.getItem('ats_login');
     if (saved) {
       try {
