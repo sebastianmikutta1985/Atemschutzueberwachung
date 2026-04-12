@@ -100,14 +100,15 @@
                 {{ truppNameLabel(truppForm.truppNameId) }}
               </button>
               <div class="select__panel" *ngIf="openSelect === 'trupp'">
-                <button class="select__option" type="button" (click)="selectTruppName('')">
+                <button class="select__option" type="button" (click)="selectTruppName('', $event)" (touchend)="selectTruppName('', $event)">
                   Bitte wählen
                 </button>
                 <button
                   class="select__option"
                   type="button"
                   *ngFor="let t of availableTruppnamen"
-                  (click)="selectTruppName(t.id)"
+                  (click)="selectTruppName(t.id, $event)"
+                  (touchend)="selectTruppName(t.id, $event)"
                 >
                   {{ t.name }}
                 </button>
@@ -125,14 +126,15 @@
                 {{ personLabel(truppForm.person1Id) }}
               </button>
               <div class="select__panel" *ngIf="openSelect === 'p1'">
-                <button class="select__option" type="button" (click)="selectPerson('', 'p1')">
+                <button class="select__option" type="button" (click)="selectPerson('', 'p1', $event)" (touchend)="selectPerson('', 'p1', $event)">
                   Bitte wählen
                 </button>
                 <button
                   class="select__option"
                   type="button"
                   *ngFor="let t of availablePerson1"
-                  (click)="selectPerson(t.id, 'p1')"
+                  (click)="selectPerson(t.id, 'p1', $event)"
+                  (touchend)="selectPerson(t.id, 'p1', $event)"
                 >
                   {{ t.nachname }} {{ t.vorname }}{{ t.funkrufname ? ' (' + t.funkrufname + ')' : '' }}
                 </button>
@@ -150,14 +152,15 @@
                 {{ personLabel(truppForm.person2Id) }}
               </button>
               <div class="select__panel" *ngIf="openSelect === 'p2'">
-                <button class="select__option" type="button" (click)="selectPerson('', 'p2')">
+                <button class="select__option" type="button" (click)="selectPerson('', 'p2', $event)" (touchend)="selectPerson('', 'p2', $event)">
                   Bitte wählen
                 </button>
                 <button
                   class="select__option"
                   type="button"
                   *ngFor="let t of availablePerson2"
-                  (click)="selectPerson(t.id, 'p2')"
+                  (click)="selectPerson(t.id, 'p2', $event)"
+                  (touchend)="selectPerson(t.id, 'p2', $event)"
                 >
                   {{ t.nachname }} {{ t.vorname }}{{ t.funkrufname ? ' (' + t.funkrufname + ')' : '' }}
                 </button>
