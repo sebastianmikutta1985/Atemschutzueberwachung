@@ -188,7 +188,9 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.openSelect = this.openSelect === key ? null : key;
   }
 
-  selectTruppName(id: string): void {
+  selectTruppName(id: string, event?: Event): void {
+    event?.preventDefault();
+    event?.stopPropagation();
     if (this.isTruppNameInActiveTrupp(id)) {
       return;
     }
@@ -196,7 +198,9 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.openSelect = null;
   }
 
-  selectPerson(id: string, target: 'p1' | 'p2'): void {
+  selectPerson(id: string, target: 'p1' | 'p2', event?: Event): void {
+    event?.preventDefault();
+    event?.stopPropagation();
     if (this.isPersonInActiveTrupp(id)) {
       return;
     }
@@ -433,7 +437,7 @@ export class DashboardPage implements OnInit, OnDestroy {
       .subscribe((list) => {
         const formatMessungen = (values: DruckInfo[]) =>
           values
-            .map((m) => `${m.druckBar} bar @ ${this.formatDateTime(m.zeit)}`)
+            .map((m) => `${m.druckBar} bar | ${this.formatDateTime(m.zeit)}`)
             .join(' | ');
 
         const einsatzSheet = XLSX.utils.aoa_to_sheet([
@@ -483,16 +487,16 @@ export class DashboardPage implements OnInit, OnDestroy {
         XLSX.utils.book_append_sheet(workbook, einsatzSheet, 'Einsatz');
         XLSX.utils.book_append_sheet(workbook, truppSheet, 'Trupps');
 
-        const safeName = (einsatz.name || 'einsatz').replace(/[^a-z0-9-_]+/gi, '_');
-        const filename = `${safeName}_${einsatz.id}.xlsx`;
+        const safeName = (einsatz.name || 'Einsatz')
+          .replace(/[^a-z0-9äöüÄÖÜß_\\-]+/gi, '_');
+        const alarm = new Date(einsatz.alarmzeit);
+        const stamp = Number.isNaN(alarm.getTime()) ? new Date() : alarm;
+        const pad = (v: number) => v.toString().padStart(2, '0');
+        const dateLabel = `${pad(stamp.getDate())}.${pad(stamp.getMonth() + 1)}.${stamp.getFullYear()}`;
+        const filename = `Einsatzbericht_${safeName}_${dateLabel}.xlsx`;
         XLSX.writeFile(workbook, filename, { compression: true });
 
-        const subject = `CrewTrace Export - ${einsatz.name}`;
-        const body = `Bitte Einsatz-Export im Anhang einfügen.\n\nEinsatz: ${einsatz.name}\nOrt: ${einsatz.ort}\nAlarm: ${einsatz.alarmzeit}`;
-        const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        window.setTimeout(() => {
-          window.location.href = mailto;
-        }, 200);
+        // no auto email client open after export
       });
   }
 
@@ -554,7 +558,7 @@ export class DashboardPage implements OnInit, OnDestroy {
         y += 10;
 
         const formatMessungen = (values: DruckInfo[]) =>
-          values.map((m) => `${m.druckBar} bar @ ${m.zeit}`).join(' | ');
+          values.map((m) => `${m.druckBar} bar | ${formatDateTime(m.zeit)}`);
 
         const addTableHeader = () => {
           doc.setFillColor(240, 140, 42);
@@ -576,7 +580,16 @@ export class DashboardPage implements OnInit, OnDestroy {
         addTableHeader();
 
         for (const t of list) {
-          const rowHeight = 48;
+          const cols = [110, 150, 145, 70, 70, pageWidth - margin * 2 - 545];
+          const m1 = formatMessungen(t.druckMessungenPerson1 || []);
+          const m2 = formatMessungen(t.druckMessungenPerson2 || []);
+          const mLines = [
+            ...(m1.length ? m1.map((m) => `P1: ${m}`) : []),
+            ...(m2.length ? m2.map((m) => `P2: ${m}`) : [])
+          ];
+          const mText = mLines.length ? mLines.join('\n') : '-';
+          const wrapped = doc.splitTextToSize(mText, cols[5] - 8);
+          const rowHeight = Math.max(48, 20 + wrapped.length * 12);
           if (y + rowHeight > pageHeight - 40) {
             doc.addPage();
             drawHeader();
@@ -585,7 +598,6 @@ export class DashboardPage implements OnInit, OnDestroy {
           doc.setDrawColor(225, 220, 212);
           doc.rect(margin, y, pageWidth - margin * 2, rowHeight);
 
-          const cols = [110, 150, 145, 70, 70, pageWidth - margin * 2 - 545];
           let x = margin + 8;
           doc.text(String(t.bezeichnung), x, y + 16);
           x += cols[0];
@@ -597,10 +609,7 @@ export class DashboardPage implements OnInit, OnDestroy {
           x += cols[3];
           doc.text(`${t.warnzeitMin}/${t.maxzeitMin}`, x, y + 16);
           x += cols[4];
-          const m1 = formatMessungen(t.druckMessungenPerson1 || []);
-          const m2 = formatMessungen(t.druckMessungenPerson2 || []);
-          const mText = [m1 ? `P1: ${m1}` : '', m2 ? `P2: ${m2}` : ''].filter(Boolean).join(' | ');
-          doc.text(mText || '-', x, y + 16, { maxWidth: cols[5] - 8 });
+          doc.text(wrapped, x, y + 16);
 
           y += rowHeight;
         }
@@ -628,12 +637,7 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.http
       .get<Trupp[]>(`${this.baseUrl}/einsaetze/${this.currentEinsatz.id}/trupps`)
       .subscribe((list) => {
-        const mapped = list.map((t) => ({
-          ...t,
-          endzeit: t.endzeit ? t.endzeit : null,
-          startEpoch: this.parseEpoch(t.startzeit),
-          endEpoch: t.endzeit ? this.parseEpoch(t.endzeit) : null
-        }));
+        const mapped = list.map((t) => this.normalizeTrupp(t));
         this.trupps = [...mapped].sort((a, b) => {
           const aActive = a.endzeit ? 1 : 0;
           const bActive = b.endzeit ? 1 : 0;
@@ -680,7 +684,7 @@ export class DashboardPage implements OnInit, OnDestroy {
       .post<Trupp>(`${this.baseUrl}/einsaetze/${this.currentEinsatz.id}/trupps`, payload)
       .subscribe((created) => {
       if (created) {
-        this.trupps = [...this.trupps, created];
+        this.trupps = [...this.trupps, this.normalizeTrupp(created)];
       }
       this.truppForm.truppNameId = '';
       this.truppForm.person1Id = '';
@@ -688,6 +692,22 @@ export class DashboardPage implements OnInit, OnDestroy {
       this.setAutoStartzeitNow();
       this.loadTrupps();
     });
+  }
+
+  private normalizeTrupp(trupp: Trupp): Trupp {
+    const messungen1 = trupp.druckMessungenPerson1 ?? [];
+    const messungen2 = trupp.druckMessungenPerson2 ?? [];
+    const endzeit = trupp.endzeit ? trupp.endzeit : null;
+    return {
+      ...trupp,
+      endzeit,
+      druckMessungenPerson1: messungen1,
+      druckMessungenPerson2: messungen2,
+      druckCountPerson1: trupp.druckCountPerson1 ?? messungen1.length,
+      druckCountPerson2: trupp.druckCountPerson2 ?? messungen2.length,
+      startEpoch: this.parseEpoch(trupp.startzeit),
+      endEpoch: endzeit ? this.parseEpoch(endzeit) : null
+    };
   }
 
   endTrupp(trupp: Trupp): void {
@@ -987,3 +1007,4 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.lastAutoStartzeit = value;
   }
 }
+
