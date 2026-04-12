@@ -21,6 +21,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   private readonly baseUrl = environment.apiBaseUrl;
   private timerId?: number;
   @ViewChild('druckInput') druckInput?: ElementRef<HTMLInputElement>;
+  @ViewChild('dashboardSection') dashboardSection?: ElementRef<HTMLElement>;
   openSelect: 'trupp' | 'p1' | 'p2' | null = null;
   private unsubscribeRealtime?: () => void;
   private unsubscribeStatus?: () => void;
@@ -691,7 +692,12 @@ export class DashboardPage implements OnInit, OnDestroy {
       this.truppForm.person2Id = '';
       this.setAutoStartzeitNow();
       this.loadTrupps();
+      this.scrollToDashboard();
     });
+  }
+
+  private scrollToDashboard(): void {
+    this.dashboardSection?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   private normalizeTrupp(trupp: Trupp): Trupp {
