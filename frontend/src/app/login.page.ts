@@ -3,14 +3,14 @@ import { HttpClient } from '@angular/common/http';
 import { Component } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
 import { ThemeStore } from './theme.store';
 
 @Component({
   selector: 'app-login-page',
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './login.page.html'
 })
 export class LoginPage {

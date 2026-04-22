@@ -1,4 +1,4 @@
-<div class="page">
+﻿<div class="page">
     <header class="hero">
       <div class="hero__text">
         <p class="hero__eyebrow">Anmeldung</p>
@@ -8,24 +8,58 @@
       <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
     </header>
 
-    <section class="card">
-      <div class="card__body">
-        <label>
-          Organisationscode
-          <input type="text" [(ngModel)]="orgaCode" placeholder="Z. B. FFW123" />
-        </label>
-        <label>
-          PIN
-          <input type="password" [(ngModel)]="pin" placeholder="PIN" />
-        </label>
-        <label class="checkbox">
-          <input type="checkbox" [(ngModel)]="remember" />
-          Zugangsdaten speichern
-        </label>
-        <div class="muted" *ngIf="error">{{ error }}</div>
-        <button class="primary btn-icon" type="button" (click)="login()" [disabled]="loading">
-          {{ loading ? 'Bitte warten...' : 'Anmelden' }}
-        </button>
-      </div>
+    <section class="grid login-grid">
+      <article class="card login-intro">
+        <div class="card__body">
+          <p class="hero__eyebrow">Was CrewTrace kann</p>
+          <h2>Übersichtlich führen. Sicher dokumentieren.</h2>
+          <p class="login-intro__lead">
+            CrewTrace unterstützt bei der Atemschutzüberwachung im Einsatz. Trupps,
+            Zeiten, Druckmeldungen und Warnstufen bleiben auf einen Blick erfassbar.
+          </p>
+
+          <div class="login-intro__points">
+            <div class="login-point">
+              <strong>Trupps live im Blick</strong>
+              <span>Aktive Trupps, Restzeiten, Druckwerte und Status sauber dargestellt.</span>
+            </div>
+            <div class="login-point">
+              <strong>Schnelle Bedienung im Einsatz</strong>
+              <span>Wenige Eingaben, klare Oberfläche, mobil und am Desktop nutzbar.</span>
+            </div>
+            <div class="login-point">
+              <strong>Nachvollziehbare Dokumentation</strong>
+              <span>Einsätze, Messungen und Berichte werden strukturiert gespeichert.</span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <section class="card login-form-card">
+        <div class="card__body">
+          <label>
+            Organisationscode
+            <input type="text" [(ngModel)]="orgaCode" placeholder="Z. B. FFW123" />
+          </label>
+          <label>
+            PIN
+            <input type="password" [(ngModel)]="pin" placeholder="PIN" />
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" [(ngModel)]="remember" />
+            Zugangsdaten speichern
+          </label>
+          <div class="muted" *ngIf="error">{{ error }}</div>
+          <button class="primary btn-icon" type="button" (click)="login()" [disabled]="loading">
+            {{ loading ? 'Bitte warten...' : 'Anmelden' }}
+          </button>
+          <div class="login-footer">
+            <a href="mailto:contact@crew-trace.com">Support</a>
+            <a [routerLink]="['/impressum']">Impressum</a>
+            <a [routerLink]="['/datenschutz']">Datenschutz</a>
+            <a [routerLink]="['/cookies']">Cookies</a>
+          </div>
+        </div>
+      </section>
     </section>
 </div>
