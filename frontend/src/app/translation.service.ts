@@ -1,0 +1,551 @@
+import { Injectable, signal } from '@angular/core';
+
+export type Lang = 'de' | 'en';
+
+type TranslationTree = {
+  [key: string]: string | TranslationTree;
+};
+
+const TRANSLATIONS: Record<Lang, TranslationTree> = {
+  de: {
+    common: {
+      appName: 'CrewTrace',
+      language: 'Sprache',
+      save: 'Speichern',
+      cancel: 'Abbrechen',
+      close: 'Schließen',
+      delete: 'Löschen',
+      details: 'Details',
+      export: 'Export',
+      pdf: 'PDF',
+      back: 'Zurück',
+      logout: 'Abmelden',
+      refresh: 'Aktualisieren',
+      settings: 'Einstellungen',
+      support: 'Support',
+      darkMode: 'Dark Mode',
+      active: 'Aktiv',
+      inactive: 'Inaktiv',
+      offline: 'Offline',
+      connected: 'Verbunden',
+      connecting: 'Verbinde...',
+      loading: 'Lädt...',
+      none: 'Keine',
+      noneShort: 'Keiner',
+      pleaseSelect: 'Bitte wählen',
+      live: 'Live',
+      organization: 'Organisation',
+      systemTime: 'Systemzeit',
+      operation: 'Einsatz'
+    },
+    language: {
+      switchLabel: 'Sprache wählen'
+    },
+    app: {
+      idleTitle: 'Inaktivität erkannt',
+      idleText:
+        'Du wirst in Kürze automatisch abgemeldet. Bitte bestätige, wenn du weiterarbeiten möchtest.',
+      stayLoggedIn: 'Weiterarbeiten',
+      logoutNow: 'Jetzt abmelden'
+    },
+    login: {
+      eyebrow: 'Anmeldung',
+      title: 'Schnell einsatzbereit',
+      subtitle: 'Organisation und PIN eingeben.',
+      infoEyebrow: 'Was CrewTrace kann',
+      infoTitle: 'Übersichtlich führen. Sicher dokumentieren.',
+      infoLead:
+        'CrewTrace unterstützt bei der Atemschutzüberwachung im Einsatz. Trupps, Zeiten, Druckmeldungen und Warnstufen bleiben auf einen Blick erfassbar.',
+      point1Title: 'Trupps live im Blick',
+      point1Text: 'Aktive Trupps, Restzeiten, Druckwerte und Status sauber dargestellt.',
+      point2Title: 'Schnelle Bedienung im Einsatz',
+      point2Text: 'Wenige Eingaben, klare Oberfläche, mobil und am Desktop nutzbar.',
+      point3Title: 'Nachvollziehbare Dokumentation',
+      point3Text: 'Einsätze, Messungen und Berichte werden strukturiert gespeichert.',
+      organizationCode: 'Organisationscode',
+      pin: 'PIN',
+      organizationCodePlaceholder: 'Z. B. FFW123',
+      pinPlaceholder: 'PIN',
+      remember: 'Zugangsdaten speichern',
+      submit: 'Anmelden',
+      wait: 'Bitte warten...',
+      errorRequired: 'Bitte Organisationscode und PIN eingeben.',
+      errorLogin: 'Login fehlgeschlagen. Code oder PIN falsch.',
+      titleTag: 'CrewTrace - Anmeldung'
+    },
+    dashboard: {
+      eyebrow: 'Einsatzübersicht',
+      title: 'Willkommen in Ihrem CrewTrace',
+      subtitle: 'Schnelle Lageübersicht für Trupps, Zeiten und Warnstufen.',
+      quickMenuShow: 'Schnellmenü anzeigen',
+      quickMenuHide: 'Schnellmenü ausblenden',
+      operationStateActive: 'Aktiv',
+      operationStateNone: 'Keiner',
+      statusGreen: 'Grün',
+      statusYellow: 'Gelb',
+      statusRed: 'Rot',
+      statusFinished: 'Beendet',
+      createOperation: '1. Einsatz starten',
+      operationName: 'Einsatzname',
+      operationPlace: 'Ort',
+      operationAlarmTime: 'Alarmzeit',
+      operationNamePlaceholder: 'Wohnungsbrand',
+      operationPlacePlaceholder: 'Hauptstraße 12',
+      startOperation: 'Einsatz starten',
+      endOperation: 'Einsatz beenden',
+      crewCapture: '2. Trupp erfassen',
+      crewLabel: 'Trupp',
+      person1: 'Person 1',
+      person2: 'Person 2',
+      startPressureP1: 'Startdruck Person 1 (bar)',
+      startPressureP2: 'Startdruck Person 2 (bar)',
+      startTime: 'Startzeit',
+      warnTime: 'Warnzeit nach (min)',
+      maxTime: 'Maxzeit (min)',
+      addCrew: 'Trupp hinzufügen',
+      board: '3. Dashboard',
+      waitForOperation: 'Warte auf Einsatz',
+      crewsActive: '{count} Trupps aktiv',
+      noCrews: 'Noch keine Trupps erfasst.',
+      alarm: 'Alarm',
+      end: 'Ende',
+      p1: 'P1',
+      p2: 'P2',
+      remainingTime: 'Restzeit',
+      duration: 'Einsatzdauer',
+      start: 'Start',
+      startPressureP1Short: 'Startdruck P1',
+      startPressureP2Short: 'Startdruck P2',
+      latestMeasurements: 'Letzte Messungen:',
+      pressureP1Button: 'Druck P1 ({count}/3)',
+      pressureP2Button: 'Druck P2 ({count}/3)',
+      endCrew: 'Beenden',
+      recentOperations: 'Letzte Einsätze',
+      entries: '{count} Einträge',
+      noRecentOperations: 'Noch keine Einsätze gespeichert.',
+      ended: 'Beendet',
+      pressureMeasurement: 'Druckmessung',
+      pressureBar: 'Druck (bar)',
+      latestMeasurementsTitle: 'Letzte Messungen',
+      operationDetails: 'Einsatz-Details',
+      loadCrews: 'Lade Trupps...',
+      noCrewsRecorded: 'Keine Trupps erfasst.',
+      p1Measurements: 'P1 Messungen',
+      p2Measurements: 'P2 Messungen',
+      noMeasurements: 'Keine Messungen',
+      deleteOperation: 'Einsatz löschen',
+      deleteOperationConfirm: 'Einsatz "{name}" wirklich löschen?',
+      warnReached: 'Warnzeit erreicht',
+      maxReached: 'Maxzeit erreicht',
+      acknowledge: 'Bestätigen',
+      operationStartError: 'Einsatz konnte nicht gestartet werden.',
+      liveOffline: 'Offline - keine Live-Daten',
+      exportSheetIncident: 'Einsatz',
+      exportSheetCrews: 'Trupps',
+      exportSectionIncident: 'Einsatz',
+      exportColName: 'Name',
+      exportColPlace: 'Ort',
+      exportColAlarmTime: 'Alarmzeit',
+      exportColStatus: 'Status',
+      exportColEndTime: 'Endzeit',
+      exportColCrewName: 'Bezeichnung',
+      exportColPerson1: 'Person 1',
+      exportColPerson2: 'Person 2',
+      exportColStartTime: 'Startzeit',
+      exportColStartPressureP1: 'Startdruck P1',
+      exportColStartPressureP2: 'Startdruck P2',
+      exportColWarnTime: 'Warnzeit (min)',
+      exportColMaxTime: 'Maxzeit (min)',
+      exportColMeasurementsP1: 'Messungen P1',
+      exportColMeasurementsP2: 'Messungen P2',
+      pdfTitle: '{appName} Einsatzbericht',
+      pdfCreatedAt: 'Stand: {value}',
+      pdfIncidentData: 'Einsatzdaten',
+      pdfCrew: 'Trupp',
+      pdfPersons: 'P1 / P2',
+      pdfPressure: 'Druck',
+      pdfWarnMax: 'Warn/Max',
+      pdfMeasurements: 'Messungen',
+      pressureTooHigh: 'Druck zu hoch: maximal {value} bar.',
+      pressureMaxValue: 'Maximal {value} bar.',
+      warnReachedCrew: 'Warnzeit erreicht: {name}',
+      maxReachedCrew: 'Maxzeit erreicht: {name}'
+    },
+    settings: {
+      eyebrow: 'Einstellungen',
+      title: 'Stammdaten verwalten',
+      subtitle: 'Atemschutzgeräteträger und Trupps pflegen.',
+      carrierSettings: 'Einstellungen: Atemschutzgeräteträger',
+      firstName: 'Vorname',
+      lastName: 'Nachname',
+      radioNameOptional: 'Funkrufname (optional)',
+      csvImportHint: 'CSV-Import (Vorname;Nachname;Funkrufname;Aktiv)',
+      sampleCsv: 'Beispiel CSV',
+      checkCsv: 'CSV prüfen',
+      importCsv: 'CSV importieren',
+      noRadioName: 'Kein Funkrufname',
+      deactivate: 'Deaktivieren',
+      activate: 'Aktivieren',
+      crewSettings: 'Einstellungen: Trupps',
+      crewName: 'Truppname',
+      template: 'Trupp-Vorlage',
+      rename: 'Umbenennen',
+      standardSettings: 'Einstellungen: Standardwerte',
+      defaultForNewCrews: 'Default für neue Trupps',
+      activeDefaults: 'Aktive Standardwerte',
+      startPressureP1: 'Startdruck P1: {value} bar',
+      startPressureP2: 'Startdruck P2: {value} bar',
+      warnTimeValue: 'Warnzeit: {value} min',
+      maxTimeValue: 'Maxzeit: {value} min',
+      saved: 'Gespeichert.',
+      saveFailed: 'Speichern fehlgeschlagen.',
+      importRunning: 'Import läuft...',
+      importNoValidRows: 'Keine gültigen Zeilen gefunden.',
+      csvLoaded: 'CSV geladen. Neu: {newCount}, Übersprungen: {skipped}.',
+      selectCsvFirst: 'Bitte zuerst eine CSV auswählen.',
+      importPreview: 'Vorschau: {newCount} neu, {skipped} übersprungen.',
+      noNewEntries: 'Keine neuen Einträge zum Import.',
+      importFinished: 'Import fertig. Erfolgreich: {done}, Fehler: {failed}.',
+      deleteCarrierConfirm: 'Geräteträger "{name}" wirklich löschen?',
+      deleteCrewConfirm: 'Trupp "{name}" wirklich löschen?',
+      carrierImportFile: 'geraetetraeger_import.csv'
+    },
+    manufacturer: {
+      eyebrow: 'Hersteller-Portal',
+      title: 'Organisationen verwalten',
+      subtitle: 'Anlegen, sperren, PINs zurücksetzen.',
+      secret: 'Hersteller-Secret',
+      newOrganization: 'Neue Organisation',
+      name: 'Name',
+      adminPin: 'Admin-PIN',
+      userPin: 'Benutzer-PIN',
+      status: 'Status',
+      statusActive: 'aktiv',
+      statusBlocked: 'gesperrt',
+      createOrganization: 'Organisation anlegen',
+      organizations: 'Organisationen',
+      noOrganizations: 'Keine Organisationen vorhanden.',
+      code: 'Code',
+      block: 'Sperren',
+      resetAdminPin: 'Admin-PIN',
+      resetUserPin: 'Benutzer-PIN',
+      loginSecretRequired: 'Bitte Hersteller-Secret eingeben.',
+      loginFailed: 'Login fehlgeschlagen.',
+      loadFailed: 'Konnte Organisationen nicht laden.',
+      requiredFields: 'Name, Admin-PIN und Benutzer-PIN sind Pflicht.',
+      createFailed: 'Organisation konnte nicht angelegt werden.',
+      resetPinPrompt: '{role}-PIN neu setzen:'
+    },
+    legal: {
+      eyebrow: 'Rechtliches',
+      imprint: 'Impressum',
+      privacy: 'Datenschutz',
+      cookies: 'Cookies',
+      imprintSubtitle: 'Angaben gemäß § 5 TMG.',
+      privacySubtitle: 'Informationen zur Verarbeitung personenbezogener Daten.',
+      cookiesSubtitle: 'Informationen zur Nutzung von Cookies und lokalen Speicherungen.',
+      draftTitle: 'Vorläufige Informationen',
+      draftText: 'Wird vor dem Produktivstart vervollständigt.'
+    }
+  },
+  en: {
+    common: {
+      appName: 'CrewTrace',
+      language: 'Language',
+      save: 'Save',
+      cancel: 'Cancel',
+      close: 'Close',
+      delete: 'Delete',
+      details: 'Details',
+      export: 'Export',
+      pdf: 'PDF',
+      back: 'Back',
+      logout: 'Log out',
+      refresh: 'Refresh',
+      settings: 'Settings',
+      support: 'Support',
+      darkMode: 'Dark mode',
+      active: 'Active',
+      inactive: 'Inactive',
+      offline: 'Offline',
+      connected: 'Connected',
+      connecting: 'Connecting...',
+      loading: 'Loading...',
+      none: 'None',
+      noneShort: 'None',
+      pleaseSelect: 'Please select',
+      live: 'Live',
+      organization: 'Organization',
+      systemTime: 'System time',
+      operation: 'Incident'
+    },
+    language: {
+      switchLabel: 'Choose language'
+    },
+    app: {
+      idleTitle: 'Inactivity detected',
+      idleText: 'You will be logged out shortly. Please confirm if you want to keep working.',
+      stayLoggedIn: 'Continue session',
+      logoutNow: 'Log out now'
+    },
+    login: {
+      eyebrow: 'Login',
+      title: 'Ready for action',
+      subtitle: 'Enter organization and PIN.',
+      infoEyebrow: 'What CrewTrace does',
+      infoTitle: 'Keep oversight. Document safely.',
+      infoLead:
+        'CrewTrace supports breathing apparatus accountability during incidents. Crews, times, pressure reports and warning levels stay visible at a glance.',
+      point1Title: 'Live crew overview',
+      point1Text: 'Active crews, remaining times, pressure values and status are clearly visible.',
+      point2Title: 'Fast to use on scene',
+      point2Text: 'Minimal input, clear interface, usable on mobile devices and desktop.',
+      point3Title: 'Reliable documentation',
+      point3Text: 'Incidents, measurements and reports are stored in a structured way.',
+      organizationCode: 'Organization code',
+      pin: 'PIN',
+      organizationCodePlaceholder: 'E.g. FD123',
+      pinPlaceholder: 'PIN',
+      remember: 'Remember access data',
+      submit: 'Sign in',
+      wait: 'Please wait...',
+      errorRequired: 'Please enter organization code and PIN.',
+      errorLogin: 'Login failed. Code or PIN is incorrect.',
+      titleTag: 'CrewTrace - Login'
+    },
+    dashboard: {
+      eyebrow: 'Incident overview',
+      title: 'Welcome to CrewTrace',
+      subtitle: 'Fast overview of crews, timings and warning levels.',
+      quickMenuShow: 'Show quick menu',
+      quickMenuHide: 'Hide quick menu',
+      operationStateActive: 'Active',
+      operationStateNone: 'None',
+      statusGreen: 'Green',
+      statusYellow: 'Yellow',
+      statusRed: 'Red',
+      statusFinished: 'Finished',
+      createOperation: '1. Start incident',
+      operationName: 'Incident name',
+      operationPlace: 'Location',
+      operationAlarmTime: 'Alarm time',
+      operationNamePlaceholder: 'Apartment fire',
+      operationPlacePlaceholder: 'Main Street 12',
+      startOperation: 'Start incident',
+      endOperation: 'End incident',
+      crewCapture: '2. Register crew',
+      crewLabel: 'Crew',
+      person1: 'Person 1',
+      person2: 'Person 2',
+      startPressureP1: 'Starting pressure person 1 (bar)',
+      startPressureP2: 'Starting pressure person 2 (bar)',
+      startTime: 'Start time',
+      warnTime: 'Warning time after (min)',
+      maxTime: 'Maximum time (min)',
+      addCrew: 'Add crew',
+      board: '3. Dashboard',
+      waitForOperation: 'Waiting for incident',
+      crewsActive: '{count} active crews',
+      noCrews: 'No crews registered yet.',
+      alarm: 'Alarm',
+      end: 'End',
+      p1: 'P1',
+      p2: 'P2',
+      remainingTime: 'Remaining time',
+      duration: 'Duration',
+      start: 'Start',
+      startPressureP1Short: 'Start pressure P1',
+      startPressureP2Short: 'Start pressure P2',
+      latestMeasurements: 'Latest measurements:',
+      pressureP1Button: 'Pressure P1 ({count}/3)',
+      pressureP2Button: 'Pressure P2 ({count}/3)',
+      endCrew: 'Finish',
+      recentOperations: 'Recent incidents',
+      entries: '{count} entries',
+      noRecentOperations: 'No incidents stored yet.',
+      ended: 'Finished',
+      pressureMeasurement: 'Pressure measurement',
+      pressureBar: 'Pressure (bar)',
+      latestMeasurementsTitle: 'Latest measurements',
+      operationDetails: 'Incident details',
+      loadCrews: 'Loading crews...',
+      noCrewsRecorded: 'No crews recorded.',
+      p1Measurements: 'P1 measurements',
+      p2Measurements: 'P2 measurements',
+      noMeasurements: 'No measurements',
+      deleteOperation: 'Delete incident',
+      deleteOperationConfirm: 'Delete incident "{name}"?',
+      warnReached: 'Warning time reached',
+      maxReached: 'Maximum time reached',
+      acknowledge: 'Acknowledge',
+      operationStartError: 'Incident could not be started.',
+      liveOffline: 'Offline - no live data',
+      exportSheetIncident: 'Incident',
+      exportSheetCrews: 'Crews',
+      exportSectionIncident: 'Incident',
+      exportColName: 'Name',
+      exportColPlace: 'Location',
+      exportColAlarmTime: 'Alarm time',
+      exportColStatus: 'Status',
+      exportColEndTime: 'End time',
+      exportColCrewName: 'Label',
+      exportColPerson1: 'Person 1',
+      exportColPerson2: 'Person 2',
+      exportColStartTime: 'Start time',
+      exportColStartPressureP1: 'Start pressure P1',
+      exportColStartPressureP2: 'Start pressure P2',
+      exportColWarnTime: 'Warning time (min)',
+      exportColMaxTime: 'Maximum time (min)',
+      exportColMeasurementsP1: 'Measurements P1',
+      exportColMeasurementsP2: 'Measurements P2',
+      pdfTitle: '{appName} Incident report',
+      pdfCreatedAt: 'Generated: {value}',
+      pdfIncidentData: 'Incident data',
+      pdfCrew: 'Crew',
+      pdfPersons: 'P1 / P2',
+      pdfPressure: 'Pressure',
+      pdfWarnMax: 'Warn/Max',
+      pdfMeasurements: 'Measurements',
+      pressureTooHigh: 'Pressure too high: maximum {value} bar.',
+      pressureMaxValue: 'Maximum {value} bar.',
+      warnReachedCrew: 'Warning time reached: {name}',
+      maxReachedCrew: 'Maximum time reached: {name}'
+    },
+    settings: {
+      eyebrow: 'Settings',
+      title: 'Manage master data',
+      subtitle: 'Maintain BA wearers and crews.',
+      carrierSettings: 'Settings: BA wearers',
+      firstName: 'First name',
+      lastName: 'Last name',
+      radioNameOptional: 'Radio call sign (optional)',
+      csvImportHint: 'CSV import (FirstName;LastName;RadioName;Active)',
+      sampleCsv: 'Sample CSV',
+      checkCsv: 'Check CSV',
+      importCsv: 'Import CSV',
+      noRadioName: 'No radio call sign',
+      deactivate: 'Deactivate',
+      activate: 'Activate',
+      crewSettings: 'Settings: Crews',
+      crewName: 'Crew name',
+      template: 'Crew template',
+      rename: 'Rename',
+      standardSettings: 'Settings: Defaults',
+      defaultForNewCrews: 'Default for new crews',
+      activeDefaults: 'Current defaults',
+      startPressureP1: 'Starting pressure P1: {value} bar',
+      startPressureP2: 'Starting pressure P2: {value} bar',
+      warnTimeValue: 'Warning time: {value} min',
+      maxTimeValue: 'Maximum time: {value} min',
+      saved: 'Saved.',
+      saveFailed: 'Saving failed.',
+      importRunning: 'Import in progress...',
+      importNoValidRows: 'No valid rows found.',
+      csvLoaded: 'CSV loaded. New: {newCount}, skipped: {skipped}.',
+      selectCsvFirst: 'Please select a CSV first.',
+      importPreview: 'Preview: {newCount} new, {skipped} skipped.',
+      noNewEntries: 'No new entries to import.',
+      importFinished: 'Import completed. Success: {done}, errors: {failed}.',
+      deleteCarrierConfirm: 'Delete BA wearer "{name}"?',
+      deleteCrewConfirm: 'Delete crew "{name}"?',
+      carrierImportFile: 'ba_wearers_import.csv'
+    },
+    manufacturer: {
+      eyebrow: 'Vendor portal',
+      title: 'Manage organizations',
+      subtitle: 'Create, block and reset PINs.',
+      secret: 'Vendor secret',
+      newOrganization: 'New organization',
+      name: 'Name',
+      adminPin: 'Admin PIN',
+      userPin: 'User PIN',
+      status: 'Status',
+      statusActive: 'active',
+      statusBlocked: 'blocked',
+      createOrganization: 'Create organization',
+      organizations: 'Organizations',
+      noOrganizations: 'No organizations available.',
+      code: 'Code',
+      block: 'Block',
+      resetAdminPin: 'Admin PIN',
+      resetUserPin: 'User PIN',
+      loginSecretRequired: 'Please enter the vendor secret.',
+      loginFailed: 'Login failed.',
+      loadFailed: 'Could not load organizations.',
+      requiredFields: 'Name, admin PIN and user PIN are required.',
+      createFailed: 'Organization could not be created.',
+      resetPinPrompt: 'Set new {role} PIN:'
+    },
+    legal: {
+      eyebrow: 'Legal',
+      imprint: 'Imprint',
+      privacy: 'Privacy',
+      cookies: 'Cookies',
+      imprintSubtitle: 'Information according to Sec. 5 TMG.',
+      privacySubtitle: 'Information on the processing of personal data.',
+      cookiesSubtitle: 'Information on the use of cookies and local storage.',
+      draftTitle: 'Preliminary information',
+      draftText: 'Will be completed before the production launch.'
+    }
+  }
+};
+
+@Injectable({ providedIn: 'root' })
+export class TranslationService {
+  private readonly storageKey = 'crewtrace_lang';
+  readonly lang = signal<Lang>('en');
+
+  constructor() {
+    this.init();
+  }
+
+  init(): void {
+    const stored = this.readStoredLang();
+    if (stored) {
+      this.lang.set(stored);
+      return;
+    }
+
+    const browser = typeof navigator !== 'undefined' ? navigator.language.toLowerCase() : 'en';
+    const detected: Lang = browser.startsWith('de') ? 'de' : 'en';
+    this.lang.set(detected);
+    localStorage.setItem(this.storageKey, detected);
+  }
+
+  setLang(lang: Lang): void {
+    this.lang.set(lang);
+    localStorage.setItem(this.storageKey, lang);
+  }
+
+  t(key: string, params?: Record<string, string | number>): string {
+    const value = this.lookup(this.lang(), key) ?? this.lookup('en', key) ?? key;
+    return this.interpolate(value, params);
+  }
+
+  private readStoredLang(): Lang | null {
+    const value = localStorage.getItem(this.storageKey);
+    return value === 'de' || value === 'en' ? value : null;
+  }
+
+  private lookup(lang: Lang, key: string): string | null {
+    let node: string | TranslationTree = TRANSLATIONS[lang];
+    for (const part of key.split('.')) {
+      if (typeof node !== 'object' || node === null || !(part in node)) {
+        return null;
+      }
+      node = node[part];
+    }
+    return typeof node === 'string' ? node : null;
+  }
+
+  private interpolate(template: string, params?: Record<string, string | number>): string {
+    if (!params) {
+      return template;
+    }
+
+    return Object.entries(params).reduce(
+      (result, [key, value]) => result.replace(new RegExp(`\\{${key}\\}`, 'g'), String(value)),
+      template
+    );
+  }
+}

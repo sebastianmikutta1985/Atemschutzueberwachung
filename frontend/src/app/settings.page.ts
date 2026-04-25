@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, effect, OnInit, OnDestroy } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -9,6 +9,7 @@ import { AuthStore } from './auth.store';
 import { ThemeMode, ThemeStore } from './theme.store';
 import { Geraetetraeger, OrgSettings, TruppName } from './models';
 import { RealtimeService } from './realtime.service';
+import { TranslationService } from './translation.service';
 
 @Component({
   selector: 'app-settings-page',
@@ -59,8 +60,14 @@ export class SettingsPage implements OnInit, OnDestroy {
     private http: HttpClient,
     private router: Router,
     private realtime: RealtimeService,
-    private title: Title
-  ) {}
+    private title: Title,
+    public i18n: TranslationService
+  ) {
+    effect(() => {
+      this.i18n.lang();
+      this.updatePageTitle();
+    });
+  }
 
   ngOnInit(): void {
     this.loadTheme();
@@ -83,7 +90,7 @@ export class SettingsPage implements OnInit, OnDestroy {
     });
     this.unsubscribeStatus = this.realtime.onStatus((status) => {
       if (status === 'disconnected' && this.lastLiveStatus !== 'disconnected') {
-        this.pushToast('Offline – keine Live-Daten', 'warn');
+        this.pushToast(this.i18n.t('dashboard.liveOffline'), 'warn');
       }
       this.lastLiveStatus = status;
       this.liveStatus = status;
@@ -99,7 +106,7 @@ export class SettingsPage implements OnInit, OnDestroy {
   private updatePageTitle(): void {
     const auth = AuthStore.load();
     const org = auth?.orgName ? ` - ${auth.orgName}` : '';
-    this.title.setTitle(`CrewTrace${org}`);
+    this.title.setTitle(`${this.i18n.t('common.appName')}${org}`);
   }
 
   toggleTheme(): void {
@@ -181,10 +188,10 @@ export class SettingsPage implements OnInit, OnDestroy {
         this.orgSettingsForm.defaultStartdruckPerson2Bar = settings.defaultStartdruckPerson2Bar;
         this.orgSettingsForm.defaultWarnzeitMin = settings.defaultWarnzeitMin;
         this.orgSettingsForm.defaultMaxzeitMin = settings.defaultMaxzeitMin;
-        this.orgSettingsMessage = 'Gespeichert.';
+        this.orgSettingsMessage = this.i18n.t('settings.saved');
       },
       error: () => {
-        this.orgSettingsMessage = 'Speichern fehlgeschlagen.';
+        this.orgSettingsMessage = this.i18n.t('settings.saveFailed');
       }
     });
   }
@@ -216,17 +223,20 @@ export class SettingsPage implements OnInit, OnDestroy {
     if (!file) {
       return;
     }
-    this.importMessage = 'Import läuft...';
+    this.importMessage = this.i18n.t('settings.importRunning');
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result || '');
       this.importRows = this.parseCsvRows(text);
       if (this.importRows.length === 0) {
-        this.importMessage = 'Keine gültigen Zeilen gefunden.';
+        this.importMessage = this.i18n.t('settings.importNoValidRows');
         return;
       }
       const plan = this.buildImportPlan();
-      this.importMessage = `CSV geladen. Neu: ${plan.toCreate.length}, Übersprungen: ${plan.skipped}.`;
+      this.importMessage = this.i18n.t('settings.csvLoaded', {
+        newCount: plan.toCreate.length,
+        skipped: plan.skipped
+      });
     };
     reader.readAsText(file, 'utf-8');
   }
@@ -241,31 +251,34 @@ export class SettingsPage implements OnInit, OnDestroy {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = 'geraetetraeger_import.csv';
+    anchor.download = this.i18n.t('settings.carrierImportFile');
     anchor.click();
     URL.revokeObjectURL(url);
   }
 
   previewCsvImport(): void {
     if (!this.importRows.length) {
-      this.importMessage = 'Bitte zuerst eine CSV auswählen.';
+      this.importMessage = this.i18n.t('settings.selectCsvFirst');
       return;
     }
     const plan = this.buildImportPlan();
-    this.importMessage = `Vorschau: ${plan.toCreate.length} neu, ${plan.skipped} übersprungen.`;
+    this.importMessage = this.i18n.t('settings.importPreview', {
+      newCount: plan.toCreate.length,
+      skipped: plan.skipped
+    });
   }
 
   runCsvImport(): void {
     if (!this.importRows.length) {
-      this.importMessage = 'Bitte zuerst eine CSV auswählen.';
+      this.importMessage = this.i18n.t('settings.selectCsvFirst');
       return;
     }
     const plan = this.buildImportPlan();
     if (plan.toCreate.length === 0) {
-      this.importMessage = 'Keine neuen Einträge zum Import.';
+      this.importMessage = this.i18n.t('settings.noNewEntries');
       return;
     }
-    this.importMessage = 'Import läuft...';
+    this.importMessage = this.i18n.t('settings.importRunning');
     let done = 0;
     let failed = 0;
     plan.toCreate.forEach((row) => {
@@ -280,7 +293,7 @@ export class SettingsPage implements OnInit, OnDestroy {
           },
           complete: () => {
             if (done + failed === plan.toCreate.length) {
-              this.importMessage = `Import fertig. Erfolgreich: ${done}, Fehler: ${failed}.`;
+              this.importMessage = this.i18n.t('settings.importFinished', { done, failed });
               this.importRows = [];
               this.loadGeraetetraeger();
             }
@@ -355,7 +368,9 @@ export class SettingsPage implements OnInit, OnDestroy {
   }
 
   deleteGeraetetraeger(traeger: Geraetetraeger): void {
-    const ok = window.confirm(`Geraetetraeger "${traeger.nachname}" wirklich loeschen?`);
+    const ok = window.confirm(
+      this.i18n.t('settings.deleteCarrierConfirm', { name: traeger.nachname })
+    );
     if (!ok) {
       return;
     }
@@ -395,7 +410,7 @@ export class SettingsPage implements OnInit, OnDestroy {
   }
 
   deleteTruppName(item: TruppName): void {
-    const ok = window.confirm(`Trupp "${item.name}" wirklich loeschen?`);
+    const ok = window.confirm(this.i18n.t('settings.deleteCrewConfirm', { name: item.name }));
     if (!ok) {
       return;
     }

@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, ElementRef, HostListener, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { Component, effect, ElementRef, HostListener, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -9,6 +9,7 @@ import { AuthStore } from './auth.store';
 import { DruckInfo, Einsatz, Geraetetraeger, OrgSettings, Trupp, TruppName } from './models';
 import { RealtimeService } from './realtime.service';
 import { ThemeMode, ThemeStore } from './theme.store';
+import { TranslationService } from './translation.service';
 import jsPDF from 'jspdf';
 import * as XLSX from 'xlsx';
 
@@ -89,8 +90,14 @@ export class DashboardPage implements OnInit, OnDestroy {
     private zone: NgZone,
     private router: Router,
     private realtime: RealtimeService,
-    private title: Title
-  ) {}
+    private title: Title,
+    public i18n: TranslationService
+  ) {
+    effect(() => {
+      this.i18n.lang();
+      this.updatePageTitle();
+    });
+  }
 
   private formatDateTime(value: string | null | undefined): string {
     if (!value) return '-';
@@ -124,7 +131,7 @@ export class DashboardPage implements OnInit, OnDestroy {
     });
     this.unsubscribeStatus = this.realtime.onStatus((status) => {
       if (status === 'disconnected' && this.lastLiveStatus !== 'disconnected') {
-        this.pushToast('Offline – keine Live-Daten', 'warn');
+        this.pushToast(this.i18n.t('dashboard.liveOffline'), 'warn');
       }
       this.lastLiveStatus = status;
       this.liveStatus = status;
@@ -134,7 +141,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   private updatePageTitle(): void {
     const auth = AuthStore.load();
     const org = auth?.orgName ? ` - ${auth.orgName}` : '';
-    this.title.setTitle(`CrewTrace${org}`);
+    this.title.setTitle(`${this.i18n.t('common.appName')}${org}`);
   }
 
   private loadTheme(): void {
@@ -230,21 +237,37 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   truppNameLabel(id: string): string {
     if (!id) {
-      return 'Bitte wählen';
+      return this.i18n.t('common.pleaseSelect');
     }
     const found = this.truppnamen.find((t) => t.id === id);
-    return found?.name ?? 'Bitte wählen';
+    return found?.name ?? this.i18n.t('common.pleaseSelect');
   }
 
   personLabel(id: string): string {
     if (!id) {
-      return 'Bitte wählen';
+      return this.i18n.t('common.pleaseSelect');
     }
     const found = this.geraetetraeger.find((t) => t.id === id);
     if (!found) {
-      return 'Bitte wählen';
+      return this.i18n.t('common.pleaseSelect');
     }
     return `${found.nachname} ${found.vorname}${found.funkrufname ? ' (' + found.funkrufname + ')' : ''}`;
+  }
+
+  statusLabel(trupp: Trupp): string {
+    const status = this.statusFor(trupp, this.currentEpoch);
+    switch (status) {
+      case 'gruen':
+        return this.i18n.t('dashboard.statusGreen');
+      case 'gelb':
+        return this.i18n.t('dashboard.statusYellow');
+      case 'rot':
+        return this.i18n.t('dashboard.statusRed');
+      case 'beendet':
+        return this.i18n.t('dashboard.statusFinished');
+      default:
+        return status;
+    }
   }
 
   get availableTruppnamen(): TruppName[] {
@@ -369,7 +392,7 @@ export class DashboardPage implements OnInit, OnDestroy {
           AuthStore.clear();
           this.router.navigateByUrl('/login');
         }
-        this.errorMessage = 'Einsatz konnte nicht gestartet werden.';
+        this.errorMessage = this.i18n.t('dashboard.operationStartError');
       }
     });
   }
@@ -441,31 +464,44 @@ export class DashboardPage implements OnInit, OnDestroy {
             .map((m) => `${m.druckBar} bar | ${this.formatDateTime(m.zeit)}`)
             .join(' | ');
 
+        const einsatzStatus =
+          einsatz.status === 'aktiv'
+            ? this.i18n.t('dashboard.operationStateActive')
+            : einsatz.status === 'beendet'
+              ? this.i18n.t('dashboard.ended')
+              : einsatz.status;
+
         const einsatzSheet = XLSX.utils.aoa_to_sheet([
-          ['Einsatz'],
-          ['Name', 'Ort', 'Alarmzeit', 'Status', 'Endzeit'],
+          [this.i18n.t('dashboard.exportSectionIncident')],
+          [
+            this.i18n.t('dashboard.exportColName'),
+            this.i18n.t('dashboard.exportColPlace'),
+            this.i18n.t('dashboard.exportColAlarmTime'),
+            this.i18n.t('dashboard.exportColStatus'),
+            this.i18n.t('dashboard.exportColEndTime')
+          ],
           [
             einsatz.name,
             einsatz.ort,
             this.formatDateTime(einsatz.alarmzeit),
-            einsatz.status,
+            einsatzStatus,
             einsatz.endzeit ? this.formatDateTime(einsatz.endzeit) : '-'
           ]
         ]);
 
         const truppRows = [
           [
-            'Bezeichnung',
-            'Person 1',
-            'Person 2',
-            'Startzeit',
-            'Endzeit',
-            'Startdruck P1',
-            'Startdruck P2',
-            'Warnzeit (min)',
-            'Maxzeit (min)',
-            'Messungen P1',
-            'Messungen P2'
+            this.i18n.t('dashboard.exportColCrewName'),
+            this.i18n.t('dashboard.exportColPerson1'),
+            this.i18n.t('dashboard.exportColPerson2'),
+            this.i18n.t('dashboard.exportColStartTime'),
+            this.i18n.t('dashboard.exportColEndTime'),
+            this.i18n.t('dashboard.exportColStartPressureP1'),
+            this.i18n.t('dashboard.exportColStartPressureP2'),
+            this.i18n.t('dashboard.exportColWarnTime'),
+            this.i18n.t('dashboard.exportColMaxTime'),
+            this.i18n.t('dashboard.exportColMeasurementsP1'),
+            this.i18n.t('dashboard.exportColMeasurementsP2')
           ],
           ...list.map((t) => [
             t.bezeichnung,
@@ -485,8 +521,8 @@ export class DashboardPage implements OnInit, OnDestroy {
         const truppSheet = XLSX.utils.aoa_to_sheet(truppRows);
 
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, einsatzSheet, 'Einsatz');
-        XLSX.utils.book_append_sheet(workbook, truppSheet, 'Trupps');
+        XLSX.utils.book_append_sheet(workbook, einsatzSheet, this.i18n.t('dashboard.exportSheetIncident'));
+        XLSX.utils.book_append_sheet(workbook, truppSheet, this.i18n.t('dashboard.exportSheetCrews'));
 
         const safeName = (einsatz.name || 'Einsatz')
           .replace(/[^a-z0-9äöüÄÖÜß_\\-]+/gi, '_');
@@ -494,7 +530,7 @@ export class DashboardPage implements OnInit, OnDestroy {
         const stamp = Number.isNaN(alarm.getTime()) ? new Date() : alarm;
         const pad = (v: number) => v.toString().padStart(2, '0');
         const dateLabel = `${pad(stamp.getDate())}.${pad(stamp.getMonth() + 1)}.${stamp.getFullYear()}`;
-        const filename = `Einsatzbericht_${safeName}_${dateLabel}.xlsx`;
+        const filename = `${this.i18n.t('common.appName')}_Einsatzbericht_${safeName}_${dateLabel}.xlsx`;
         XLSX.writeFile(workbook, filename, { compression: true });
 
         // no auto email client open after export
@@ -517,10 +553,18 @@ export class DashboardPage implements OnInit, OnDestroy {
           doc.setTextColor(246, 239, 232);
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(18);
-            doc.text('CrewTrace Einsatzbericht', margin, 48);
+          doc.text(
+            this.i18n.t('dashboard.pdfTitle', { appName: this.i18n.t('common.appName') }),
+            margin,
+            48
+          );
           doc.setFontSize(10);
           doc.setFont('helvetica', 'normal');
-          doc.text(`Stand: ${new Date().toLocaleString()}`, margin, 66);
+          doc.text(
+            this.i18n.t('dashboard.pdfCreatedAt', { value: new Date().toLocaleString() }),
+            margin,
+            66
+          );
           doc.setTextColor(33, 33, 33);
           y = 96;
         };
@@ -529,25 +573,22 @@ export class DashboardPage implements OnInit, OnDestroy {
 
         doc.setFontSize(12);
         doc.setFont('helvetica', 'bold');
-        doc.text('Einsatzdaten', margin, y);
+        doc.text(this.i18n.t('dashboard.pdfIncidentData'), margin, y);
         y += 16;
 
         doc.setFont('helvetica', 'normal');
-        const formatDateTime = (value: string | null | undefined) => {
-          if (!value) return '-';
-          const d = new Date(value);
-          if (Number.isNaN(d.getTime())) return value;
-          const pad = (v: number) => v.toString().padStart(2, '0');
-          return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(
-            d.getHours()
-          )}:${pad(d.getMinutes())}:${pad(d.getSeconds())} Uhr`;
-        };
+        const einsatzStatus =
+          einsatz.status === 'aktiv'
+            ? this.i18n.t('dashboard.operationStateActive')
+            : einsatz.status === 'beendet'
+              ? this.i18n.t('dashboard.ended')
+              : einsatz.status;
         const info = [
-          ['Einsatz', einsatz.name],
-          ['Ort', einsatz.ort],
-          ['Alarmzeit', formatDateTime(einsatz.alarmzeit)],
-          ['Status', einsatz.status],
-          ['Ende', formatDateTime(einsatz.endzeit ?? '')]
+          [this.i18n.t('dashboard.exportSectionIncident'), einsatz.name],
+          [this.i18n.t('dashboard.exportColPlace'), einsatz.ort],
+          [this.i18n.t('dashboard.exportColAlarmTime'), this.formatDateTime(einsatz.alarmzeit)],
+          [this.i18n.t('dashboard.exportColStatus'), einsatzStatus],
+          [this.i18n.t('dashboard.end'), this.formatDateTime(einsatz.endzeit ?? '')]
         ];
         for (const [label, value] of info) {
           doc.setTextColor(90, 70, 60);
@@ -559,14 +600,21 @@ export class DashboardPage implements OnInit, OnDestroy {
         y += 10;
 
         const formatMessungen = (values: DruckInfo[]) =>
-          values.map((m) => `${m.druckBar} bar | ${formatDateTime(m.zeit)}`);
+          values.map((m) => `${m.druckBar} bar | ${this.formatDateTime(m.zeit)}`);
 
         const addTableHeader = () => {
           doc.setFillColor(240, 140, 42);
           doc.setTextColor(255, 255, 255);
           doc.setFont('helvetica', 'bold');
           doc.rect(margin, y, pageWidth - margin * 2, 24, 'F');
-          const headers = ['Trupp', 'P1 / P2', 'Start', 'Druck', 'Warn/Max', 'Messungen'];
+          const headers = [
+            this.i18n.t('dashboard.pdfCrew'),
+            this.i18n.t('dashboard.pdfPersons'),
+            this.i18n.t('dashboard.start'),
+            this.i18n.t('dashboard.pdfPressure'),
+            this.i18n.t('dashboard.pdfWarnMax'),
+            this.i18n.t('dashboard.pdfMeasurements')
+          ];
           const cols = [110, 150, 145, 70, 70, pageWidth - margin * 2 - 545];
           let x = margin + 8;
           headers.forEach((h, i) => {
@@ -604,7 +652,7 @@ export class DashboardPage implements OnInit, OnDestroy {
           x += cols[0];
           doc.text(`P1: ${t.person1Name}\nP2: ${t.person2Name}`, x, y + 14);
           x += cols[1];
-          doc.text(formatDateTime(t.startzeit), x, y + 16);
+          doc.text(this.formatDateTime(t.startzeit), x, y + 16);
           x += cols[2];
           doc.text(`P1 ${t.startdruckPerson1Bar}\nP2 ${t.startdruckPerson2Bar}`, x, y + 14);
           x += cols[3];
@@ -623,7 +671,7 @@ export class DashboardPage implements OnInit, OnDestroy {
         const dateLabel = `${pad(stamp.getDate())}.${pad(stamp.getMonth() + 1)}.${stamp.getFullYear()}`;
         const safeName = (einsatz.name || 'Einsatz')
           .replace(/[^a-z0-9äöüÄÖÜß_\\-]+/gi, '_');
-        doc.save(`Einsatzbericht_${safeName}_${dateLabel}.pdf`);
+        doc.save(`${this.i18n.t('common.appName')}_Einsatzbericht_${safeName}_${dateLabel}.pdf`);
       });
   }
 
@@ -755,8 +803,8 @@ export class DashboardPage implements OnInit, OnDestroy {
     }
     const maxAllowed = this.maxDruckForModal();
     if (maxAllowed !== null && value > maxAllowed) {
-      this.druckModalError = `Maximal ${maxAllowed} bar.`;
-      this.pushToast(`Druck zu hoch: maximal ${maxAllowed} bar.`, 'warn');
+      this.druckModalError = this.i18n.t('dashboard.pressureMaxValue', { value: maxAllowed });
+      this.pushToast(this.i18n.t('dashboard.pressureTooHigh', { value: maxAllowed }), 'warn');
       return;
     }
     this.http
@@ -892,7 +940,7 @@ export class DashboardPage implements OnInit, OnDestroy {
       const elapsedMin = this.elapsedMinutes(trupp, now);
       if (elapsedMin >= trupp.maxzeitMin && !trupp.maxAcked) {
         if (this.shouldAlert(this.lastMaxAlert, trupp.id, now, 15000)) {
-          this.pushToast(`Maxzeit erreicht: ${trupp.bezeichnung}`, 'max');
+          this.pushToast(this.i18n.t('dashboard.maxReachedCrew', { name: trupp.bezeichnung }), 'max');
           this.playBeep(2);
           this.triggerVibration([250, 120, 250, 120, 250]);
           this.logEvent(trupp, 'max');
@@ -900,7 +948,7 @@ export class DashboardPage implements OnInit, OnDestroy {
         }
       } else if (elapsedMin >= trupp.warnzeitMin && !trupp.warnAcked) {
         if (this.shouldAlert(this.lastWarnAlert, trupp.id, now, 30000)) {
-          this.pushToast(`Warnzeit erreicht: ${trupp.bezeichnung}`, 'warn');
+          this.pushToast(this.i18n.t('dashboard.warnReachedCrew', { name: trupp.bezeichnung }), 'warn');
           this.playBeep(1);
           this.triggerVibration([180, 120, 180]);
           this.logEvent(trupp, 'warn');

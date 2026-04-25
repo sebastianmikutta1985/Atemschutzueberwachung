@@ -3,6 +3,7 @@ import { Component, HostListener, OnDestroy, OnInit, ViewEncapsulation } from '@
 import { Router, RouterOutlet } from '@angular/router';
 import { AuthStore } from './auth.store';
 import { ThemeStore } from './theme.store';
+import { TranslationService } from './translation.service';
 
 @Component({
   selector: 'app-root',
@@ -20,7 +21,7 @@ export class App implements OnInit {
   private idleCheck?: number;
   idleWarningOpen = false;
 
-  constructor(private router: Router) {}
+  constructor(private router: Router, public i18n: TranslationService) {}
 
   ngOnInit(): void {
     const themeKey = AuthStore.themeKey();

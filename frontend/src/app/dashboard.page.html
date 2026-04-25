@@ -1,72 +1,90 @@
 <div class="page">
-    <header class="hero">
-      <div class="hero__text">
-        <p class="hero__eyebrow">Einsatzübersicht</p>
-        <h1>Willkommen in Ihrem CrewTrace</h1>
-        <p class="hero__sub">
-          Schnelle Lageübersicht für Trupps, Zeiten und Warnstufen.
-        </p>
-        <button class="ghost hero__meta-toggle" type="button" (click)="toggleMobileMeta()">
-          {{ mobileMetaOpen ? 'Schnellmenü ausblenden' : 'Schnellmenü anzeigen' }}
-        </button>
+  <header class="hero">
+    <div class="hero__text">
+      <p class="hero__eyebrow">{{ i18n.t('dashboard.eyebrow') }}</p>
+      <h1>{{ i18n.t('dashboard.title') }}</h1>
+      <p class="hero__sub">{{ i18n.t('dashboard.subtitle') }}</p>
+      <button class="ghost hero__meta-toggle" type="button" (click)="toggleMobileMeta()">
+        {{ mobileMetaOpen ? i18n.t('dashboard.quickMenuHide') : i18n.t('dashboard.quickMenuShow') }}
+      </button>
+    </div>
+    <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
+    <div class="hero__meta" [class.hero__meta--open]="mobileMetaOpen">
+      <div class="pill" [attr.data-live]="liveStatus">
+        <span class="pill__label">{{ i18n.t('common.live') }}</span>
+        <span class="pill__value">
+          {{
+            liveStatus === 'connected'
+              ? i18n.t('common.connected')
+              : liveStatus === 'connecting'
+                ? i18n.t('common.connecting')
+                : i18n.t('common.offline')
+          }}
+        </span>
       </div>
-      <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
-      <div class="hero__meta" [class.hero__meta--open]="mobileMetaOpen">
-        <div class="pill" [attr.data-live]="liveStatus">
-          <span class="pill__label">Live</span>
-          <span class="pill__value">
-            {{ liveStatus === 'connected' ? 'Verbunden' : liveStatus === 'connecting' ? 'Verbinde...' : 'Offline' }}
-          </span>
-        </div>
-        <div class="pill">
-          <span class="pill__label">Systemzeit</span>
-          <span class="pill__value">{{ currentEpoch | date: 'HH:mm:ss' }}</span>
-        </div>
-        <div class="pill" *ngIf="authInfo">
-          <span class="pill__label">Organisation</span>
-          <span class="pill__value">{{ authInfo.orgName }} ({{ authInfo.orgCode }})</span>
-        </div>
-        <div class="pill" [class.pill--live]="currentEinsatz">
-          <span class="pill__label">Einsatz</span>
-          <span class="pill__value">{{ currentEinsatz ? 'Aktiv' : 'Keiner' }}</span>
-        </div>
-        <label class="theme-toggle">
-          <input type="checkbox" [checked]="themeMode === 'dark'" (change)="toggleTheme()" />
-          <span class="theme-toggle__track">
-            <span class="theme-toggle__thumb"></span>
-          </span>
-          <span class="theme-toggle__label">Dark Mode</span>
-        </label>
-        <button class="ghost btn-icon" type="button" (click)="loadActiveEinsatz()">Aktualisieren</button>
-        <button
-          class="ghost btn-icon"
-          type="button"
-          [routerLink]="['/einstellungen']"
-          *ngIf="authInfo?.role === 'admin'"
-        >
-          Einstellungen
-        </button>
-        <button class="ghost btn-icon" type="button" (click)="logout()">Abmelden</button>
+      <div class="pill">
+        <span class="pill__label">{{ i18n.t('common.systemTime') }}</span>
+        <span class="pill__value">{{ currentEpoch | date: 'HH:mm:ss' }}</span>
       </div>
-    </header>
+      <div class="pill" *ngIf="authInfo">
+        <span class="pill__label">{{ i18n.t('common.organization') }}</span>
+        <span class="pill__value">{{ authInfo.orgName }} ({{ authInfo.orgCode }})</span>
+      </div>
+      <div class="pill" [class.pill--live]="currentEinsatz">
+        <span class="pill__label">{{ i18n.t('common.operation') }}</span>
+        <span class="pill__value">
+          {{ currentEinsatz ? i18n.t('dashboard.operationStateActive') : i18n.t('dashboard.operationStateNone') }}
+        </span>
+      </div>
+      <label class="theme-toggle">
+        <input type="checkbox" [checked]="themeMode === 'dark'" (change)="toggleTheme()" />
+        <span class="theme-toggle__track">
+          <span class="theme-toggle__thumb"></span>
+        </span>
+        <span class="theme-toggle__label">{{ i18n.t('common.darkMode') }}</span>
+      </label>
+      <div class="lang-switch" [attr.aria-label]="i18n.t('language.switchLabel')">
+        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'de'" (click)="i18n.setLang('de')">DE</button>
+        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'en'" (click)="i18n.setLang('en')">EN</button>
+      </div>
+      <button class="ghost btn-icon" type="button" (click)="loadActiveEinsatz()">{{ i18n.t('common.refresh') }}</button>
+      <button
+        class="ghost btn-icon"
+        type="button"
+        [routerLink]="['/einstellungen']"
+        *ngIf="authInfo?.role === 'admin'"
+      >
+        {{ i18n.t('common.settings') }}
+      </button>
+      <button class="ghost btn-icon" type="button" (click)="logout()">{{ i18n.t('common.logout') }}</button>
+    </div>
+  </header>
 
   <div class="grid">
     <section class="card">
-      <h2>1. Einsatz starten</h2>
+      <h2>{{ i18n.t('dashboard.createOperation') }}</h2>
       <div class="card__body" *ngIf="!currentEinsatz">
         <label>
-          Einsatzname
-          <input type="text" [(ngModel)]="einsatzForm.name" placeholder="Wohnungsbrand" />
+          {{ i18n.t('dashboard.operationName') }}
+          <input
+            type="text"
+            [(ngModel)]="einsatzForm.name"
+            [placeholder]="i18n.t('dashboard.operationNamePlaceholder')"
+          />
         </label>
         <label>
-          Ort
-          <input type="text" [(ngModel)]="einsatzForm.ort" placeholder="Hauptstraße 12" />
+          {{ i18n.t('dashboard.operationPlace') }}
+          <input
+            type="text"
+            [(ngModel)]="einsatzForm.ort"
+            [placeholder]="i18n.t('dashboard.operationPlacePlaceholder')"
+          />
         </label>
         <label>
-          Alarmzeit
+          {{ i18n.t('dashboard.operationAlarmTime') }}
           <input type="datetime-local" [(ngModel)]="einsatzForm.alarmzeit" />
         </label>
-        <button class="primary" type="button" (click)="createEinsatz()">Einsatz starten</button>
+        <button class="primary" type="button" (click)="createEinsatz()">{{ i18n.t('dashboard.startOperation') }}</button>
         <div class="muted" *ngIf="errorMessage">{{ errorMessage }}</div>
       </div>
 
@@ -77,31 +95,32 @@
             <div class="muted">{{ currentEinsatz.ort }}</div>
           </div>
           <div>
-            <div class="muted">Alarmzeit</div>
+            <div class="muted">{{ i18n.t('dashboard.operationAlarmTime') }}</div>
             <div>{{ currentEinsatz.alarmzeit | date: 'HH:mm' }}</div>
           </div>
         </div>
-        <button class="danger" type="button" (click)="endEinsatz()">Einsatz beenden</button>
+        <button class="danger" type="button" (click)="endEinsatz()">{{ i18n.t('dashboard.endOperation') }}</button>
       </div>
     </section>
 
     <section class="card">
-      <h2>2. Trupp erfassen</h2>
+      <h2>{{ i18n.t('dashboard.crewCapture') }}</h2>
       <div class="card__body">
         <fieldset [disabled]="!currentEinsatz">
           <label>
-            Trupp
+            {{ i18n.t('dashboard.crewLabel') }}
             <div class="select" [class.select--disabled]="!currentEinsatz">
-              <button
-                class="select__button"
-                type="button"
-                (click)="toggleSelect('trupp', $event)"
-              >
+              <button class="select__button" type="button" (click)="toggleSelect('trupp', $event)">
                 {{ truppNameLabel(truppForm.truppNameId) }}
               </button>
               <div class="select__panel" *ngIf="openSelect === 'trupp'">
-                <button class="select__option" type="button" (click)="selectTruppName('', $event)" (touchend)="selectTruppName('', $event)">
-                  Bitte wählen
+                <button
+                  class="select__option"
+                  type="button"
+                  (click)="selectTruppName('', $event)"
+                  (touchend)="selectTruppName('', $event)"
+                >
+                  {{ i18n.t('common.pleaseSelect') }}
                 </button>
                 <button
                   class="select__option"
@@ -116,18 +135,19 @@
             </div>
           </label>
           <label>
-            Person 1
+            {{ i18n.t('dashboard.person1') }}
             <div class="select" [class.select--disabled]="!currentEinsatz">
-              <button
-                class="select__button"
-                type="button"
-                (click)="toggleSelect('p1', $event)"
-              >
+              <button class="select__button" type="button" (click)="toggleSelect('p1', $event)">
                 {{ personLabel(truppForm.person1Id) }}
               </button>
               <div class="select__panel" *ngIf="openSelect === 'p1'">
-                <button class="select__option" type="button" (click)="selectPerson('', 'p1', $event)" (touchend)="selectPerson('', 'p1', $event)">
-                  Bitte wählen
+                <button
+                  class="select__option"
+                  type="button"
+                  (click)="selectPerson('', 'p1', $event)"
+                  (touchend)="selectPerson('', 'p1', $event)"
+                >
+                  {{ i18n.t('common.pleaseSelect') }}
                 </button>
                 <button
                   class="select__option"
@@ -142,18 +162,19 @@
             </div>
           </label>
           <label>
-            Person 2
+            {{ i18n.t('dashboard.person2') }}
             <div class="select" [class.select--disabled]="!currentEinsatz">
-              <button
-                class="select__button"
-                type="button"
-                (click)="toggleSelect('p2', $event)"
-              >
+              <button class="select__button" type="button" (click)="toggleSelect('p2', $event)">
                 {{ personLabel(truppForm.person2Id) }}
               </button>
               <div class="select__panel" *ngIf="openSelect === 'p2'">
-                <button class="select__option" type="button" (click)="selectPerson('', 'p2', $event)" (touchend)="selectPerson('', 'p2', $event)">
-                  Bitte wählen
+                <button
+                  class="select__option"
+                  type="button"
+                  (click)="selectPerson('', 'p2', $event)"
+                  (touchend)="selectPerson('', 'p2', $event)"
+                >
+                  {{ i18n.t('common.pleaseSelect') }}
                 </button>
                 <button
                   class="select__option"
@@ -167,33 +188,33 @@
               </div>
             </div>
           </label>
-            <div class="row row--stack-sm">
+          <div class="row row--stack-sm">
             <label>
-              Startdruck Person 1 (bar)
+              {{ i18n.t('dashboard.startPressureP1') }}
               <input type="number" min="0" [(ngModel)]="truppForm.startdruckPerson1Bar" />
             </label>
             <label>
-              Startdruck Person 2 (bar)
+              {{ i18n.t('dashboard.startPressureP2') }}
               <input type="number" min="0" [(ngModel)]="truppForm.startdruckPerson2Bar" />
             </label>
           </div>
           <label>
-            Startzeit
+            {{ i18n.t('dashboard.startTime') }}
             <input type="datetime-local" step="1" [(ngModel)]="truppForm.startzeit" />
           </label>
-            <div class="row row--stack-sm">
-              <label>
-                Warnzeit nach (min)
-                <input type="number" min="0" [(ngModel)]="truppForm.warnzeitMin" />
-              </label>
+          <div class="row row--stack-sm">
             <label>
-              Maxzeit (min)
+              {{ i18n.t('dashboard.warnTime') }}
+              <input type="number" min="0" [(ngModel)]="truppForm.warnzeitMin" />
+            </label>
+            <label>
+              {{ i18n.t('dashboard.maxTime') }}
               <input type="number" min="0" [(ngModel)]="truppForm.maxzeitMin" />
             </label>
           </div>
         </fieldset>
         <button class="primary" type="button" (click)="addTrupp()" [disabled]="!canAddTrupp()">
-          Trupp hinzufügen
+          {{ i18n.t('dashboard.addCrew') }}
         </button>
       </div>
     </section>
@@ -201,80 +222,84 @@
 
   <section class="card list" #dashboardSection>
     <div class="list__head">
-      <h2>3. Dashboard</h2>
+      <h2>{{ i18n.t('dashboard.board') }}</h2>
       <div class="muted">
-        {{ currentEinsatz ? (trupps.length + ' Trupps aktiv') : 'Warte auf Einsatz' }}
+        {{
+          currentEinsatz
+            ? i18n.t('dashboard.crewsActive', { count: trupps.length })
+            : i18n.t('dashboard.waitForOperation')
+        }}
       </div>
     </div>
 
     <div class="list__body" *ngIf="currentEinsatz">
       <div class="einsatz-inline">
-        <div class="einsatz-inline__status">AKTIV</div>
+        <div class="einsatz-inline__status">{{ i18n.t('common.active') | uppercase }}</div>
         <div class="einsatz-inline__info">
           <div class="einsatz-inline__title">{{ currentEinsatz.name }}</div>
           <div class="muted">{{ currentEinsatz.ort }}</div>
         </div>
         <div class="einsatz-inline__meta">
-          <div class="muted">Alarm</div>
+          <div class="muted">{{ i18n.t('dashboard.alarm') }}</div>
           <div>{{ currentEinsatz.alarmzeit | date: 'dd.MM.yyyy HH:mm:ss' }}</div>
         </div>
         <div class="einsatz-inline__meta" *ngIf="currentEinsatz.endzeit">
-          <div class="muted">Ende</div>
+          <div class="muted">{{ i18n.t('dashboard.end') }}</div>
           <div>{{ currentEinsatz.endzeit | date: 'dd.MM.yyyy HH:mm:ss' }}</div>
         </div>
         <div class="einsatz-inline__meta" *ngIf="!currentEinsatz.endzeit">
-          <div class="muted">Ende</div>
+          <div class="muted">{{ i18n.t('dashboard.end') }}</div>
           <div>-</div>
         </div>
       </div>
     </div>
 
     <div class="list__body" *ngIf="trupps.length === 0">
-      <p class="muted">Noch keine Trupps erfasst.</p>
+      <p class="muted">{{ i18n.t('dashboard.noCrews') }}</p>
     </div>
 
-      <div class="list__body list__body--grid" *ngIf="trupps.length > 0">
-        <div class="trupp trupp--stack" *ngFor="let trupp of trupps" [attr.data-status]="statusFor(trupp, currentEpoch)">
+    <div class="list__body list__body--grid" *ngIf="trupps.length > 0">
+      <div class="trupp trupp--stack" *ngFor="let trupp of trupps" [attr.data-status]="statusFor(trupp, currentEpoch)">
         <div class="trupp__top">
           <div class="trupp__status" [attr.data-status]="statusFor(trupp, currentEpoch)">
-            {{ statusFor(trupp, currentEpoch) | uppercase }}
+            {{ statusLabel(trupp) | uppercase }}
           </div>
           <div class="trupp__info">
             <div class="trupp__title">{{ trupp.bezeichnung }}</div>
-            <div class="muted">P1: {{ trupp.person1Name }}</div>
-            <div class="muted">P2: {{ trupp.person2Name }}</div>
+            <div class="muted">{{ i18n.t('dashboard.p1') }}: {{ trupp.person1Name }}</div>
+            <div class="muted">{{ i18n.t('dashboard.p2') }}: {{ trupp.person2Name }}</div>
           </div>
           <div class="trupp__metrics">
             <div class="trupp__metric">
-              <div class="muted">{{ trupp.endzeit ? 'Einsatzdauer' : 'Restzeit' }}</div>
+              <div class="muted">{{ trupp.endzeit ? i18n.t('dashboard.duration') : i18n.t('dashboard.remainingTime') }}</div>
               <div class="metric__value">
                 {{ trupp.endzeit ? durationDisplay(trupp) : remainingDisplay(trupp, currentEpoch) }}
               </div>
             </div>
             <div class="trupp__metric">
-              <div class="muted">Start</div>
+              <div class="muted">{{ i18n.t('dashboard.start') }}</div>
               <div class="metric__value">{{ trupp.startzeit | date: 'HH:mm:ss' }}</div>
             </div>
             <div class="trupp__metric">
-              <div class="muted">Startdruck P1</div>
+              <div class="muted">{{ i18n.t('dashboard.startPressureP1Short') }}</div>
               <div class="metric__value">{{ trupp.startdruckPerson1Bar }} bar</div>
               <div class="muted" *ngIf="trupp.druckMessungenPerson1.length">
-                Letzte Messungen:
+                {{ i18n.t('dashboard.latestMeasurements') }}
                 <div class="druck-list">
                   <div *ngFor="let m of trupp.druckMessungenPerson1">
-                    {{ m.druckBar }} bar – {{ m.zeit | date: 'HH:mm:ss' }}
+                    {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}
                   </div>
                 </div>
               </div>
             </div>
             <div class="trupp__metric">
-              <div class="muted">Startdruck P2</div>
+              <div class="muted">{{ i18n.t('dashboard.startPressureP2Short') }}</div>
               <div class="metric__value">{{ trupp.startdruckPerson2Bar }} bar</div>
               <div class="muted" *ngIf="trupp.druckMessungenPerson2.length">
-                Letzte Messungen:
+                {{ i18n.t('dashboard.latestMeasurements') }}
                 <div class="druck-list">
                   <div *ngFor="let m of trupp.druckMessungenPerson2">
-                    {{ m.druckBar }} bar – {{ m.zeit | date: 'HH:mm:ss' }}
+                    {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}
                   </div>
                 </div>
               </div>
@@ -289,7 +314,7 @@
             *ngIf="trupp.endzeit == null"
             [disabled]="trupp.druckCountPerson1 >= 3"
           >
-            Druck P1 ({{ trupp.druckCountPerson1 }}/3)
+            {{ i18n.t('dashboard.pressureP1Button', { count: trupp.druckCountPerson1 }) }}
           </button>
           <button
             class="ghost"
@@ -298,15 +323,10 @@
             *ngIf="trupp.endzeit == null"
             [disabled]="trupp.druckCountPerson2 >= 3"
           >
-            Druck P2 ({{ trupp.druckCountPerson2 }}/3)
+            {{ i18n.t('dashboard.pressureP2Button', { count: trupp.druckCountPerson2 }) }}
           </button>
-          <button
-            class="primary"
-            type="button"
-            (click)="endTrupp(trupp)"
-            *ngIf="trupp.endzeit == null"
-          >
-            Beenden
+          <button class="primary" type="button" (click)="endTrupp(trupp)" *ngIf="trupp.endzeit == null">
+            {{ i18n.t('dashboard.endCrew') }}
           </button>
         </div>
       </div>
@@ -315,39 +335,39 @@
 
   <section class="card list">
     <div class="list__head">
-      <h2>Letzte Einsätze</h2>
-      <div class="muted">{{ letzteEinsaetze.length }} Einträge</div>
+      <h2>{{ i18n.t('dashboard.recentOperations') }}</h2>
+      <div class="muted">{{ i18n.t('dashboard.entries', { count: letzteEinsaetze.length }) }}</div>
     </div>
     <div class="list__body" *ngIf="letzteEinsaetze.length === 0">
-      <p class="muted">Noch keine Einsätze gespeichert.</p>
+      <p class="muted">{{ i18n.t('dashboard.noRecentOperations') }}</p>
     </div>
     <div class="list__body" *ngIf="letzteEinsaetze.length > 0">
       <div class="trupp" *ngFor="let einsatz of letzteEinsaetze">
         <div class="trupp__status" [attr.data-status]="einsatz.status === 'aktiv' ? 'gruen' : 'beendet'">
-          {{ einsatz.status === 'aktiv' ? 'AKTIV' : 'BEENDET' }}
+          {{ einsatz.status === 'aktiv' ? (i18n.t('common.active') | uppercase) : (i18n.t('dashboard.ended') | uppercase) }}
         </div>
         <div class="trupp__info">
           <div class="trupp__title">{{ einsatz.name }}</div>
           <div class="muted">{{ einsatz.ort }}</div>
         </div>
         <div class="trupp__metric">
-          <div class="muted">Alarm</div>
+          <div class="muted">{{ i18n.t('dashboard.alarm') }}</div>
           <div>{{ einsatz.alarmzeit | date: 'dd.MM.yyyy HH:mm' }}</div>
         </div>
         <div class="trupp__metric" *ngIf="einsatz.endzeit">
-          <div class="muted">Ende</div>
+          <div class="muted">{{ i18n.t('dashboard.end') }}</div>
           <div>{{ einsatz.endzeit | date: 'dd.MM.yyyy HH:mm' }}</div>
         </div>
         <div class="trupp__metric" *ngIf="!einsatz.endzeit">
-          <div class="muted">Ende</div>
+          <div class="muted">{{ i18n.t('dashboard.end') }}</div>
           <div>-</div>
         </div>
         <div class="trupp__actions">
-          <button class="ghost" type="button" (click)="openEinsatzDetails(einsatz)">Details</button>
-          <button class="ghost" type="button" (click)="exportEinsatz(einsatz)">Export</button>
-          <button class="ghost" type="button" (click)="exportEinsatzPdf(einsatz)">PDF</button>
+          <button class="ghost" type="button" (click)="openEinsatzDetails(einsatz)">{{ i18n.t('common.details') }}</button>
+          <button class="ghost" type="button" (click)="exportEinsatz(einsatz)">{{ i18n.t('common.export') }}</button>
+          <button class="ghost" type="button" (click)="exportEinsatzPdf(einsatz)">{{ i18n.t('common.pdf') }}</button>
           <button class="danger" type="button" *ngIf="einsatz.status !== 'aktiv'" (click)="deleteEinsatz(einsatz)">
-            Löschen
+            {{ i18n.t('common.delete') }}
           </button>
         </div>
       </div>
@@ -360,33 +380,28 @@
     {{ t.text }}
   </div>
 </div>
+
 <div class="modal" *ngIf="druckModal?.open">
   <div class="modal__backdrop" (click)="closeDruckModal()"></div>
   <div class="modal__panel" role="dialog" aria-modal="true">
-    <h3>Druckmessung</h3>
-    <p class="muted">{{ druckModal!.trupp.bezeichnung }} – {{ druckModal!.personName }}</p>
+    <h3>{{ i18n.t('dashboard.pressureMeasurement') }}</h3>
+    <p class="muted">{{ druckModal!.trupp.bezeichnung }} - {{ druckModal!.personName }}</p>
     <label>
-      Druck (bar)
-      <input
-        #druckInput
-        type="number"
-        min="0"
-        [max]="maxDruckForModal() ?? null"
-        [(ngModel)]="druckModal!.value"
-      />
+      {{ i18n.t('dashboard.pressureBar') }}
+      <input #druckInput type="number" min="0" [max]="maxDruckForModal() ?? null" [(ngModel)]="druckModal!.value" />
     </label>
     <div class="form-error" *ngIf="druckModalError">{{ druckModalError }}</div>
     <div class="modal__last" *ngIf="druckModal?.last?.length">
-      <div class="muted">Letzte Messungen</div>
+      <div class="muted">{{ i18n.t('dashboard.latestMeasurementsTitle') }}</div>
       <ul>
         <li *ngFor="let m of druckModal!.last">
-          {{ m.druckBar }} bar – {{ m.zeit | date: 'HH:mm:ss' }}
+          {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}
         </li>
       </ul>
     </div>
     <div class="modal__actions">
-      <button class="ghost" type="button" (click)="closeDruckModal()">Abbrechen</button>
-      <button class="primary" type="button" (click)="saveDruckModal()">Speichern</button>
+      <button class="ghost" type="button" (click)="closeDruckModal()">{{ i18n.t('common.cancel') }}</button>
+      <button class="primary" type="button" (click)="saveDruckModal()">{{ i18n.t('common.save') }}</button>
     </div>
   </div>
 </div>
@@ -394,54 +409,54 @@
 <div class="modal" *ngIf="detailsModal?.open">
   <div class="modal__backdrop" (click)="closeEinsatzDetails()"></div>
   <div class="modal__panel" role="dialog" aria-modal="true">
-    <h3>Einsatz-Details</h3>
-    <p class="muted">{{ detailsModal!.einsatz.name }} – {{ detailsModal!.einsatz.ort }}</p>
-    <div class="muted">Alarm: {{ detailsModal!.einsatz.alarmzeit | date: 'dd.MM.yyyy HH:mm' }}</div>
+    <h3>{{ i18n.t('dashboard.operationDetails') }}</h3>
+    <p class="muted">{{ detailsModal!.einsatz.name }} - {{ detailsModal!.einsatz.ort }}</p>
+    <div class="muted">{{ i18n.t('dashboard.alarm') }}: {{ detailsModal!.einsatz.alarmzeit | date: 'dd.MM.yyyy HH:mm' }}</div>
     <div class="muted" *ngIf="detailsModal!.einsatz.endzeit">
-      Ende: {{ detailsModal!.einsatz.endzeit | date: 'dd.MM.yyyy HH:mm' }}
+      {{ i18n.t('dashboard.end') }}: {{ detailsModal!.einsatz.endzeit | date: 'dd.MM.yyyy HH:mm' }}
     </div>
 
-    <div *ngIf="detailsModal!.loading" class="muted">Lade Trupps...</div>
+    <div *ngIf="detailsModal!.loading" class="muted">{{ i18n.t('dashboard.loadCrews') }}</div>
 
     <div *ngIf="!detailsModal!.loading && detailsModal!.trupps.length === 0" class="muted">
-      Keine Trupps erfasst.
+      {{ i18n.t('dashboard.noCrewsRecorded') }}
     </div>
 
     <div *ngIf="!detailsModal!.loading && detailsModal!.trupps.length > 0" class="details-list">
       <div class="details-row" *ngFor="let t of detailsModal!.trupps">
         <div class="details-row__left">
           <div class="details-title">{{ t.bezeichnung }}</div>
-          <div class="muted">P1: {{ t.person1Name }} – P2: {{ t.person2Name }}</div>
+          <div class="muted">{{ i18n.t('dashboard.p1') }}: {{ t.person1Name }} - {{ i18n.t('dashboard.p2') }}: {{ t.person2Name }}</div>
           <div class="details-meta">
-            <div class="muted">Start: {{ t.startzeit | date: 'HH:mm:ss' }}</div>
-            <div class="muted" *ngIf="t.endzeit">Ende: {{ t.endzeit | date: 'HH:mm:ss' }}</div>
+            <div class="muted">{{ i18n.t('dashboard.start') }}: {{ t.startzeit | date: 'HH:mm:ss' }}</div>
+            <div class="muted" *ngIf="t.endzeit">{{ i18n.t('dashboard.end') }}: {{ t.endzeit | date: 'HH:mm:ss' }}</div>
           </div>
         </div>
         <div class="details-row__right details-pressures">
           <div>
-            <div class="muted">P1 Messungen</div>
+            <div class="muted">{{ i18n.t('dashboard.p1Measurements') }}</div>
             <div class="details-pressures__list" *ngIf="t.druckMessungenPerson1.length">
               <div *ngFor="let m of t.druckMessungenPerson1">
-                {{ m.druckBar }} bar – {{ m.zeit | date: 'HH:mm:ss' }}
+                {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}
               </div>
             </div>
-            <div class="muted" *ngIf="!t.druckMessungenPerson1.length">Keine Messungen</div>
+            <div class="muted" *ngIf="!t.druckMessungenPerson1.length">{{ i18n.t('dashboard.noMeasurements') }}</div>
           </div>
           <div>
-            <div class="muted">P2 Messungen</div>
+            <div class="muted">{{ i18n.t('dashboard.p2Measurements') }}</div>
             <div class="details-pressures__list" *ngIf="t.druckMessungenPerson2.length">
               <div *ngFor="let m of t.druckMessungenPerson2">
-                {{ m.druckBar }} bar – {{ m.zeit | date: 'HH:mm:ss' }}
+                {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}
               </div>
             </div>
-            <div class="muted" *ngIf="!t.druckMessungenPerson2.length">Keine Messungen</div>
+            <div class="muted" *ngIf="!t.druckMessungenPerson2.length">{{ i18n.t('dashboard.noMeasurements') }}</div>
           </div>
         </div>
       </div>
     </div>
 
     <div class="modal__actions">
-      <button class="primary" type="button" (click)="closeEinsatzDetails()">Schließen</button>
+      <button class="primary" type="button" (click)="closeEinsatzDetails()">{{ i18n.t('common.close') }}</button>
     </div>
   </div>
 </div>
@@ -449,11 +464,11 @@
 <div class="modal" *ngIf="deleteModal?.open">
   <div class="modal__backdrop" (click)="closeDeleteModal()"></div>
   <div class="modal__panel" role="dialog" aria-modal="true">
-    <h3>Einsatz löschen</h3>
-    <p class="muted">Einsatz "{{ deleteModal!.einsatz.name }}" wirklich löschen?</p>
+    <h3>{{ i18n.t('dashboard.deleteOperation') }}</h3>
+    <p class="muted">{{ i18n.t('dashboard.deleteOperationConfirm', { name: deleteModal!.einsatz.name }) }}</p>
     <div class="modal__actions">
-      <button class="ghost" type="button" (click)="closeDeleteModal()">Abbrechen</button>
-      <button class="danger" type="button" (click)="confirmDeleteEinsatz()">Löschen</button>
+      <button class="ghost" type="button" (click)="closeDeleteModal()">{{ i18n.t('common.cancel') }}</button>
+      <button class="danger" type="button" (click)="confirmDeleteEinsatz()">{{ i18n.t('common.delete') }}</button>
     </div>
   </div>
 </div>
@@ -461,11 +476,11 @@
 <div class="modal" *ngIf="alarmModal?.open">
   <div class="modal__backdrop"></div>
   <div class="modal__panel" role="alertdialog" aria-modal="true">
-    <h3>{{ alarmModal?.type === 'max' ? 'Maxzeit erreicht' : 'Warnzeit erreicht' }}</h3>
+    <h3>{{ alarmModal?.type === 'max' ? i18n.t('dashboard.maxReached') : i18n.t('dashboard.warnReached') }}</h3>
     <p class="muted">{{ alarmModal!.trupp.bezeichnung }}</p>
     <div class="modal__actions">
-      <button class="ghost" type="button" (click)="closeAlarmModal()">Schließen</button>
-      <button class="primary" type="button" (click)="acknowledgeAlarm()">Bestätigen</button>
+      <button class="ghost" type="button" (click)="closeAlarmModal()">{{ i18n.t('common.close') }}</button>
+      <button class="primary" type="button" (click)="acknowledgeAlarm()">{{ i18n.t('dashboard.acknowledge') }}</button>
     </div>
   </div>
 </div>

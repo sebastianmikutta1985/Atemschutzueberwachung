@@ -3,13 +3,11 @@
 <div class="modal" *ngIf="idleWarningOpen">
   <div class="modal__backdrop"></div>
   <div class="modal__panel">
-    <h3>Inaktivität erkannt</h3>
-    <p class="muted">
-      Du wirst in Kürze automatisch abgemeldet. Bitte bestätige, wenn du weiterarbeiten möchtest.
-    </p>
+    <h3>{{ i18n.t('app.idleTitle') }}</h3>
+    <p class="muted">{{ i18n.t('app.idleText') }}</p>
     <div class="modal__actions">
-      <button class="ghost" type="button" (click)="stayLoggedIn()">Weiterarbeiten</button>
-      <button class="danger" type="button" (click)="logoutNow()">Jetzt abmelden</button>
+      <button class="ghost" type="button" (click)="stayLoggedIn()">{{ i18n.t('app.stayLoggedIn') }}</button>
+      <button class="danger" type="button" (click)="logoutNow()">{{ i18n.t('app.logoutNow') }}</button>
     </div>
   </div>
 </div>

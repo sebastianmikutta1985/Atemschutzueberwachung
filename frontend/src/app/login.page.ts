@@ -1,12 +1,13 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component } from '@angular/core';
+import { Component, effect } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
 import { ThemeStore } from './theme.store';
+import { TranslationService } from './translation.service';
 
 @Component({
   selector: 'app-login-page',
@@ -21,10 +22,18 @@ export class LoginPage {
   error = '';
   loading = false;
 
-  constructor(private http: HttpClient, private router: Router, private title: Title) {}
+  constructor(
+    private http: HttpClient,
+    private router: Router,
+    private title: Title,
+    public i18n: TranslationService
+  ) {
+    effect(() => {
+      this.title.setTitle(this.i18n.t('login.titleTag'));
+    });
+  }
 
   ngOnInit(): void {
-    this.title.setTitle('CrewTrace - Anmeldung');
     const saved = localStorage.getItem('ats_login');
     if (saved) {
       try {
@@ -43,7 +52,7 @@ export class LoginPage {
     const code = this.orgaCode.trim();
     const pin = this.pin.trim();
     if (!code || !pin) {
-      this.error = 'Bitte Organisationscode und PIN eingeben.';
+      this.error = this.i18n.t('login.errorRequired');
       return;
     }
     this.loading = true;
@@ -75,7 +84,7 @@ export class LoginPage {
           this.router.navigateByUrl('/');
         },
         error: () => {
-          this.error = 'Login fehlgeschlagen. Code oder PIN falsch.';
+          this.error = this.i18n.t('login.errorLogin');
           this.loading = false;
         }
       });
