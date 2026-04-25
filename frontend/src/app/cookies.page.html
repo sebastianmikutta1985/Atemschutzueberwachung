@@ -1,28 +1,77 @@
 <div class="page">
   <header class="hero">
     <div class="hero__text">
-      <p class="hero__eyebrow">Rechtliches</p>
-      <h1>Cookies</h1>
-      <p class="hero__sub">Informationen zur Nutzung von Cookies und lokalen Speicherungen.</p>
+      <p class="hero__eyebrow">{{ i18n.t('legal.eyebrow') }}</p>
+      <h1>{{ i18n.t('legal.cookies') }}</h1>
+      <p class="hero__sub">{{ i18n.t('legal.cookiesSubtitle') }}</p>
     </div>
-    <a class="ghost btn-icon" [routerLink]="['/login']">Zurück</a>
+    <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
+    <div class="hero__meta">
+      <div class="lang-switch" [attr.aria-label]="i18n.t('language.switchLabel')">
+        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'de'" (click)="i18n.setLang('de')">DE</button>
+        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'en'" (click)="i18n.setLang('en')">EN</button>
+      </div>
+      <a class="ghost btn-icon" [routerLink]="['/login']">{{ i18n.t('common.back') }}</a>
+    </div>
   </header>
 
-  <section class="card legal">
-    <h2>Notwendige Cookies / Speicherungen</h2>
-    <p>Wir setzen nur technisch notwendige Cookies bzw. lokale Speicherungen ein, um die Anmeldung, Sitzungen und Einstellungen zu ermöglichen.</p>
+  <section class="card legal" *ngIf="i18n.lang() === 'de'; else cookiesEnglish">
+    <div class="legal-note">
+      <strong>{{ i18n.t('legal.draftTitle') }}</strong>
+      <p>{{ i18n.t('legal.draftText') }}</p>
+    </div>
+    <h2>Notwendige Cookies und Speicherungen</h2>
+    <p>
+      CrewTrace verwendet derzeit nur technisch notwendige Speicherungen, damit Anmeldung,
+      Sitzung, Sprachwahl und OberflÃ¤che zuverlÃ¤ssig funktionieren.
+    </p>
     <ul>
-      <li><strong>Login-Status:</strong> Speicherung der Sitzung (z. B. Token)</li>
-      <li><strong>UI-Einstellungen:</strong> z. B. Dark Mode</li>
+      <li><strong>Login-Status:</strong> Speicherung von Sitzungstoken</li>
+      <li><strong>Sprache:</strong> Speicherung der gewÃ¤hlten Sprache</li>
+      <li><strong>Darstellung:</strong> Speicherung des Dark-Mode-Status</li>
     </ul>
 
     <h2>Keine Tracking-Cookies</h2>
-    <p>Aktuell verwenden wir keine Tracking- oder Marketing-Cookies.</p>
+    <p>Aktuell werden keine Tracking-, Analyse- oder Marketing-Cookies eingesetzt.</p>
 
     <h2>Einwilligung</h2>
-    <p>Sofern künftig nicht notwendige Cookies eingesetzt werden, holen wir vorher eine Einwilligung ein.</p>
+    <p>
+      Sollten kÃ¼nftig nicht notwendige Cookies oder Ã¤hnliche Technologien eingesetzt werden,
+      holen wir vorab eine entsprechende Einwilligung ein.
+    </p>
 
-    <h2>Änderungen</h2>
-    <p>Diese Seite wird angepasst, sobald sich der Einsatz von Cookies ändert.</p>
+    <h2>Ã„nderungen</h2>
+    <p>Diese Informationen werden angepasst, sobald sich der Einsatz von Cookies oder Speicherungen Ã¤ndert.</p>
   </section>
+
+  <ng-template #cookiesEnglish>
+    <section class="card legal">
+      <div class="legal-note">
+        <strong>{{ i18n.t('legal.draftTitle') }}</strong>
+        <p>{{ i18n.t('legal.draftText') }}</p>
+      </div>
+      <h2>Required cookies and storage</h2>
+      <p>
+        CrewTrace currently uses only technically required storage so that login, session,
+        language selection and user interface preferences work reliably.
+      </p>
+      <ul>
+        <li><strong>Login status:</strong> storage of session tokens</li>
+        <li><strong>Language:</strong> storage of the selected language</li>
+        <li><strong>Appearance:</strong> storage of dark mode preference</li>
+      </ul>
+
+      <h2>No tracking cookies</h2>
+      <p>At the moment no tracking, analytics or marketing cookies are used.</p>
+
+      <h2>Consent</h2>
+      <p>
+        If non-essential cookies or similar technologies are introduced in the future,
+        we will obtain consent beforehand where legally required.
+      </p>
+
+      <h2>Changes</h2>
+      <p>This page will be updated whenever the use of cookies or local storage changes.</p>
+    </section>
+  </ng-template>
 </div>

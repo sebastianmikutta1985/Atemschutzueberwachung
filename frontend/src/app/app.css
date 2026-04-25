@@ -28,6 +28,13 @@
   margin-bottom: 12px;
 }
 
+.hero__side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+}
+
 .brand-logo {
   width: clamp(140px, 18vw, 220px);
   height: auto;
@@ -43,6 +50,13 @@
   position: absolute;
   top: 20px;
   right: 24px;
+}
+
+.hero__side .brand-logo--hero {
+  position: static;
+  top: auto;
+  right: auto;
+  margin-left: 0;
 }
 
 .hero__text h1 {
@@ -67,6 +81,34 @@
   gap: 16px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(12px);
+}
+
+.lang-switch button {
+  min-width: 44px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-600);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.lang-switch__btn--active {
+  background: linear-gradient(135deg, #f08c2a, #d16f12) !important;
+  color: #fff !important;
+  box-shadow: 0 8px 16px -12px rgba(240, 140, 42, 0.5);
 }
 
 .pill {
@@ -144,6 +186,26 @@
 
 .legal h2:first-child {
   margin-top: 0;
+}
+
+.legal-note {
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(240, 140, 42, 0.12);
+  border: 1px solid rgba(240, 140, 42, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.legal-note strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink-850);
+}
+
+.legal-note p {
+  margin: 0;
+  color: var(--ink-650);
 }
 
 .legal p,
@@ -892,6 +954,16 @@ button:not(:disabled):active {
     padding-bottom: 4px;
   }
 
+  .lang-switch {
+    flex: 0 0 auto;
+  }
+
+  .lang-switch button {
+    min-width: 40px;
+    padding: 7px 9px;
+    font-size: 0.76rem;
+  }
+
   .pill {
     padding: 6px 10px;
     min-width: 88px;
@@ -993,6 +1065,11 @@ button:not(:disabled):active {
     margin-bottom: 14px;
   }
 
+  .hero__side {
+    width: 100%;
+    align-items: flex-end;
+  }
+
   .hero__meta {
     width: 100%;
     display: grid;
@@ -1027,6 +1104,10 @@ button:not(:disabled):active {
     margin-left: 0;
     margin-top: 0;
     width: 104px;
+  }
+
+  .lang-switch {
+    align-self: flex-start;
   }
 
   .pill__label {

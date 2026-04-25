@@ -1,35 +1,38 @@
 ﻿<div class="page">
     <header class="hero">
       <div class="hero__text">
-        <p class="hero__eyebrow">Anmeldung</p>
-        <h1>Schnell einsatzbereit</h1>
-        <p class="hero__sub">Organisation und PIN eingeben.</p>
+        <p class="hero__eyebrow">{{ i18n.t('login.eyebrow') }}</p>
+        <h1>{{ i18n.t('login.title') }}</h1>
+        <p class="hero__sub">{{ i18n.t('login.subtitle') }}</p>
       </div>
-      <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
+      <div class="hero__side">
+        <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
+        <div class="lang-switch" [attr.aria-label]="i18n.t('language.switchLabel')">
+          <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'de'" (click)="i18n.setLang('de')">DE</button>
+          <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'en'" (click)="i18n.setLang('en')">EN</button>
+        </div>
+      </div>
     </header>
 
     <section class="grid login-grid">
       <article class="card login-intro">
         <div class="card__body">
-          <p class="hero__eyebrow">Was CrewTrace kann</p>
-          <h2>Übersichtlich führen. Sicher dokumentieren.</h2>
-          <p class="login-intro__lead">
-            CrewTrace unterstützt bei der Atemschutzüberwachung im Einsatz. Trupps,
-            Zeiten, Druckmeldungen und Warnstufen bleiben auf einen Blick erfassbar.
-          </p>
+          <p class="hero__eyebrow">{{ i18n.t('login.infoEyebrow') }}</p>
+          <h2>{{ i18n.t('login.infoTitle') }}</h2>
+          <p class="login-intro__lead">{{ i18n.t('login.infoLead') }}</p>
 
           <div class="login-intro__points">
             <div class="login-point">
-              <strong>Trupps live im Blick</strong>
-              <span>Aktive Trupps, Restzeiten, Druckwerte und Status sauber dargestellt.</span>
+              <strong>{{ i18n.t('login.point1Title') }}</strong>
+              <span>{{ i18n.t('login.point1Text') }}</span>
             </div>
             <div class="login-point">
-              <strong>Schnelle Bedienung im Einsatz</strong>
-              <span>Wenige Eingaben, klare Oberfläche, mobil und am Desktop nutzbar.</span>
+              <strong>{{ i18n.t('login.point2Title') }}</strong>
+              <span>{{ i18n.t('login.point2Text') }}</span>
             </div>
             <div class="login-point">
-              <strong>Nachvollziehbare Dokumentation</strong>
-              <span>Einsätze, Messungen und Berichte werden strukturiert gespeichert.</span>
+              <strong>{{ i18n.t('login.point3Title') }}</strong>
+              <span>{{ i18n.t('login.point3Text') }}</span>
             </div>
           </div>
         </div>
@@ -38,26 +41,26 @@
       <section class="card login-form-card">
         <div class="card__body">
           <label>
-            Organisationscode
-            <input type="text" [(ngModel)]="orgaCode" placeholder="Z. B. FFW123" />
+            {{ i18n.t('login.organizationCode') }}
+            <input type="text" [(ngModel)]="orgaCode" [placeholder]="i18n.t('login.organizationCodePlaceholder')" />
           </label>
           <label>
-            PIN
-            <input type="password" [(ngModel)]="pin" placeholder="PIN" />
+            {{ i18n.t('login.pin') }}
+            <input type="password" [(ngModel)]="pin" [placeholder]="i18n.t('login.pinPlaceholder')" />
           </label>
           <label class="checkbox">
             <input type="checkbox" [(ngModel)]="remember" />
-            Zugangsdaten speichern
+            {{ i18n.t('login.remember') }}
           </label>
           <div class="muted" *ngIf="error">{{ error }}</div>
           <button class="primary btn-icon" type="button" (click)="login()" [disabled]="loading">
-            {{ loading ? 'Bitte warten...' : 'Anmelden' }}
+            {{ loading ? i18n.t('login.wait') : i18n.t('login.submit') }}
           </button>
           <div class="login-footer">
-            <a href="mailto:contact@crew-trace.com">Support</a>
-            <a [routerLink]="['/impressum']">Impressum</a>
-            <a [routerLink]="['/datenschutz']">Datenschutz</a>
-            <a [routerLink]="['/cookies']">Cookies</a>
+            <a href="mailto:contact@crew-trace.com">{{ i18n.t('common.support') }}</a>
+            <a [routerLink]="['/impressum']">{{ i18n.t('legal.imprint') }}</a>
+            <a [routerLink]="['/datenschutz']">{{ i18n.t('legal.privacy') }}</a>
+            <a [routerLink]="['/cookies']">{{ i18n.t('legal.cookies') }}</a>
           </div>
         </div>
       </section>

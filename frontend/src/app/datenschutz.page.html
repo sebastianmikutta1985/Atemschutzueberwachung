@@ -1,46 +1,123 @@
 <div class="page">
   <header class="hero">
     <div class="hero__text">
-      <p class="hero__eyebrow">Rechtliches</p>
-      <h1>Datenschutz</h1>
-      <p class="hero__sub">Informationen zur Verarbeitung personenbezogener Daten.</p>
+      <p class="hero__eyebrow">{{ i18n.t('legal.eyebrow') }}</p>
+      <h1>{{ i18n.t('legal.privacy') }}</h1>
+      <p class="hero__sub">{{ i18n.t('legal.privacySubtitle') }}</p>
     </div>
-    <a class="ghost btn-icon" [routerLink]="['/login']">Zur¸ck</a>
+    <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
+    <div class="hero__meta">
+      <div class="lang-switch" [attr.aria-label]="i18n.t('language.switchLabel')">
+        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'de'" (click)="i18n.setLang('de')">DE</button>
+        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'en'" (click)="i18n.setLang('en')">EN</button>
+      </div>
+      <a class="ghost btn-icon" [routerLink]="['/login']">{{ i18n.t('common.back') }}</a>
+    </div>
   </header>
 
-  <section class="card legal">
+  <section class="card legal" *ngIf="i18n.lang() === 'de'; else privacyEnglish">
+    <div class="legal-note">
+      <strong>{{ i18n.t('legal.draftTitle') }}</strong>
+      <p>{{ i18n.t('legal.draftText') }}</p>
+    </div>
     <h2>Verantwortlicher</h2>
     <p><strong>Firma:</strong> CrewTrace [bitte eintragen]</p>
-    <p><strong>Adresse:</strong> [Straﬂe, PLZ, Ort]</p>
+    <p><strong>Adresse:</strong> [Stra√üe, Hausnummer, PLZ, Ort]</p>
     <p><strong>E-Mail:</strong> contact@crew-trace.com</p>
 
     <h2>Datenschutzbeauftragter</h2>
     <p>[falls vorhanden: Name und Kontakt]</p>
 
     <h2>Zwecke und Rechtsgrundlagen</h2>
-    <p>Bereitstellung der Plattform zur Atemschutz¸berwachung, Benutzerverwaltung und Einsatzdokumentation.</p>
+    <p>
+      Bereitstellung der Plattform zur Atemschutz√ºberwachung, Benutzerverwaltung,
+      Einsatzdokumentation und technischen Sicherstellung des Betriebs.
+    </p>
     <ul>
-      <li><strong>Art. 6 Abs. 1 lit. b DSGVO</strong> (Vertrag/Anbahnung)</li>
-      <li><strong>Art. 6 Abs. 1 lit. f DSGVO</strong> (berechtigtes Interesse am sicheren Betrieb)</li>
+      <li><strong>Art. 6 Abs. 1 lit. b DSGVO</strong> - Vertrag / Vertragsanbahnung</li>
+      <li><strong>Art. 6 Abs. 1 lit. f DSGVO</strong> - berechtigtes Interesse am sicheren Betrieb</li>
     </ul>
 
     <h2>Verarbeitete Daten</h2>
     <ul>
-      <li>Stammdaten (Name, Funktion/Funkrufname)</li>
-      <li>Einsatz- und Truppdaten (Zeiten, Messungen)</li>
-      <li>Technische Daten (Logins, IP-Adresse, Ger‰t)</li>
+      <li>Stammdaten wie Name und Funkrufname</li>
+      <li>Einsatz- und Truppdaten wie Zeiten, Status und Druckmessungen</li>
+      <li>Technische Daten wie Login-Informationen, IP-Adresse und Ger√§tedaten</li>
     </ul>
 
-    <h2>Empf‰nger</h2>
-    <p>Dienstleister f¸r Hosting/IT-Betrieb sowie ggf. Auftragsverarbeiter (Vertr‰ge nach Art. 28 DSGVO).</p>
+    <h2>Empf√§nger</h2>
+    <p>
+      Empf√§nger k√∂nnen Hosting- und IT-Dienstleister sowie weitere Auftragsverarbeiter sein,
+      sofern diese f√ºr den Betrieb der Plattform erforderlich sind.
+    </p>
 
     <h2>Hosting</h2>
-    <p>Hosting erfolgt in Deutschland/EU. Details: [bitte Hosting-Anbieter eintragen].</p>
+    <p>Das Hosting erfolgt in Deutschland bzw. in der Europ√§ischen Union. Details: [bitte Anbieter erg√§nzen].</p>
 
     <h2>Speicherdauer</h2>
-    <p>Daten werden nur so lange gespeichert, wie es f¸r die Zwecke erforderlich ist oder gesetzliche Pflichten bestehen.</p>
+    <p>
+      Daten werden nur so lange gespeichert, wie dies f√ºr die genannten Zwecke erforderlich ist
+      oder gesetzliche Aufbewahrungspflichten bestehen.
+    </p>
 
     <h2>Ihre Rechte</h2>
-    <p>Auskunft, Berichtigung, Lˆschung, Einschr‰nkung, Daten¸bertragbarkeit, Widerspruch.</p>
+    <p>
+      Sie haben das Recht auf Auskunft, Berichtigung, L√∂schung, Einschr√§nkung der Verarbeitung,
+      Daten√ºbertragbarkeit sowie Widerspruch nach Ma√ügabe der DSGVO.
+    </p>
   </section>
+
+  <ng-template #privacyEnglish>
+    <section class="card legal">
+      <div class="legal-note">
+        <strong>{{ i18n.t('legal.draftTitle') }}</strong>
+        <p>{{ i18n.t('legal.draftText') }}</p>
+      </div>
+      <h2>Controller</h2>
+      <p><strong>Company:</strong> CrewTrace [please fill in]</p>
+      <p><strong>Address:</strong> [Street, ZIP code, city]</p>
+      <p><strong>Email:</strong> contact@crew-trace.com</p>
+
+      <h2>Data protection officer</h2>
+      <p>[if applicable: name and contact details]</p>
+
+      <h2>Purposes and legal bases</h2>
+      <p>
+        Provision of the platform for breathing apparatus accountability, user administration,
+        incident documentation and technical operation of the service.
+      </p>
+      <ul>
+        <li><strong>Art. 6(1)(b) GDPR</strong> - contract / pre-contractual measures</li>
+        <li><strong>Art. 6(1)(f) GDPR</strong> - legitimate interest in secure operation</li>
+      </ul>
+
+      <h2>Processed data</h2>
+      <ul>
+        <li>Master data such as name and radio call sign</li>
+        <li>Incident and crew data such as times, status and pressure measurements</li>
+        <li>Technical data such as login information, IP address and device information</li>
+      </ul>
+
+      <h2>Recipients</h2>
+      <p>
+        Recipients may include hosting and IT service providers as well as further processors,
+        where necessary for operating the platform.
+      </p>
+
+      <h2>Hosting</h2>
+      <p>Hosting takes place in Germany or within the European Union. Details: [please add provider].</p>
+
+      <h2>Retention period</h2>
+      <p>
+        Data is stored only as long as required for the stated purposes or as long as statutory
+        retention obligations apply.
+      </p>
+
+      <h2>Your rights</h2>
+      <p>
+        You have the right to access, rectification, erasure, restriction of processing,
+        data portability and objection in accordance with the GDPR.
+      </p>
+    </section>
+  </ng-template>
 </div>

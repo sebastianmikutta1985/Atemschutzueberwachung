@@ -1,10 +1,12 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Component, OnInit } from '@angular/core';
+import { Component, effect, OnInit } from '@angular/core';
+import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { SystemStore } from './system.store';
+import { TranslationService } from './translation.service';
 
 type Org = {
   id: string;
@@ -33,7 +35,16 @@ export class ManufacturerPage implements OnInit {
     status: 'aktiv'
   };
 
-  constructor(private http: HttpClient) {}
+  constructor(
+    private http: HttpClient,
+    private title: Title,
+    public i18n: TranslationService
+  ) {
+    effect(() => {
+      this.i18n.lang();
+      this.title.setTitle(`${this.i18n.t('common.appName')} - ${this.i18n.t('manufacturer.title')}`);
+    });
+  }
 
   ngOnInit(): void {
     if (this.systemToken) {
@@ -45,7 +56,7 @@ export class ManufacturerPage implements OnInit {
     this.error = '';
     const secret = this.systemSecret.trim();
     if (!secret) {
-      this.error = 'Bitte Hersteller-Secret eingeben.';
+      this.error = this.i18n.t('manufacturer.loginSecretRequired');
       return;
     }
     this.http.post<{ token: string }>(`${this.baseUrl}/system/login`, { secret }).subscribe({
@@ -56,7 +67,7 @@ export class ManufacturerPage implements OnInit {
         this.loadOrgs();
       },
       error: () => {
-        this.error = 'Login fehlgeschlagen.';
+        this.error = this.i18n.t('manufacturer.loginFailed');
       }
     });
   }
@@ -82,7 +93,7 @@ export class ManufacturerPage implements OnInit {
         this.orgs = list;
       },
       error: () => {
-        this.error = 'Konnte Organisationen nicht laden.';
+        this.error = this.i18n.t('manufacturer.loadFailed');
       }
     });
   }
@@ -95,7 +106,7 @@ export class ManufacturerPage implements OnInit {
     const adminPin = this.orgForm.adminPin.trim();
     const userPin = this.orgForm.userPin.trim();
     if (!name || !adminPin || !userPin) {
-      this.error = 'Name, Admin-PIN und Benutzer-PIN sind Pflicht.';
+      this.error = this.i18n.t('manufacturer.requiredFields');
       return;
     }
     this.http
@@ -115,7 +126,7 @@ export class ManufacturerPage implements OnInit {
           this.orgForm = { name: '', adminPin: '', userPin: '', status: 'aktiv' };
         },
         error: () => {
-          this.error = 'Organisation konnte nicht angelegt werden.';
+          this.error = this.i18n.t('manufacturer.createFailed');
         }
       });
   }
@@ -138,7 +149,9 @@ export class ManufacturerPage implements OnInit {
     if (!this.systemToken) {
       return;
     }
-    const pin = window.prompt(`${role.toUpperCase()}-PIN neu setzen:`);
+    const pin = window.prompt(
+      this.i18n.t('manufacturer.resetPinPrompt', { role: role.toUpperCase() })
+    );
     if (!pin) {
       return;
     }

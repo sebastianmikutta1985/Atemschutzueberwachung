@@ -1,66 +1,74 @@
 <div class="page">
-    <header class="hero">
-      <div class="hero__text">
-        <p class="hero__eyebrow">Einstellungen</p>
-        <h1>Stammdaten verwalten</h1>
-        <p class="hero__sub">
-          Atemschutzgeräteträger und Trupps pflegen.
-        </p>
+  <header class="hero">
+    <div class="hero__text">
+      <p class="hero__eyebrow">{{ i18n.t('settings.eyebrow') }}</p>
+      <h1>{{ i18n.t('settings.title') }}</h1>
+      <p class="hero__sub">{{ i18n.t('settings.subtitle') }}</p>
+    </div>
+    <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
+    <div class="hero__meta">
+      <div class="pill" [attr.data-live]="liveStatus">
+        <span class="pill__label">{{ i18n.t('common.live') }}</span>
+        <span class="pill__value">
+          {{
+            liveStatus === 'connected'
+              ? i18n.t('common.connected')
+              : liveStatus === 'connecting'
+                ? i18n.t('common.connecting')
+                : i18n.t('common.offline')
+          }}
+        </span>
       </div>
-      <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
-      <div class="hero__meta">
-        <div class="pill" [attr.data-live]="liveStatus">
-          <span class="pill__label">Live</span>
-          <span class="pill__value">
-            {{ liveStatus === 'connected' ? 'Verbunden' : liveStatus === 'connecting' ? 'Verbinde...' : 'Offline' }}
-          </span>
-        </div>
-        <div class="pill" *ngIf="authInfo">
-          <span class="pill__label">Organisation</span>
-          <span class="pill__value">{{ authInfo.orgName }} ({{ authInfo.orgCode }})</span>
-        </div>
-        <label class="theme-toggle">
-          <input type="checkbox" [checked]="themeMode === 'dark'" (change)="toggleTheme()" />
-          <span class="theme-toggle__track">
-            <span class="theme-toggle__thumb"></span>
-          </span>
-          <span class="theme-toggle__label">Dark Mode</span>
-        </label>
-        <button class="ghost btn-icon" type="button" [routerLink]="['/']">Zurück</button>
-        <button class="ghost btn-icon" type="button" (click)="logout()">Abmelden</button>
+      <div class="pill" *ngIf="authInfo">
+        <span class="pill__label">{{ i18n.t('common.organization') }}</span>
+        <span class="pill__value">{{ authInfo.orgName }} ({{ authInfo.orgCode }})</span>
       </div>
-    </header>
+      <label class="theme-toggle">
+        <input type="checkbox" [checked]="themeMode === 'dark'" (change)="toggleTheme()" />
+        <span class="theme-toggle__track">
+          <span class="theme-toggle__thumb"></span>
+        </span>
+        <span class="theme-toggle__label">{{ i18n.t('common.darkMode') }}</span>
+      </label>
+      <div class="lang-switch" [attr.aria-label]="i18n.t('language.switchLabel')">
+        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'de'" (click)="i18n.setLang('de')">DE</button>
+        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'en'" (click)="i18n.setLang('en')">EN</button>
+      </div>
+      <button class="ghost btn-icon" type="button" [routerLink]="['/']">{{ i18n.t('common.back') }}</button>
+      <button class="ghost btn-icon" type="button" (click)="logout()">{{ i18n.t('common.logout') }}</button>
+    </div>
+  </header>
 
   <section class="card settings">
     <div class="list__head">
-      <h2>Einstellungen: Atemschutzgeräteträger</h2>
-      <div class="muted">{{ geraetetraeger.length }} Einträge</div>
+      <h2>{{ i18n.t('settings.carrierSettings') }}</h2>
+      <div class="muted">{{ i18n.t('dashboard.entries', { count: geraetetraeger.length }) }}</div>
     </div>
     <div class="settings__grid">
       <div class="settings__form">
         <label>
-          Vorname
+          {{ i18n.t('settings.firstName') }}
           <input type="text" [(ngModel)]="geraetetraegerForm.vorname" />
         </label>
         <label>
-          Nachname
+          {{ i18n.t('settings.lastName') }}
           <input type="text" [(ngModel)]="geraetetraegerForm.nachname" />
         </label>
         <label>
-          Funkrufname (optional)
+          {{ i18n.t('settings.radioNameOptional') }}
           <input type="text" [(ngModel)]="geraetetraegerForm.funkrufname" />
         </label>
         <label class="checkbox">
           <input type="checkbox" [(ngModel)]="geraetetraegerForm.aktiv" />
-          Aktiv
+          {{ i18n.t('common.active') }}
         </label>
-        <button class="primary" type="button" (click)="addGeraetetraeger()">Speichern</button>
-        <div class="muted">CSV-Import (Vorname;Nachname;Funkrufname;Aktiv)</div>
+        <button class="primary" type="button" (click)="addGeraetetraeger()">{{ i18n.t('common.save') }}</button>
+        <div class="muted">{{ i18n.t('settings.csvImportHint') }}</div>
         <input type="file" accept=".csv,text/csv" (change)="importGeraetetraeger($event)" />
         <div class="trupp__actions trupp__actions--row">
-          <button class="ghost" type="button" (click)="downloadCsvBeispiel()">Beispiel CSV</button>
-          <button class="ghost" type="button" (click)="previewCsvImport()">CSV prüfen</button>
-          <button class="primary" type="button" (click)="runCsvImport()">CSV importieren</button>
+          <button class="ghost" type="button" (click)="downloadCsvBeispiel()">{{ i18n.t('settings.sampleCsv') }}</button>
+          <button class="ghost" type="button" (click)="previewCsvImport()">{{ i18n.t('settings.checkCsv') }}</button>
+          <button class="primary" type="button" (click)="runCsvImport()">{{ i18n.t('settings.importCsv') }}</button>
         </div>
         <div class="muted" *ngIf="importMessage">{{ importMessage }}</div>
       </div>
@@ -68,20 +76,18 @@
       <div class="settings__list">
         <div class="trupp" *ngFor="let traeger of geraetetraeger">
           <div class="trupp__status" [attr.data-status]="traeger.aktiv ? 'gruen' : 'beendet'">
-            {{ traeger.aktiv ? 'AKTIV' : 'INAKTIV' }}
+            {{ traeger.aktiv ? (i18n.t('common.active') | uppercase) : (i18n.t('common.inactive') | uppercase) }}
           </div>
           <div class="trupp__info">
-            <div class="trupp__title">
-              {{ traeger.nachname }} {{ traeger.vorname }}
-            </div>
-            <div class="muted">{{ traeger.funkrufname || 'Kein Funkrufname' }}</div>
+            <div class="trupp__title">{{ traeger.nachname }} {{ traeger.vorname }}</div>
+            <div class="muted">{{ traeger.funkrufname || i18n.t('settings.noRadioName') }}</div>
           </div>
           <div class="trupp__actions">
             <button class="ghost" type="button" (click)="toggleGeraetetraeger(traeger)">
-              {{ traeger.aktiv ? 'Deaktivieren' : 'Aktivieren' }}
+              {{ traeger.aktiv ? i18n.t('settings.deactivate') : i18n.t('settings.activate') }}
             </button>
             <button class="danger" type="button" (click)="deleteGeraetetraeger(traeger)">
-              Löschen
+              {{ i18n.t('common.delete') }}
             </button>
           </div>
         </div>
@@ -91,20 +97,20 @@
 
   <section class="card settings">
     <div class="list__head">
-      <h2>Einstellungen: Trupps</h2>
-      <div class="muted">{{ truppnamen.length }} Einträge</div>
+      <h2>{{ i18n.t('settings.crewSettings') }}</h2>
+      <div class="muted">{{ i18n.t('dashboard.entries', { count: truppnamen.length }) }}</div>
     </div>
     <div class="settings__grid">
       <div class="settings__form">
         <label>
-          Truppname
+          {{ i18n.t('settings.crewName') }}
           <input type="text" [(ngModel)]="truppNameForm.name" />
         </label>
         <label class="checkbox">
           <input type="checkbox" [(ngModel)]="truppNameForm.aktiv" />
-          Aktiv
+          {{ i18n.t('common.active') }}
         </label>
-        <button class="primary" type="button" (click)="addTruppName()">Speichern</button>
+        <button class="primary" type="button" (click)="addTruppName()">{{ i18n.t('common.save') }}</button>
       </div>
 
       <div class="settings__list">
@@ -118,60 +124,28 @@
           (drop)="onDrop(i, $event)"
         >
           <div class="trupp__status" [attr.data-status]="item.aktiv ? 'gruen' : 'beendet'">
-            {{ item.aktiv ? 'AKTIV' : 'INAKTIV' }}
+            {{ item.aktiv ? (i18n.t('common.active') | uppercase) : (i18n.t('common.inactive') | uppercase) }}
           </div>
           <div class="trupp__info">
             <div class="trupp__title" *ngIf="editingTruppNameId !== item.id">{{ item.name }}</div>
-            <input
-              *ngIf="editingTruppNameId === item.id"
-              type="text"
-              [(ngModel)]="editingTruppNameValue"
-            />
-            <div class="muted">Trupp-Vorlage</div>
+            <input *ngIf="editingTruppNameId === item.id" type="text" [(ngModel)]="editingTruppNameValue" />
+            <div class="muted">{{ i18n.t('settings.template') }}</div>
           </div>
           <div class="trupp__actions trupp__actions--row">
-            <button
-              class="ghost"
-              type="button"
-              *ngIf="editingTruppNameId !== item.id"
-              (click)="startEditTruppName(item)"
-            >
-              Umbenennen
+            <button class="ghost" type="button" *ngIf="editingTruppNameId !== item.id" (click)="startEditTruppName(item)">
+              {{ i18n.t('settings.rename') }}
             </button>
-            <button
-              class="primary"
-              type="button"
-              *ngIf="editingTruppNameId === item.id"
-              (click)="saveEditTruppName(item)"
-            >
-              Speichern
+            <button class="primary" type="button" *ngIf="editingTruppNameId === item.id" (click)="saveEditTruppName(item)">
+              {{ i18n.t('common.save') }}
             </button>
-            <button
-              class="ghost"
-              type="button"
-              *ngIf="editingTruppNameId === item.id"
-              (click)="cancelEditTruppName()"
-            >
-              Abbrechen
+            <button class="ghost" type="button" *ngIf="editingTruppNameId === item.id" (click)="cancelEditTruppName()">
+              {{ i18n.t('common.cancel') }}
             </button>
             <button class="ghost" type="button" (click)="toggleTruppName(item)">
-              {{ item.aktiv ? 'Deaktivieren' : 'Aktivieren' }}
+              {{ item.aktiv ? i18n.t('settings.deactivate') : i18n.t('settings.activate') }}
             </button>
             <button class="danger" type="button" (click)="deleteTruppName(item)">
-              Löschen
-            </button>
-          </div>
-          <div class="trupp__actions trupp__actions--mobile">
-            <button class="ghost" type="button" (click)="moveTruppName(i, -1)" [disabled]="i === 0">
-              Hoch
-            </button>
-            <button
-              class="ghost"
-              type="button"
-              (click)="moveTruppName(i, 1)"
-              [disabled]="i === truppnamen.length - 1"
-            >
-              Runter
+              {{ i18n.t('common.delete') }}
             </button>
           </div>
         </div>
@@ -181,46 +155,38 @@
 
   <section class="card settings">
     <div class="list__head">
-      <h2>Einstellungen: Standardwerte</h2>
-      <div class="muted">Default für neue Trupps</div>
+      <h2>{{ i18n.t('settings.standardSettings') }}</h2>
+      <div class="muted">{{ i18n.t('settings.defaultForNewCrews') }}</div>
     </div>
     <div class="settings__grid">
       <div class="settings__form">
         <label>
-          Startdruck Person 1 (bar)
+          {{ i18n.t('dashboard.startPressureP1') }}
           <input type="number" min="0" [(ngModel)]="orgSettingsForm.defaultStartdruckPerson1Bar" />
         </label>
         <label>
-          Startdruck Person 2 (bar)
+          {{ i18n.t('dashboard.startPressureP2') }}
           <input type="number" min="0" [(ngModel)]="orgSettingsForm.defaultStartdruckPerson2Bar" />
         </label>
         <label>
-          Warnzeit nach (min)
+          {{ i18n.t('dashboard.warnTime') }}
           <input type="number" min="0" [(ngModel)]="orgSettingsForm.defaultWarnzeitMin" />
         </label>
         <label>
-          Maxzeit (min)
+          {{ i18n.t('dashboard.maxTime') }}
           <input type="number" min="0" [(ngModel)]="orgSettingsForm.defaultMaxzeitMin" />
         </label>
-        <button class="primary" type="button" (click)="saveOrgSettings()">Speichern</button>
+        <button class="primary" type="button" (click)="saveOrgSettings()">{{ i18n.t('common.save') }}</button>
         <div class="muted" *ngIf="orgSettingsMessage">{{ orgSettingsMessage }}</div>
       </div>
       <div class="settings__list">
         <div class="trupp">
           <div class="trupp__info">
-            <div class="trupp__title">Aktive Standardwerte</div>
-            <div class="muted">
-              Startdruck P1: {{ orgSettingsForm.defaultStartdruckPerson1Bar }} bar
-            </div>
-            <div class="muted">
-              Startdruck P2: {{ orgSettingsForm.defaultStartdruckPerson2Bar }} bar
-            </div>
-            <div class="muted">
-              Warnzeit: {{ orgSettingsForm.defaultWarnzeitMin }} min
-            </div>
-            <div class="muted">
-              Maxzeit: {{ orgSettingsForm.defaultMaxzeitMin }} min
-            </div>
+            <div class="trupp__title">{{ i18n.t('settings.activeDefaults') }}</div>
+            <div class="muted">{{ i18n.t('settings.startPressureP1', { value: orgSettingsForm.defaultStartdruckPerson1Bar }) }}</div>
+            <div class="muted">{{ i18n.t('settings.startPressureP2', { value: orgSettingsForm.defaultStartdruckPerson2Bar }) }}</div>
+            <div class="muted">{{ i18n.t('settings.warnTimeValue', { value: orgSettingsForm.defaultWarnzeitMin }) }}</div>
+            <div class="muted">{{ i18n.t('settings.maxTimeValue', { value: orgSettingsForm.defaultMaxzeitMin }) }}</div>
           </div>
         </div>
       </div>
