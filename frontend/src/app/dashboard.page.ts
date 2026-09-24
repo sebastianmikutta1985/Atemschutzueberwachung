@@ -61,6 +61,7 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   private lastAutoStartzeit = '';
   errorMessage = '';
+  truppError = '';
 
   druckModal: {
     open: boolean;
@@ -378,7 +379,7 @@ export class DashboardPage implements OnInit, OnDestroy {
     const payload = {
       name,
       ort,
-      alarmzeit: this.einsatzForm.alarmzeit || null
+      alarmzeit: this.toUtcIso(this.einsatzForm.alarmzeit)
     };
 
     this.http.post<Einsatz>(`${this.baseUrl}/einsaetze`, payload).subscribe({
@@ -388,11 +389,7 @@ export class DashboardPage implements OnInit, OnDestroy {
         this.loadLetzteEinsaetze();
       },
       error: (err) => {
-        if (err?.status === 401) {
-          AuthStore.clear();
-          this.router.navigateByUrl('/login');
-        }
-        this.errorMessage = this.i18n.t('dashboard.operationStartError');
+        this.errorMessage = this.apiError(err, 'dashboard.operationStartError');
       }
     });
   }
@@ -402,10 +399,32 @@ export class DashboardPage implements OnInit, OnDestroy {
       return;
     }
 
-    this.http.post<Einsatz>(`${this.baseUrl}/einsaetze/${this.currentEinsatz.id}/beenden`, {}).subscribe(() => {
-      this.loadActiveEinsatz();
-      this.loadLetzteEinsaetze();
+    this.http.post<Einsatz>(`${this.baseUrl}/einsaetze/${this.currentEinsatz.id}/beenden`, {}).subscribe({
+      next: () => {
+        this.loadActiveEinsatz();
+        this.loadLetzteEinsaetze();
+      },
+      error: (err) => this.pushToast(this.apiError(err, 'dashboard.actionFailed'), 'warn')
     });
+  }
+
+  // Liefert die Fehlermeldung des Backends bzw. einen uebersetzten Standardtext; bei 401 zurueck zum Login.
+  private apiError(err: { status?: number; error?: { error?: string } } | null, fallbackKey: string): string {
+    if (err?.status === 401) {
+      AuthStore.clear();
+      this.realtime.stop();
+      this.router.navigateByUrl('/login');
+    }
+    return err?.error?.error ?? this.i18n.t(fallbackKey);
+  }
+
+  // datetime-local liefert Ortszeit ohne Zeitzone; ans Backend geht immer UTC mit "Z".
+  private toUtcIso(localValue: string): string | null {
+    if (!localValue) {
+      return null;
+    }
+    const date = new Date(localValue);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
   }
 
   deleteEinsatz(einsatz: Einsatz): void {
@@ -417,14 +436,20 @@ export class DashboardPage implements OnInit, OnDestroy {
       return;
     }
     const einsatz = this.deleteModal.einsatz;
-    this.http.delete(`${this.baseUrl}/einsaetze/${einsatz.id}`).subscribe(() => {
-      if (this.currentEinsatz?.id === einsatz.id) {
-        this.currentEinsatz = null;
-        this.trupps = [];
+    this.http.delete(`${this.baseUrl}/einsaetze/${einsatz.id}`).subscribe({
+      next: () => {
+        if (this.currentEinsatz?.id === einsatz.id) {
+          this.currentEinsatz = null;
+          this.trupps = [];
+        }
+        this.loadLetzteEinsaetze();
+        this.loadActiveEinsatz();
+        this.deleteModal = null;
+      },
+      error: (err) => {
+        this.deleteModal = null;
+        this.pushToast(this.apiError(err, 'dashboard.actionFailed'), 'warn');
       }
-      this.loadLetzteEinsaetze();
-      this.loadActiveEinsatz();
-      this.deleteModal = null;
     });
   }
 
@@ -714,7 +739,7 @@ export class DashboardPage implements OnInit, OnDestroy {
       person2Id: this.truppForm.person2Id,
       startdruckPerson1Bar: this.truppForm.startdruckPerson1Bar,
       startdruckPerson2Bar: this.truppForm.startdruckPerson2Bar,
-      startzeit: this.truppForm.startzeit || null,
+      startzeit: this.toUtcIso(this.truppForm.startzeit),
       warnzeitMin: this.truppForm.warnzeitMin,
       maxzeitMin: this.truppForm.maxzeitMin
     };
@@ -729,19 +754,25 @@ export class DashboardPage implements OnInit, OnDestroy {
       return;
     }
 
+    this.truppError = '';
     this.http
       .post<Trupp>(`${this.baseUrl}/einsaetze/${this.currentEinsatz.id}/trupps`, payload)
-      .subscribe((created) => {
-      if (created) {
-        this.trupps = [...this.trupps, this.normalizeTrupp(created)];
-      }
-      this.truppForm.truppNameId = '';
-      this.truppForm.person1Id = '';
-      this.truppForm.person2Id = '';
-      this.setAutoStartzeitNow();
-      this.loadTrupps();
-      this.scrollToDashboard();
-    });
+      .subscribe({
+        next: (created) => {
+          if (created) {
+            this.trupps = [...this.trupps, this.normalizeTrupp(created)];
+          }
+          this.truppForm.truppNameId = '';
+          this.truppForm.person1Id = '';
+          this.truppForm.person2Id = '';
+          this.setAutoStartzeitNow();
+          this.loadTrupps();
+          this.scrollToDashboard();
+        },
+        error: (err) => {
+          this.truppError = this.apiError(err, 'dashboard.actionFailed');
+        }
+      });
   }
 
   private scrollToDashboard(): void {
@@ -765,8 +796,9 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   endTrupp(trupp: Trupp): void {
-    this.http.post<Trupp>(`${this.baseUrl}/trupps/${trupp.id}/beenden`, {}).subscribe(() => {
-      this.loadTrupps();
+    this.http.post<Trupp>(`${this.baseUrl}/trupps/${trupp.id}/beenden`, {}).subscribe({
+      next: () => this.loadTrupps(),
+      error: (err) => this.pushToast(this.apiError(err, 'dashboard.actionFailed'), 'warn')
     });
   }
 
@@ -812,9 +844,15 @@ export class DashboardPage implements OnInit, OnDestroy {
         personId: this.druckModal.personId,
         druckBar: value
       })
-      .subscribe(() => {
-        this.closeDruckModal();
-        this.loadTrupps();
+      .subscribe({
+        next: () => {
+          this.closeDruckModal();
+          this.loadTrupps();
+        },
+        error: (err) => {
+          // Modal offen lassen, damit der Wert nicht verloren geht und erneut gesendet werden kann.
+          this.druckModalError = this.apiError(err, 'dashboard.actionFailed');
+        }
       });
   }
 
@@ -958,8 +996,16 @@ export class DashboardPage implements OnInit, OnDestroy {
     }
   }
 
-  private logEvent(trupp: Trupp, type: 'warn' | 'max' | 'warn_ack' | 'max_ack'): void {
-    this.http.post(`${this.baseUrl}/trupps/${trupp.id}/events`, { type }).subscribe();
+  // Protokolliert das erste Ausloesen je Trupp und Typ; Wiederholungen des Alarms erzeugen keine weiteren Eintraege.
+  private logEvent(trupp: Trupp, type: 'warn' | 'max'): void {
+    const notified = type === 'warn' ? this.notifiedWarn : this.notifiedMax;
+    if (notified.has(trupp.id)) {
+      return;
+    }
+    notified.add(trupp.id);
+    this.http.post(`${this.baseUrl}/trupps/${trupp.id}/events`, { typ: type }).subscribe({
+      error: () => notified.delete(trupp.id)
+    });
   }
 
   private shouldAlert(store: Record<string, number>, id: string, now: number, intervalMs: number): boolean {
@@ -983,15 +1029,18 @@ export class DashboardPage implements OnInit, OnDestroy {
       return;
     }
     const { trupp, type } = this.alarmModal;
+    const ackType = type === 'warn' ? 'warn_ack' : 'max_ack';
     if (type === 'warn') {
       trupp.warnAcked = true;
-      this.logEvent(trupp, 'warn_ack');
     } else {
       trupp.maxAcked = true;
-      this.logEvent(trupp, 'max_ack');
     }
     this.alarmModal = null;
-    this.loadTrupps();
+    // Erst nach dem Speichern neu laden, sonst ueberschreibt der alte Serverstand die Quittierung.
+    this.http.post(`${this.baseUrl}/trupps/${trupp.id}/events`, { typ: ackType }).subscribe({
+      next: () => this.loadTrupps(),
+      error: (err) => this.pushToast(this.apiError(err, 'dashboard.actionFailed'), 'warn')
+    });
   }
 
   closeAlarmModal(): void {

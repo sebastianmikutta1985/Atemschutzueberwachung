@@ -8,6 +8,8 @@ import { environment } from '../environments/environment';
 import { SystemStore } from './system.store';
 import { TranslationService } from './translation.service';
 
+const MIN_PIN_LENGTH = 6;
+
 type Org = {
   id: string;
   name: string;
@@ -66,8 +68,9 @@ export class ManufacturerPage implements OnInit {
         SystemStore.save({ token: res.token, expiresAt });
         this.loadOrgs();
       },
-      error: () => {
-        this.error = this.i18n.t('manufacturer.loginFailed');
+      error: (err) => {
+        this.error =
+          err?.status === 429 ? this.i18n.t('login.errorTooManyAttempts') : this.i18n.t('manufacturer.loginFailed');
       }
     });
   }
@@ -109,6 +112,11 @@ export class ManufacturerPage implements OnInit {
       this.error = this.i18n.t('manufacturer.requiredFields');
       return;
     }
+    if (adminPin.length < MIN_PIN_LENGTH || userPin.length < MIN_PIN_LENGTH || adminPin === userPin) {
+      this.error = this.i18n.t('manufacturer.pinTooShort');
+      return;
+    }
+    this.error = '';
     this.http
       .post<Org>(
         `${this.baseUrl}/system/orgs`,
@@ -125,10 +133,17 @@ export class ManufacturerPage implements OnInit {
           this.orgs = [...this.orgs, org];
           this.orgForm = { name: '', adminPin: '', userPin: '', status: 'aktiv' };
         },
-        error: () => {
-          this.error = this.i18n.t('manufacturer.createFailed');
+        error: (err) => {
+          this.error = this.apiError(err, 'manufacturer.createFailed');
         }
       });
+  }
+
+  private apiError(err: { status?: number; error?: { error?: string } } | null, fallbackKey: string): string {
+    if (err?.status === 401) {
+      this.logoutSystem();
+    }
+    return err?.error?.error ?? this.i18n.t(fallbackKey);
   }
 
   toggleStatus(org: Org): void {
@@ -136,13 +151,17 @@ export class ManufacturerPage implements OnInit {
       return;
     }
     const status = org.status === 'aktiv' ? 'gesperrt' : 'aktiv';
+    this.error = '';
     this.http
       .put<Org>(
         `${this.baseUrl}/system/orgs/${org.id}`,
         { status },
         { headers: this.authHeaders() }
       )
-      .subscribe(() => this.loadOrgs());
+      .subscribe({
+        next: () => this.loadOrgs(),
+        error: (err) => (this.error = this.apiError(err, 'manufacturer.actionFailed'))
+      });
   }
 
   resetPin(org: Org, role: 'admin' | 'user'): void {
@@ -155,9 +174,17 @@ export class ManufacturerPage implements OnInit {
     if (!pin) {
       return;
     }
-    const payload = role === 'admin' ? { adminPin: pin } : { userPin: pin };
+    if (pin.trim().length < MIN_PIN_LENGTH) {
+      this.error = this.i18n.t('manufacturer.pinTooShort');
+      return;
+    }
+    this.error = '';
+    const payload = role === 'admin' ? { adminPin: pin.trim() } : { userPin: pin.trim() };
     this.http
       .put<Org>(`${this.baseUrl}/system/orgs/${org.id}`, payload, { headers: this.authHeaders() })
-      .subscribe(() => this.loadOrgs());
+      .subscribe({
+        next: () => this.loadOrgs(),
+        error: (err) => (this.error = this.apiError(err, 'manufacturer.actionFailed'))
+      });
   }
 }

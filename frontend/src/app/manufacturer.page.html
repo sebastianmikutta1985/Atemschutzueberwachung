@@ -20,7 +20,7 @@
     <div class="card__body">
       <label>
         {{ i18n.t('manufacturer.secret') }}
-        <input type="password" [(ngModel)]="systemSecret" />
+        <input type="password" autocomplete="current-password" [(ngModel)]="systemSecret" />
       </label>
       <div class="muted" *ngIf="error">{{ error }}</div>
       <button class="primary btn-icon" type="button" (click)="loginSystem()">{{ i18n.t('login.submit') }}</button>
@@ -39,11 +39,11 @@
       <div class="row">
         <label>
           {{ i18n.t('manufacturer.adminPin') }}
-          <input type="text" [(ngModel)]="orgForm.adminPin" />
+          <input type="password" autocomplete="new-password" minlength="6" [(ngModel)]="orgForm.adminPin" />
         </label>
         <label>
           {{ i18n.t('manufacturer.userPin') }}
-          <input type="text" [(ngModel)]="orgForm.userPin" />
+          <input type="password" autocomplete="new-password" minlength="6" [(ngModel)]="orgForm.userPin" />
         </label>
       </div>
       <label>
