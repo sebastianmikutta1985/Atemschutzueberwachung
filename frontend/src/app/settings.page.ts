@@ -190,8 +190,8 @@ export class SettingsPage implements OnInit, OnDestroy {
         this.orgSettingsForm.defaultMaxzeitMin = settings.defaultMaxzeitMin;
         this.orgSettingsMessage = this.i18n.t('settings.saved');
       },
-      error: () => {
-        this.orgSettingsMessage = this.i18n.t('settings.saveFailed');
+      error: (err) => {
+        this.orgSettingsMessage = err?.error?.error ?? this.i18n.t('settings.saveFailed');
       }
     });
   }
@@ -281,22 +281,25 @@ export class SettingsPage implements OnInit, OnDestroy {
     this.importMessage = this.i18n.t('settings.importRunning');
     let done = 0;
     let failed = 0;
+    // "complete" wird nach einem Fehler nicht aufgerufen, daher Abschluss in beiden Faellen pruefen.
+    const finishIfDone = () => {
+      if (done + failed === plan.toCreate.length) {
+        this.importMessage = this.i18n.t('settings.importFinished', { done, failed });
+        this.importRows = [];
+        this.loadGeraetetraeger();
+      }
+    };
     plan.toCreate.forEach((row) => {
       this.http
         .post<Geraetetraeger>(`${this.baseUrl}/geraetetraeger`, row)
         .subscribe({
           next: () => {
             done += 1;
+            finishIfDone();
           },
           error: () => {
             failed += 1;
-          },
-          complete: () => {
-            if (done + failed === plan.toCreate.length) {
-              this.importMessage = this.i18n.t('settings.importFinished', { done, failed });
-              this.importRows = [];
-              this.loadGeraetetraeger();
-            }
+            finishIfDone();
           }
         });
     });

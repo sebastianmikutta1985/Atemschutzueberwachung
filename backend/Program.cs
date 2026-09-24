@@ -1,9 +1,42 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var systemSecret = builder.Configuration["SYSTEM_SECRET"];
+if (string.IsNullOrWhiteSpace(systemSecret) || systemSecret.Length < 16)
+{
+    throw new InvalidOperationException(
+        "SYSTEM_SECRET ist nicht gesetzt oder kuerzer als 16 Zeichen. Backend wird nicht gestartet.");
+}
+var systemSecretHash = SHA256.HashData(Encoding.UTF8.GetBytes(systemSecret));
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    // Nur Proxys auf localhost werden standardmaessig vertraut (z. B. IIS/nginx auf demselben Host).
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+});
+builder.Services.AddSingleton<LoginThrottle>();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    // Begrenzt Login-Versuche pro IP. Schuetzt vor PIN-Durchprobieren und CPU-Last durch PBKDF2.
+    options.AddPolicy("login", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 20,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+});
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -31,7 +64,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();
+    var isNewDatabase = db.Database.EnsureCreated();
     await EnsureOrganizationsTable(db);
     await EnsureOrganizationDefaults(db);
     await EnsureUserAccountsTable(db);
@@ -43,7 +76,10 @@ using (var scope = app.Services.CreateScope())
     await EnsureAlarmEventsTable(db);
     await EnsureOrganizationColumns(db);
     await EnsureDefaultOrganization(db);
+    await MigrateTimestampsToUtc(db, isNewDatabase, builder.Configuration["LEGACY_TIMEZONE"] ?? "Europe/Berlin");
 }
+
+app.UseForwardedHeaders();
 
 if (app.Environment.IsDevelopment())
 {
@@ -52,8 +88,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("frontend");
-
-var systemSecret = builder.Configuration["SYSTEM_SECRET"] ?? "changeme";
+app.UseRateLimiter();
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }))
     .WithOpenApi();
@@ -90,11 +125,15 @@ app.MapPut("/api/settings", async (HttpContext http, OrgSettingsUpdate dto, AppD
     }
     if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
     {
-        return Results.Forbid();
+        return Api.Forbidden();
     }
-    if (dto.DefaultStartdruckPerson1Bar <= 0 || dto.DefaultStartdruckPerson2Bar <= 0 || dto.DefaultWarnzeitMin <= 0 || dto.DefaultMaxzeitMin <= 0)
+    var settingsError =
+        Api.CheckDruck(dto.DefaultStartdruckPerson1Bar, "Startdruck Person 1")
+        ?? Api.CheckDruck(dto.DefaultStartdruckPerson2Bar, "Startdruck Person 2")
+        ?? Api.CheckZeiten(dto.DefaultWarnzeitMin, dto.DefaultMaxzeitMin);
+    if (settingsError != null)
     {
-        return Results.BadRequest(new { error = "Werte muessen groesser 0 sein." });
+        return Api.Bad(settingsError);
     }
     var org = await db.Organizations.FirstOrDefaultAsync(o => o.Id == auth.OrgId);
     if (org == null)
@@ -116,18 +155,25 @@ app.MapPut("/api/settings", async (HttpContext http, OrgSettingsUpdate dto, AppD
 }).WithOpenApi();
 
 // Auth
-app.MapPost("/api/auth/login", async (LoginRequest dto, AppDbContext db) =>
+app.MapPost("/api/auth/login", async (HttpContext http, LoginRequest dto, AppDbContext db, LoginThrottle throttle) =>
 {
-    var code = dto.OrgaCode.Trim().ToUpperInvariant();
-    var pin = dto.Pin.Trim();
-    if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(pin))
+    var code = (dto.OrgaCode ?? string.Empty).Trim().ToUpperInvariant();
+    var pin = (dto.Pin ?? string.Empty).Trim();
+    if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(pin) || code.Length > 32 || pin.Length > 64)
     {
         return Results.BadRequest();
+    }
+
+    var throttleKey = $"org:{http.Connection.RemoteIpAddress}:{code}";
+    if (throttle.IsLocked(throttleKey, out var retryAfter))
+    {
+        return Api.TooManyAttempts(retryAfter);
     }
 
     var org = await db.Organizations.FirstOrDefaultAsync(o => o.Code == code);
     if (org == null || !string.Equals(org.Status, "aktiv", StringComparison.OrdinalIgnoreCase))
     {
+        throttle.RegisterFailure(throttleKey);
         return Results.Unauthorized();
     }
 
@@ -137,8 +183,10 @@ app.MapPost("/api/auth/login", async (LoginRequest dto, AppDbContext db) =>
     var match = accounts.FirstOrDefault(a => VerifyPin(pin, a.PinHash));
     if (match == null)
     {
+        throttle.RegisterFailure(throttleKey);
         return Results.Unauthorized();
     }
+    throttle.Reset(throttleKey);
 
     var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
     var session = new Session
@@ -160,7 +208,7 @@ app.MapPost("/api/auth/login", async (LoginRequest dto, AppDbContext db) =>
         orgName = org.Name,
         orgCode = org.Code
     });
-}).WithOpenApi();
+}).RequireRateLimiting("login").WithOpenApi();
 
 app.MapGet("/api/auth/me", async (HttpContext http, AppDbContext db) =>
 {
@@ -195,12 +243,20 @@ app.MapPost("/api/auth/logout", async (HttpContext http, AppDbContext db) =>
 }).WithOpenApi();
 
 // Hersteller-System
-app.MapPost("/api/system/login", async (SystemLoginRequest dto, AppDbContext db) =>
+app.MapPost("/api/system/login", async (HttpContext http, SystemLoginRequest dto, AppDbContext db, LoginThrottle throttle) =>
 {
-    if (string.IsNullOrWhiteSpace(dto.Secret) || dto.Secret != systemSecret)
+    var throttleKey = $"system:{http.Connection.RemoteIpAddress}";
+    if (throttle.IsLocked(throttleKey, out var retryAfter))
     {
+        return Api.TooManyAttempts(retryAfter);
+    }
+    var given = SHA256.HashData(Encoding.UTF8.GetBytes(dto.Secret ?? string.Empty));
+    if (string.IsNullOrWhiteSpace(dto.Secret) || !CryptographicOperations.FixedTimeEquals(given, systemSecretHash))
+    {
+        throttle.RegisterFailure(throttleKey);
         return Results.Unauthorized();
     }
+    throttle.Reset(throttleKey);
 
     var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
     var session = new SystemSession
@@ -213,7 +269,7 @@ app.MapPost("/api/system/login", async (SystemLoginRequest dto, AppDbContext db)
     db.SystemSessions.Add(session);
     await db.SaveChangesAsync();
     return Results.Ok(new { token });
-}).WithOpenApi();
+}).RequireRateLimiting("login").WithOpenApi();
 
 app.MapGet("/api/system/orgs", async (HttpContext http, AppDbContext db) =>
 {
@@ -231,18 +287,31 @@ app.MapPost("/api/system/orgs", async (HttpContext http, OrgCreate dto, AppDbCon
     {
         return Results.Unauthorized();
     }
-    var name = dto.Name.Trim();
-    if (string.IsNullOrWhiteSpace(name))
+    var name = Api.Clean(dto.Name);
+    var status = string.IsNullOrWhiteSpace(dto.Status) ? "aktiv" : dto.Status.Trim().ToLowerInvariant();
+    var adminPin = (dto.AdminPin ?? string.Empty).Trim();
+    var userPin = (dto.UserPin ?? string.Empty).Trim();
+    var createError =
+        Api.CheckText(name, "Name", 200)
+        ?? Api.CheckStatus(status)
+        ?? Api.CheckPin(adminPin, "Admin-PIN")
+        ?? Api.CheckPin(userPin, "Benutzer-PIN")
+        ?? (adminPin == userPin ? "Admin-PIN und Benutzer-PIN muessen sich unterscheiden." : null);
+    if (createError != null)
     {
-        return Results.BadRequest();
+        return Api.Bad(createError);
     }
     var code = GenerateOrgCode();
+    while (await db.Organizations.AnyAsync(o => o.Code == code))
+    {
+        code = GenerateOrgCode();
+    }
     var org = new Organization
     {
         Id = Guid.NewGuid(),
         Name = name,
         Code = code,
-        Status = dto.Status ?? "aktiv",
+        Status = status,
         CreatedAt = DateTime.UtcNow
     };
     db.Organizations.Add(org);
@@ -251,7 +320,7 @@ app.MapPost("/api/system/orgs", async (HttpContext http, OrgCreate dto, AppDbCon
         Id = Guid.NewGuid(),
         OrganizationId = org.Id,
         Role = "admin",
-        PinHash = HashPin(dto.AdminPin.Trim()),
+        PinHash = HashPin(adminPin),
         Active = true
     });
     db.UserAccounts.Add(new UserAccount
@@ -259,7 +328,7 @@ app.MapPost("/api/system/orgs", async (HttpContext http, OrgCreate dto, AppDbCon
         Id = Guid.NewGuid(),
         OrganizationId = org.Id,
         Role = "user",
-        PinHash = HashPin(dto.UserPin.Trim()),
+        PinHash = HashPin(userPin),
         Active = true
     });
     await db.SaveChangesAsync();
@@ -277,13 +346,30 @@ app.MapPut("/api/system/orgs/{id:guid}", async (Guid id, HttpContext http, OrgUp
     {
         return Results.NotFound();
     }
+    var newStatus = dto.Status?.Trim().ToLowerInvariant();
+    var updateError =
+        (string.IsNullOrWhiteSpace(dto.Name) ? null : Api.CheckText(Api.Clean(dto.Name), "Name", 200))
+        ?? (string.IsNullOrWhiteSpace(newStatus) ? null : Api.CheckStatus(newStatus))
+        ?? (string.IsNullOrWhiteSpace(dto.AdminPin) ? null : Api.CheckPin(dto.AdminPin.Trim(), "Admin-PIN"))
+        ?? (string.IsNullOrWhiteSpace(dto.UserPin) ? null : Api.CheckPin(dto.UserPin.Trim(), "Benutzer-PIN"));
+    if (updateError != null)
+    {
+        return Api.Bad(updateError);
+    }
+    // Gleiche PIN fuer Admin und Benutzer wuerde die Rolle beim Login mehrdeutig machen.
+    var orgAccounts = await db.UserAccounts.Where(u => u.OrganizationId == id).ToListAsync();
+    if ((!string.IsNullOrWhiteSpace(dto.AdminPin) && orgAccounts.Any(a => a.Role == "user" && VerifyPin(dto.AdminPin.Trim(), a.PinHash)))
+        || (!string.IsNullOrWhiteSpace(dto.UserPin) && orgAccounts.Any(a => a.Role == "admin" && VerifyPin(dto.UserPin.Trim(), a.PinHash))))
+    {
+        return Api.Bad("Admin-PIN und Benutzer-PIN muessen sich unterscheiden.");
+    }
     if (!string.IsNullOrWhiteSpace(dto.Name))
     {
-        org.Name = dto.Name.Trim();
+        org.Name = Api.Clean(dto.Name);
     }
-    if (!string.IsNullOrWhiteSpace(dto.Status))
+    if (!string.IsNullOrWhiteSpace(newStatus))
     {
-        org.Status = dto.Status.Trim();
+        org.Status = newStatus;
     }
     await db.SaveChangesAsync();
 
@@ -345,15 +431,20 @@ app.MapPost("/api/geraetetraeger", async (HttpContext http, GeraetetraegerCreate
     }
     if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
     {
-        return Results.Forbid();
+        return Api.Forbidden();
+    }
+    var personError = Api.CheckPerson(dto.Vorname, dto.Nachname, dto.Funkrufname);
+    if (personError != null)
+    {
+        return Api.Bad(personError);
     }
     var entity = new Geraetetraeger
     {
         Id = Guid.NewGuid(),
         OrganizationId = auth.OrgId,
-        Vorname = dto.Vorname.Trim(),
-        Nachname = dto.Nachname.Trim(),
-        Funkrufname = string.IsNullOrWhiteSpace(dto.Funkrufname) ? null : dto.Funkrufname.Trim(),
+        Vorname = Api.Clean(dto.Vorname),
+        Nachname = Api.Clean(dto.Nachname),
+        Funkrufname = string.IsNullOrWhiteSpace(dto.Funkrufname) ? null : Api.Clean(dto.Funkrufname),
         Aktiv = dto.Aktiv
     };
 
@@ -372,7 +463,7 @@ app.MapPut("/api/geraetetraeger/{id:guid}", async (Guid id, HttpContext http, Ge
     }
     if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
     {
-        return Results.Forbid();
+        return Api.Forbidden();
     }
     var entity = await db.Geraetetraeger.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == auth.OrgId);
     if (entity == null)
@@ -380,9 +471,14 @@ app.MapPut("/api/geraetetraeger/{id:guid}", async (Guid id, HttpContext http, Ge
         return Results.NotFound();
     }
 
-    entity.Vorname = dto.Vorname.Trim();
-    entity.Nachname = dto.Nachname.Trim();
-    entity.Funkrufname = string.IsNullOrWhiteSpace(dto.Funkrufname) ? null : dto.Funkrufname.Trim();
+    var personError = Api.CheckPerson(dto.Vorname, dto.Nachname, dto.Funkrufname);
+    if (personError != null)
+    {
+        return Api.Bad(personError);
+    }
+    entity.Vorname = Api.Clean(dto.Vorname);
+    entity.Nachname = Api.Clean(dto.Nachname);
+    entity.Funkrufname = string.IsNullOrWhiteSpace(dto.Funkrufname) ? null : Api.Clean(dto.Funkrufname);
     entity.Aktiv = dto.Aktiv;
 
     await db.SaveChangesAsync();
@@ -399,7 +495,7 @@ app.MapDelete("/api/geraetetraeger/{id:guid}", async (Guid id, HttpContext http,
     }
     if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
     {
-        return Results.Forbid();
+        return Api.Forbidden();
     }
     var entity = await db.Geraetetraeger.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == auth.OrgId);
     if (entity == null)
@@ -438,14 +534,19 @@ app.MapPost("/api/truppnamen", async (HttpContext http, TruppNameCreate dto, App
     }
     if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
     {
-        return Results.Forbid();
+        return Api.Forbidden();
+    }
+    var nameError = Api.CheckText(Api.Clean(dto.Name), "Truppname", 100);
+    if (nameError != null)
+    {
+        return Api.Bad(nameError);
     }
     var nextOrder = await db.Truppnamen.Where(t => t.OrganizationId == auth.OrgId).MaxAsync(t => (int?)t.OrderIndex) ?? 0;
     var entity = new TruppName
     {
         Id = Guid.NewGuid(),
         OrganizationId = auth.OrgId,
-        Name = dto.Name.Trim(),
+        Name = Api.Clean(dto.Name),
         Aktiv = dto.Aktiv,
         OrderIndex = nextOrder + 1
     };
@@ -465,7 +566,7 @@ app.MapPut("/api/truppnamen/{id:guid}", async (Guid id, HttpContext http, TruppN
     }
     if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
     {
-        return Results.Forbid();
+        return Api.Forbidden();
     }
     var entity = await db.Truppnamen.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == auth.OrgId);
     if (entity == null)
@@ -473,7 +574,12 @@ app.MapPut("/api/truppnamen/{id:guid}", async (Guid id, HttpContext http, TruppN
         return Results.NotFound();
     }
 
-    entity.Name = dto.Name.Trim();
+    var nameError = Api.CheckText(Api.Clean(dto.Name), "Truppname", 100);
+    if (nameError != null)
+    {
+        return Api.Bad(nameError);
+    }
+    entity.Name = Api.Clean(dto.Name);
     entity.Aktiv = dto.Aktiv;
     entity.OrderIndex = dto.OrderIndex;
     await db.SaveChangesAsync();
@@ -490,7 +596,7 @@ app.MapDelete("/api/truppnamen/{id:guid}", async (Guid id, HttpContext http, App
     }
     if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
     {
-        return Results.Forbid();
+        return Api.Forbidden();
     }
     var entity = await db.Truppnamen.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == auth.OrgId);
     if (entity == null)
@@ -513,7 +619,7 @@ app.MapPost("/api/truppnamen/reorder", async (HttpContext http, TruppNameReorder
     }
     if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
     {
-        return Results.Forbid();
+        return Api.Forbidden();
     }
     if (dto.Ids == null || dto.Ids.Length == 0)
     {
@@ -544,13 +650,18 @@ app.MapPost("/api/einsaetze", async (HttpContext http, EinsatzCreate dto, AppDbC
     {
         return Results.Unauthorized();
     }
+    var einsatzError = Api.CheckText(Api.Clean(dto.Name), "Einsatzname", 200) ?? Api.CheckText(Api.Clean(dto.Ort), "Ort", 200);
+    if (einsatzError != null)
+    {
+        return Api.Bad(einsatzError);
+    }
     var einsatz = new Einsatz
     {
         Id = Guid.NewGuid(),
         OrganizationId = auth.OrgId,
-        Name = dto.Name.Trim(),
-        Ort = dto.Ort.Trim(),
-        Alarmzeit = dto.Alarmzeit ?? DateTime.Now,
+        Name = Api.Clean(dto.Name),
+        Ort = Api.Clean(dto.Ort),
+        Alarmzeit = Api.ToUtc(dto.Alarmzeit) ?? DateTime.UtcNow,
         Status = "aktiv"
     };
 
@@ -603,8 +714,9 @@ app.MapPost("/api/einsaetze/{id:guid}/beenden", async (Guid id, HttpContext http
         return Results.NotFound();
     }
 
+    var now = DateTime.UtcNow;
     einsatz.Status = "beendet";
-    einsatz.Endzeit = DateTime.Now;
+    einsatz.Endzeit = now;
 
     var offeneTrupps = await db.Trupps
         .Where(t => t.EinsatzId == id && t.Endzeit == null && t.OrganizationId == auth.OrgId)
@@ -612,7 +724,7 @@ app.MapPost("/api/einsaetze/{id:guid}/beenden", async (Guid id, HttpContext http
 
     foreach (var trupp in offeneTrupps)
     {
-        trupp.Endzeit = DateTime.Now;
+        trupp.Endzeit = now;
     }
 
     await db.SaveChangesAsync();
@@ -627,20 +739,33 @@ app.MapDelete("/api/einsaetze/{id:guid}", async (Guid id, HttpContext http, AppD
     {
         return Results.Unauthorized();
     }
+    // Einsatzdokumentation darf nur ein Admin loeschen, und nur fuer beendete Einsaetze.
+    if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
+    {
+        return Api.Forbidden();
+    }
     var einsatz = await db.Einsaetze.FirstOrDefaultAsync(e => e.Id == id && e.OrganizationId == auth.OrgId);
     if (einsatz == null)
     {
         return Results.NotFound();
     }
+    if (einsatz.Status == "aktiv")
+    {
+        return Api.Bad("Ein aktiver Einsatz kann nicht geloescht werden. Bitte zuerst beenden.");
+    }
 
     var relatedTrupps = await db.Trupps
         .Where(t => t.EinsatzId == id && t.OrganizationId == auth.OrgId)
         .ToListAsync();
+    var relatedTruppIds = relatedTrupps.Select(t => t.Id).ToArray();
 
-    if (relatedTrupps.Count > 0)
-    {
-        db.Trupps.RemoveRange(relatedTrupps);
-    }
+    db.Druckmessungen.RemoveRange(await db.Druckmessungen
+        .Where(m => m.OrganizationId == auth.OrgId && relatedTruppIds.Contains(m.TruppId))
+        .ToListAsync());
+    db.AlarmEvents.RemoveRange(await db.AlarmEvents
+        .Where(e => e.OrganizationId == auth.OrgId && relatedTruppIds.Contains(e.TruppId))
+        .ToListAsync());
+    db.Trupps.RemoveRange(relatedTrupps);
 
     db.Einsaetze.Remove(einsatz);
     await db.SaveChangesAsync();
@@ -661,8 +786,16 @@ app.MapPost("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Htt
     {
         return Results.NotFound();
     }
+    if (einsatz.Status != "aktiv")
+    {
+        return Api.Bad("Einsatz ist bereits beendet.");
+    }
+    if (dto.Person1Id == dto.Person2Id)
+    {
+        return Api.Bad("Person 1 und Person 2 muessen unterschiedlich sein.");
+    }
 
-    var person1 = await db.Geraetetraeger.FirstOrDefaultAsync(t => t.Id == dto.Person1Id && t.OrganizationId == auth.OrgId);
+    var person1 =await db.Geraetetraeger.FirstOrDefaultAsync(t => t.Id == dto.Person1Id && t.OrganizationId == auth.OrgId);
     var person2 = await db.Geraetetraeger.FirstOrDefaultAsync(t => t.Id == dto.Person2Id && t.OrganizationId == auth.OrgId);
     var truppName = await db.Truppnamen.FirstOrDefaultAsync(t => t.Id == dto.TruppNameId && t.OrganizationId == auth.OrgId);
     var orgDefaults = await db.Organizations.FirstOrDefaultAsync(o => o.Id == auth.OrgId);
@@ -670,6 +803,10 @@ app.MapPost("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Htt
     if (person1 == null || person2 == null || truppName == null)
     {
         return Results.BadRequest(new { error = "Trupp und Personen muessen aus der Liste gewaehlt werden." });
+    }
+    if (!person1.Aktiv || !person2.Aktiv || !truppName.Aktiv)
+    {
+        return Api.Bad("Inaktive Personen oder Truppnamen koennen nicht eingesetzt werden.");
     }
 
     var defP1 = orgDefaults?.DefaultStartdruckPerson1Bar ?? 300;
@@ -681,6 +818,28 @@ app.MapPost("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Htt
     var startP2 = dto.StartdruckPerson2Bar > 0 ? dto.StartdruckPerson2Bar : defP2;
     var warnMin = dto.WarnzeitMin > 0 ? dto.WarnzeitMin : defWarn;
     var maxMin = dto.MaxzeitMin > 0 ? dto.MaxzeitMin : defMax;
+
+    var truppError =
+        Api.CheckDruck(startP1, "Startdruck Person 1")
+        ?? Api.CheckDruck(startP2, "Startdruck Person 2")
+        ?? Api.CheckZeiten(warnMin, maxMin);
+    if (truppError != null)
+    {
+        return Api.Bad(truppError);
+    }
+
+    var aktiveTrupps = await db.Trupps
+        .Where(t => t.OrganizationId == auth.OrgId && t.Endzeit == null)
+        .ToListAsync();
+    if (aktiveTrupps.Any(t => t.Person1Id == person1.Id || t.Person2Id == person1.Id
+        || t.Person1Id == person2.Id || t.Person2Id == person2.Id))
+    {
+        return Api.Bad("Eine der Personen ist bereits in einem aktiven Trupp.");
+    }
+    if (aktiveTrupps.Any(t => t.EinsatzId == einsatzId && t.Bezeichnung == truppName.Name))
+    {
+        return Api.Bad("Dieser Trupp ist in diesem Einsatz bereits aktiv.");
+    }
 
     var trupp = new Trupp
     {
@@ -695,7 +854,7 @@ app.MapPost("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Htt
         StartdruckBar = startP1,
         StartdruckPerson1Bar = startP1,
         StartdruckPerson2Bar = startP2,
-        Startzeit = dto.Startzeit ?? DateTime.Now,
+        Startzeit = Api.ToUtc(dto.Startzeit) ?? DateTime.UtcNow,
         WarnzeitMin = warnMin,
         MaxzeitMin = maxMin
     };
@@ -787,7 +946,10 @@ app.MapPost("/api/trupps/{id:guid}/beenden", async (Guid id, HttpContext http, A
         return Results.NotFound();
     }
 
-    trupp.Endzeit = DateTime.Now;
+    if (trupp.Endzeit == null)
+    {
+        trupp.Endzeit = DateTime.UtcNow;
+    }
     await db.SaveChangesAsync();
     await NotifyOrgAsync(hub, auth.OrgId, "trupp");
     return Results.Ok(trupp);
@@ -816,10 +978,22 @@ app.MapPost("/api/trupps/{id:guid}/druckmessungen", async (Guid id, HttpContext 
         return Results.BadRequest(new { error = "Person gehoert nicht zu diesem Trupp." });
     }
 
-    var count = await db.Druckmessungen.CountAsync(m => m.OrganizationId == auth.OrgId && m.TruppId == id && m.PersonId == dto.PersonId);
-    if (count >= 3)
+    var bisherige = await db.Druckmessungen
+        .Where(m => m.OrganizationId == auth.OrgId && m.TruppId == id && m.PersonId == dto.PersonId)
+        .OrderByDescending(m => m.Zeit)
+        .ToListAsync();
+    if (bisherige.Count >= 3)
     {
         return Results.BadRequest(new { error = "Maximal 3 Druckmessungen pro Person." });
+    }
+
+    // Der Druck kann nur sinken: Obergrenze ist die letzte Messung bzw. der Startdruck.
+    var maxDruck = bisherige.Count > 0
+        ? bisherige[0].DruckBar
+        : dto.PersonId == trupp.Person1Id ? trupp.StartdruckPerson1Bar : trupp.StartdruckPerson2Bar;
+    if (dto.DruckBar < 1 || dto.DruckBar > maxDruck)
+    {
+        return Api.Bad($"Druck muss zwischen 1 und {maxDruck} bar liegen.");
     }
 
     var messung = new Druckmessung
@@ -829,7 +1003,7 @@ app.MapPost("/api/trupps/{id:guid}/druckmessungen", async (Guid id, HttpContext 
         TruppId = id,
         PersonId = dto.PersonId,
         DruckBar = dto.DruckBar,
-        Zeit = DateTime.Now
+        Zeit = DateTime.UtcNow
     };
 
     db.Druckmessungen.Add(messung);
@@ -838,7 +1012,7 @@ app.MapPost("/api/trupps/{id:guid}/druckmessungen", async (Guid id, HttpContext 
     return Results.Ok(messung);
 }).WithOpenApi();
 
-app.MapPost("/api/trupps/{id:guid}/events", async (Guid id, HttpContext http, AlarmEventCreate dto, AppDbContext db) =>
+app.MapPost("/api/trupps/{id:guid}/events", async (Guid id, HttpContext http, AlarmEventCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
     var auth = await AuthHelpers.GetAuthAsync(http, db);
     if (auth == null)
@@ -851,10 +1025,15 @@ app.MapPost("/api/trupps/{id:guid}/events", async (Guid id, HttpContext http, Al
         return Results.NotFound();
     }
 
-    var type = dto.Typ.Trim().ToLowerInvariant();
-    if (type != "warn" && type != "max")
+    var type = (dto.Typ ?? string.Empty).Trim().ToLowerInvariant();
+    if (type is not ("warn" or "max" or "warn_ack" or "max_ack"))
     {
         return Results.BadRequest(new { error = "Unbekannter Event-Typ." });
+    }
+    var nachricht = string.IsNullOrWhiteSpace(dto.Nachricht) ? null : Api.Clean(dto.Nachricht);
+    if (nachricht?.Length > 500)
+    {
+        return Api.Bad("Nachricht darf hoechstens 500 Zeichen lang sein.");
     }
 
     var ev = new AlarmEvent
@@ -863,12 +1042,17 @@ app.MapPost("/api/trupps/{id:guid}/events", async (Guid id, HttpContext http, Al
         OrganizationId = auth.OrgId,
         TruppId = id,
         Typ = type,
-        Zeit = DateTime.Now,
-        Nachricht = dto.Nachricht?.Trim()
+        Zeit = DateTime.UtcNow,
+        Nachricht = nachricht
     };
 
     db.AlarmEvents.Add(ev);
     await db.SaveChangesAsync();
+    if (type.EndsWith("_ack"))
+    {
+        // Quittierung auf allen Geraeten der Organisation sichtbar machen.
+        await NotifyOrgAsync(hub, auth.OrgId, "trupp");
+    }
     return Results.Ok(ev);
 }).WithOpenApi();
 
@@ -1128,8 +1312,13 @@ static async Task EnsureDefaultOrganization(AppDbContext db)
     var hasAdmin = await db.UserAccounts.AnyAsync(u => u.OrganizationId == org.Id && u.Role == "admin");
     if (!hasAdmin)
     {
-        var adminPin = "1234";
-        var userPin = "0000";
+        // Zufaellige Start-PINs statt fester Standardwerte; werden nur dieses eine Mal ausgegeben.
+        var adminPin = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+        var userPin = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+        while (userPin == adminPin)
+        {
+            userPin = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+        }
         db.UserAccounts.Add(new UserAccount
         {
             Id = Guid.NewGuid(),
@@ -1147,8 +1336,62 @@ static async Task EnsureDefaultOrganization(AppDbContext db)
             Active = true
         });
         await db.SaveChangesAsync();
-        Console.WriteLine($"[BOOTSTRAP] Default pins set. Admin: {adminPin}, User: {userPin}");
+        Console.WriteLine($"[BOOTSTRAP] Initial-PINs (bitte notieren und ueber das Hersteller-Portal aendern). Admin: {adminPin}, User: {userPin}");
     }
+}
+
+// Frueher wurden Einsatz-/Trupp-/Messzeiten als lokale Serverzeit ohne Zeitzone gespeichert.
+// Einmalige Umrechnung nach UTC; der Stand wird ueber PRAGMA user_version markiert.
+static async Task MigrateTimestampsToUtc(AppDbContext db, bool isNewDatabase, string legacyTimeZoneId)
+{
+    const int utcSchemaVersion = 1;
+    var connection = db.Database.GetDbConnection();
+    if (connection.State != System.Data.ConnectionState.Open)
+    {
+        await connection.OpenAsync();
+    }
+
+    await using (var cmd = connection.CreateCommand())
+    {
+        cmd.CommandText = "PRAGMA user_version;";
+        var version = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+        if (version >= utcSchemaVersion)
+        {
+            return;
+        }
+    }
+
+    if (!isNewDatabase)
+    {
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(legacyTimeZoneId);
+        DateTime ToUtc(DateTime wallClock) =>
+            TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(wallClock, DateTimeKind.Unspecified), tz);
+
+        await using var tx = await db.Database.BeginTransactionAsync();
+        foreach (var e in await db.Einsaetze.ToListAsync())
+        {
+            e.Alarmzeit = ToUtc(e.Alarmzeit);
+            e.Endzeit = e.Endzeit is { } end ? ToUtc(end) : null;
+        }
+        foreach (var t in await db.Trupps.ToListAsync())
+        {
+            t.Startzeit = ToUtc(t.Startzeit);
+            t.Endzeit = t.Endzeit is { } end ? ToUtc(end) : null;
+        }
+        foreach (var m in await db.Druckmessungen.ToListAsync())
+        {
+            m.Zeit = ToUtc(m.Zeit);
+        }
+        foreach (var a in await db.AlarmEvents.ToListAsync())
+        {
+            a.Zeit = ToUtc(a.Zeit);
+        }
+        await db.SaveChangesAsync();
+        await tx.CommitAsync();
+        Console.WriteLine($"[MIGRATION] Zeitstempel von {legacyTimeZoneId} nach UTC umgerechnet.");
+    }
+
+    await db.Database.ExecuteSqlRawAsync($"PRAGMA user_version = {utcSchemaVersion};");
 }
 
 static string GenerateOrgCode()
@@ -1326,9 +1569,127 @@ static class AuthHelpers
     }
 }
 
+static class Api
+{
+    public const int MinPinLength = 6;
+    public const int MaxDruckBar = 400;
+    public const int MaxZeitMin = 240;
+
+    public static IResult Forbidden() =>
+        Results.Json(new { error = "Keine Berechtigung." }, statusCode: StatusCodes.Status403Forbidden);
+
+    public static IResult Bad(string error) => Results.BadRequest(new { error });
+
+    public static IResult TooManyAttempts(TimeSpan retryAfter) =>
+        Results.Json(
+            new { error = $"Zu viele Fehlversuche. Bitte in {Math.Max(1, (int)Math.Ceiling(retryAfter.TotalMinutes))} Minuten erneut versuchen." },
+            statusCode: StatusCodes.Status429TooManyRequests);
+
+    public static string Clean(string? value) => (value ?? string.Empty).Trim();
+
+    public static string? CheckText(string value, string field, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return $"{field} ist ein Pflichtfeld.";
+        if (value.Length > maxLength) return $"{field} darf hoechstens {maxLength} Zeichen lang sein.";
+        return null;
+    }
+
+    public static string? CheckPerson(string? vorname, string? nachname, string? funkrufname) =>
+        CheckText(Clean(vorname), "Vorname", 100)
+        ?? CheckText(Clean(nachname), "Nachname", 100)
+        ?? (Clean(funkrufname).Length > 100 ? "Funkrufname darf hoechstens 100 Zeichen lang sein." : null);
+
+    public static string? CheckDruck(int druckBar, string field) =>
+        druckBar is < 1 or > MaxDruckBar ? $"{field} muss zwischen 1 und {MaxDruckBar} bar liegen." : null;
+
+    public static string? CheckZeiten(int warnzeitMin, int maxzeitMin)
+    {
+        if (warnzeitMin is < 1 or > MaxZeitMin || maxzeitMin is < 1 or > MaxZeitMin)
+        {
+            return $"Warn- und Maximalzeit muessen zwischen 1 und {MaxZeitMin} Minuten liegen.";
+        }
+        return warnzeitMin >= maxzeitMin ? "Warnzeit muss kleiner als die Maximalzeit sein." : null;
+    }
+
+    public static string? CheckStatus(string status) =>
+        status is "aktiv" or "gesperrt" ? null : "Status muss 'aktiv' oder 'gesperrt' sein.";
+
+    public static string? CheckPin(string pin, string field)
+    {
+        if (pin.Length < MinPinLength) return $"{field} muss mindestens {MinPinLength} Zeichen haben.";
+        if (pin.Length > 64) return $"{field} darf hoechstens 64 Zeichen haben.";
+        return null;
+    }
+
+    // Zeitangaben vom Client kommen als ISO-String mit "Z" oder Offset. Werte ohne Angabe gelten als UTC.
+    public static DateTime? ToUtc(DateTime? value) => value switch
+    {
+        null => null,
+        { Kind: DateTimeKind.Utc } v => v,
+        { Kind: DateTimeKind.Local } v => v.ToUniversalTime(),
+        { } v => DateTime.SpecifyKind(v, DateTimeKind.Utc)
+    };
+}
+
+// Sperrt nach zu vielen Fehlversuchen pro Schluessel (IP + Orga-Code) fuer ein Zeitfenster.
+// Bewusst nicht nur pro Orga-Code, damit ein Angreifer eine Feuerwehr nicht im Einsatz aussperren kann.
+sealed class LoginThrottle
+{
+    private const int MaxFailures = 10;
+    private static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
+    private readonly ConcurrentDictionary<string, (int Count, DateTime FirstFailure)> _failures = new();
+
+    public bool IsLocked(string key, out TimeSpan retryAfter)
+    {
+        retryAfter = TimeSpan.Zero;
+        if (!_failures.TryGetValue(key, out var entry))
+        {
+            return false;
+        }
+        var elapsed = DateTime.UtcNow - entry.FirstFailure;
+        if (elapsed >= Window)
+        {
+            _failures.TryRemove(key, out _);
+            return false;
+        }
+        if (entry.Count < MaxFailures)
+        {
+            return false;
+        }
+        retryAfter = Window - elapsed;
+        return true;
+    }
+
+    public void RegisterFailure(string key)
+    {
+        var now = DateTime.UtcNow;
+        _failures.AddOrUpdate(
+            key,
+            _ => (1, now),
+            (_, e) => now - e.FirstFailure >= Window ? (1, now) : (e.Count + 1, e.FirstFailure));
+
+        if (_failures.Count > 10_000)
+        {
+            foreach (var item in _failures.Where(f => now - f.Value.FirstFailure >= Window))
+            {
+                _failures.TryRemove(item.Key, out _);
+            }
+        }
+    }
+
+    public void Reset(string key) => _failures.TryRemove(key, out _);
+}
+
 class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+
+    // Alle Zeitstempel werden als UTC gespeichert und beim Lesen als UTC markiert,
+    // damit die API sie mit "Z" ausliefert und Clients sie korrekt in Ortszeit umrechnen.
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+    }
 
     public DbSet<Einsatz> Einsaetze => Set<Einsatz>();
     public DbSet<Trupp> Trupps => Set<Trupp>();
@@ -1340,6 +1701,16 @@ class AppDbContext : DbContext
     public DbSet<UserAccount> UserAccounts => Set<UserAccount>();
     public DbSet<Session> Sessions => Set<Session>();
     public DbSet<SystemSession> SystemSessions => Set<SystemSession>();
+}
+
+class UtcDateTimeConverter : ValueConverter<DateTime, DateTime>
+{
+    public UtcDateTimeConverter()
+        : base(
+            v => v.Kind == DateTimeKind.Local ? v.ToUniversalTime() : v,
+            v => DateTime.SpecifyKind(v, DateTimeKind.Utc))
+    {
+    }
 }
 
 class Einsatz
@@ -1455,7 +1826,7 @@ class SystemSession
     public DateTime ExpiresAt { get; set; }
 }
 
-record EinsatzCreate(string Name, string Ort, DateTime? Alarmzeit);
+record EinsatzCreate(string? Name, string? Ort, DateTime? Alarmzeit);
 record TruppCreate(
     Guid TruppNameId,
     Guid Person1Id,
@@ -1466,18 +1837,18 @@ record TruppCreate(
     int WarnzeitMin,
     int MaxzeitMin
 );
-record GeraetetraegerCreate(string Vorname, string Nachname, string? Funkrufname, bool Aktiv);
-record GeraetetraegerUpdate(string Vorname, string Nachname, string? Funkrufname, bool Aktiv);
-record TruppNameCreate(string Name, bool Aktiv);
-record TruppNameUpdate(string Name, bool Aktiv, int OrderIndex);
+record GeraetetraegerCreate(string? Vorname, string? Nachname, string? Funkrufname, bool Aktiv);
+record GeraetetraegerUpdate(string? Vorname, string? Nachname, string? Funkrufname, bool Aktiv);
+record TruppNameCreate(string? Name, bool Aktiv);
+record TruppNameUpdate(string? Name, bool Aktiv, int OrderIndex);
 record TruppNameReorder(Guid[] Ids);
 record DruckmessungCreate(Guid PersonId, int DruckBar);
-record AlarmEventCreate(string Typ, string? Nachricht);
-record LoginRequest(string OrgaCode, string Pin);
-record SystemLoginRequest(string Secret);
+record AlarmEventCreate(string? Typ, string? Nachricht);
+record LoginRequest(string? OrgaCode, string? Pin);
+record SystemLoginRequest(string? Secret);
 record OrgSettingsDto(int DefaultStartdruckPerson1Bar, int DefaultStartdruckPerson2Bar, int DefaultWarnzeitMin, int DefaultMaxzeitMin);
 record OrgSettingsUpdate(int DefaultStartdruckPerson1Bar, int DefaultStartdruckPerson2Bar, int DefaultWarnzeitMin, int DefaultMaxzeitMin);
-record OrgCreate(string Name, string AdminPin, string UserPin, string? Status);
+record OrgCreate(string? Name, string? AdminPin, string? UserPin, string? Status);
 record OrgUpdate(string? Name, string? AdminPin, string? UserPin, string? Status);
 record AuthContext(Guid OrgId, string Role, string OrgName, string OrgCode);
 

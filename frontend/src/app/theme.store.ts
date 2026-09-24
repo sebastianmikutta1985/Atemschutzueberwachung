@@ -2,7 +2,8 @@ export type ThemeMode = 'light' | 'dark';
 
 const THEME_KEY = 'crewtrace_theme';
 
-const hash = (input: string): string => {
+// Nur fuer die einmalige Uebernahme alter Einstellungen; frueher wurde der Schluessel aus der PIN gebildet.
+const legacyPinHash = (input: string): string => {
   let h = 5381;
   for (let i = 0; i < input.length; i += 1) {
     h = (h * 33) ^ input.charCodeAt(i);
@@ -11,8 +12,27 @@ const hash = (input: string): string => {
 };
 
 export const ThemeStore = {
-  keyFromCredentials(orgCode: string, pin: string): string {
-    return `${orgCode.toLowerCase()}_${hash(pin)}`;
+  keyFromOrgRole(orgCode: string, role: string): string {
+    return `${orgCode.toLowerCase()}_${role}`;
+  },
+
+  migrateLegacyKey(orgCode: string, pin: string, newThemeKey: string): void {
+    this.renameKey(`${orgCode.toLowerCase()}_${legacyPinHash(pin)}`, newThemeKey);
+  },
+
+  renameKey(oldThemeKey: string | null | undefined, newThemeKey: string): void {
+    if (!oldThemeKey || oldThemeKey === newThemeKey) {
+      return;
+    }
+    const oldStorageKey = this.keyFor(oldThemeKey);
+    const value = localStorage.getItem(oldStorageKey);
+    if (value === null) {
+      return;
+    }
+    if (localStorage.getItem(this.keyFor(newThemeKey)) === null) {
+      localStorage.setItem(this.keyFor(newThemeKey), value);
+    }
+    localStorage.removeItem(oldStorageKey);
   },
 
   keyFor(themeKey?: string | null): string {

@@ -36,9 +36,16 @@ Im Einstellungsbereich können Default-Werte für neue Trupps gepflegt werden:
 
 ```powershell
 cd backend
-$env:SYSTEM_SECRET="DEIN_SECRET"
+$env:SYSTEM_SECRET="MINDESTENS-16-ZEICHEN-LANG"
 dotnet run
 ```
+
+- `SYSTEM_SECRET` ist Pflicht (mind. 16 Zeichen), sonst startet das Backend nicht. Niemals ins Repository schreiben.
+- Beim ersten Start wird eine Demo-Organisation mit **zufälligen** Initial-PINs angelegt; Code und PINs stehen einmalig in der Konsolenausgabe (`[BOOTSTRAP]`).
+- Neue bzw. zurückgesetzte PINs müssen mindestens 6 Zeichen haben; Admin- und Benutzer-PIN müssen sich unterscheiden.
+- Die Datenbank `backend/data/ats.db` ist nicht Teil des Repositorys (enthält personenbezogene Daten).
+- Alle Zeitstempel werden in UTC gespeichert. Ältere Datenbanken werden beim ersten Start einmalig umgerechnet; die frühere Zeitzone lässt sich über `LEGACY_TIMEZONE` setzen (Standard: `Europe/Berlin`).
+- Login-Schutz: max. 20 Login-Anfragen pro Minute und IP; nach 10 Fehlversuchen wird die Kombination aus IP und Orga-Code für 15 Minuten gesperrt.
 
 ### Frontend
 
@@ -53,7 +60,7 @@ npm run start
 1. Backend starten (Port 5114)
 2. Frontend starten (Port 4200)
 3. Öffnen: `http://localhost:4200`
-4. Mit Orga-Code + PIN einloggen
+4. Mit Orga-Code + PIN einloggen (siehe `[BOOTSTRAP]`-Ausgabe beim ersten Start)
 
 ## Screenshot
 

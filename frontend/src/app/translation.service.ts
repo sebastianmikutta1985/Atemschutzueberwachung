@@ -66,11 +66,12 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       pin: 'PIN',
       organizationCodePlaceholder: 'Z. B. FFW123',
       pinPlaceholder: 'PIN',
-      remember: 'Zugangsdaten speichern',
+      remember: 'Organisationscode merken',
       submit: 'Anmelden',
       wait: 'Bitte warten...',
       errorRequired: 'Bitte Organisationscode und PIN eingeben.',
       errorLogin: 'Login fehlgeschlagen. Code oder PIN falsch.',
+      errorTooManyAttempts: 'Zu viele Fehlversuche. Bitte in einigen Minuten erneut versuchen.',
       titleTag: 'CrewTrace - Anmeldung'
     },
     dashboard: {
@@ -139,6 +140,7 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       maxReached: 'Maxzeit erreicht',
       acknowledge: 'Bestätigen',
       operationStartError: 'Einsatz konnte nicht gestartet werden.',
+      actionFailed: 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
       liveOffline: 'Offline - keine Live-Daten',
       exportSheetIncident: 'Einsatz',
       exportSheetCrews: 'Trupps',
@@ -234,6 +236,8 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       loadFailed: 'Konnte Organisationen nicht laden.',
       requiredFields: 'Name, Admin-PIN und Benutzer-PIN sind Pflicht.',
       createFailed: 'Organisation konnte nicht angelegt werden.',
+      pinTooShort: 'PINs müssen mindestens 6 Zeichen haben und sich unterscheiden.',
+      actionFailed: 'Aktion fehlgeschlagen.',
       resetPinPrompt: '{role}-PIN neu setzen:'
     },
     legal: {
@@ -306,11 +310,12 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       pin: 'PIN',
       organizationCodePlaceholder: 'E.g. FD123',
       pinPlaceholder: 'PIN',
-      remember: 'Remember access data',
+      remember: 'Remember organization code',
       submit: 'Sign in',
       wait: 'Please wait...',
       errorRequired: 'Please enter organization code and PIN.',
       errorLogin: 'Login failed. Code or PIN is incorrect.',
+      errorTooManyAttempts: 'Too many failed attempts. Please try again in a few minutes.',
       titleTag: 'CrewTrace - Login'
     },
     dashboard: {
@@ -379,6 +384,7 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       maxReached: 'Maximum time reached',
       acknowledge: 'Acknowledge',
       operationStartError: 'Incident could not be started.',
+      actionFailed: 'Saving failed. Please try again.',
       liveOffline: 'Offline - no live data',
       exportSheetIncident: 'Incident',
       exportSheetCrews: 'Crews',
@@ -474,6 +480,8 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       loadFailed: 'Could not load organizations.',
       requiredFields: 'Name, admin PIN and user PIN are required.',
       createFailed: 'Organization could not be created.',
+      pinTooShort: 'PINs must have at least 6 characters and differ from each other.',
+      actionFailed: 'Action failed.',
       resetPinPrompt: 'Set new {role} PIN:'
     },
     legal: {
