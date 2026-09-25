@@ -39,8 +39,11 @@ export class LoginPage {
       try {
         const data = JSON.parse(saved) as { orgaCode?: string; pin?: string; remember?: boolean };
         this.orgaCode = data.orgaCode ?? '';
-        this.pin = data.pin ?? '';
         this.remember = Boolean(data.remember);
+        if (data.pin !== undefined) {
+          // Aeltere Versionen haben die PIN im Klartext gespeichert – entfernen.
+          localStorage.setItem('ats_login', JSON.stringify({ orgaCode: this.orgaCode, remember: this.remember }));
+        }
       } catch {
         // ignore
       }
@@ -64,14 +67,13 @@ export class LoginPage {
       .subscribe({
         next: (res) => {
           if (this.remember) {
-            localStorage.setItem(
-              'ats_login',
-              JSON.stringify({ orgaCode: code, pin, remember: true })
-            );
+            localStorage.setItem('ats_login', JSON.stringify({ orgaCode: code, remember: true }));
           } else {
             localStorage.removeItem('ats_login');
           }
-          const themeKey = ThemeStore.keyFromCredentials(code, pin);
+          const themeKey = ThemeStore.keyFromOrgRole(res.orgCode, res.role);
+          ThemeStore.migrateLegacyKey(code, pin, themeKey);
+          this.pin = '';
           AuthStore.save({
             token: res.token,
             role: res.role,
@@ -83,8 +85,9 @@ export class LoginPage {
           ThemeStore.apply(mode);
           this.router.navigateByUrl('/');
         },
-        error: () => {
-          this.error = this.i18n.t('login.errorLogin');
+        error: (err) => {
+          this.error =
+            err?.status === 429 ? this.i18n.t('login.errorTooManyAttempts') : this.i18n.t('login.errorLogin');
           this.loading = false;
         }
       });

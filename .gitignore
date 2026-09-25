@@ -36,3 +36,12 @@ yarn-error.log*
 
 # Editor
 .vscode/
+
+# Local SQLite database (contains personal data, PIN hashes, session tokens)
+backend/data/
+*.db
+*.db-shm
+*.db-wal
+
+# Local .NET CLI home / caches
+.dotnet/
