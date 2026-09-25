@@ -1,3 +1,5 @@
+import { ThemeStore } from './theme.store';
+
 export type AuthRole = 'admin' | 'user';
 
 export type AuthState = {
@@ -17,7 +19,15 @@ export const AuthStore = {
       return null;
     }
     try {
-      return JSON.parse(raw) as AuthState;
+      const state = JSON.parse(raw) as AuthState;
+      const themeKey = ThemeStore.keyFromOrgRole(state.orgCode, state.role);
+      if (state.themeKey !== themeKey) {
+        // Alter Schluessel enthielt einen Hash der PIN – ersetzen, Einstellung uebernehmen.
+        ThemeStore.renameKey(state.themeKey, themeKey);
+        state.themeKey = themeKey;
+        this.save(state);
+      }
+      return state;
     } catch {
       return null;
     }

@@ -216,6 +216,7 @@
         <button class="primary" type="button" (click)="addTrupp()" [disabled]="!canAddTrupp()">
           {{ i18n.t('dashboard.addCrew') }}
         </button>
+        <div class="form-error" *ngIf="truppError">{{ truppError }}</div>
       </div>
     </section>
   </div>
@@ -366,7 +367,12 @@
           <button class="ghost" type="button" (click)="openEinsatzDetails(einsatz)">{{ i18n.t('common.details') }}</button>
           <button class="ghost" type="button" (click)="exportEinsatz(einsatz)">{{ i18n.t('common.export') }}</button>
           <button class="ghost" type="button" (click)="exportEinsatzPdf(einsatz)">{{ i18n.t('common.pdf') }}</button>
-          <button class="danger" type="button" *ngIf="einsatz.status !== 'aktiv'" (click)="deleteEinsatz(einsatz)">
+          <button
+            class="danger"
+            type="button"
+            *ngIf="einsatz.status !== 'aktiv' && authInfo?.role === 'admin'"
+            (click)="deleteEinsatz(einsatz)"
+          >
             {{ i18n.t('common.delete') }}
           </button>
         </div>
