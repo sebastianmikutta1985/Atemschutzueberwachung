@@ -62,7 +62,10 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("frontend", policy =>
     {
-        policy.WithOrigins("http://localhost:4200")
+        // Erlaubte Frontend-Origins, kommagetrennt, z. B. "https://www.crew-trace.com".
+        var origins = (builder.Configuration["CORS_ORIGINS"] ?? "http://localhost:4200")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        policy.WithOrigins(origins)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
@@ -105,6 +108,27 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+else
+{
+    app.UseHsts();
+    app.UseHttpsRedirection();
+}
+
+app.Use(async (http, next) =>
+{
+    var headers = http.Response.Headers;
+    headers.XContentTypeOptions = "nosniff";
+    headers.XFrameOptions = "DENY";
+    headers["Referrer-Policy"] = "no-referrer";
+    headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()";
+    if (http.Request.Path.StartsWithSegments("/api") || http.Request.Path.StartsWithSegments("/hubs"))
+    {
+        // Die API liefert nur JSON: nichts laden, nicht einbetten, nicht zwischenspeichern.
+        headers.ContentSecurityPolicy = "default-src 'none'; frame-ancestors 'none'";
+        headers.CacheControl = "no-store";
+    }
+    await next();
+});
 
 app.UseCors("frontend");
 app.UseRateLimiter();
