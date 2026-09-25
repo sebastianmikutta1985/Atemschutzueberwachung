@@ -1,9 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Options;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
 using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
@@ -24,6 +29,19 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
 });
 builder.Services.AddSingleton<LoginThrottle>();
+builder.Services.AddAuthentication()
+    .AddScheme<AuthenticationSchemeOptions, OrgSessionHandler>(SessionAuth.OrgScheme, null)
+    .AddScheme<AuthenticationSchemeOptions, SystemSessionHandler>(SessionAuth.SystemScheme, null);
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(AuthPolicies.Org, policy => policy
+        .AddAuthenticationSchemes(SessionAuth.OrgScheme)
+        .RequireAuthenticatedUser())
+    .AddPolicy(AuthPolicies.Admin, policy => policy
+        .AddAuthenticationSchemes(SessionAuth.OrgScheme)
+        .RequireRole("admin"))
+    .AddPolicy(AuthPolicies.System, policy => policy
+        .AddAuthenticationSchemes(SessionAuth.SystemScheme)
+        .RequireRole("system"));
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -77,6 +95,7 @@ using (var scope = app.Services.CreateScope())
     await EnsureOrganizationColumns(db);
     await EnsureDefaultOrganization(db);
     await MigrateTimestampsToUtc(db, isNewDatabase, builder.Configuration["LEGACY_TIMEZONE"] ?? "Europe/Berlin");
+    await MigrateSessionTokensToHash(db);
 }
 
 app.UseForwardedHeaders();
@@ -89,20 +108,28 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("frontend");
 app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
+
+// Zugriffsschutz zentral ueber Policies statt Pruefung in jedem Endpunkt.
+var orgApi = app.MapGroup("/api").RequireAuthorization(AuthPolicies.Org);
+var adminApi = app.MapGroup("/api").RequireAuthorization(AuthPolicies.Admin);
+var systemApi = app.MapGroup("/api/system").RequireAuthorization(AuthPolicies.System);
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }))
     .WithOpenApi();
 
-app.MapHub<UpdatesHub>("/hubs/updates");
+app.MapHub<UpdatesHub>("/hubs/updates", options =>
+    {
+        // Verbindung endet, wenn die Session ablaeuft, statt unbegrenzt weiter Updates zu liefern.
+        options.CloseOnAuthenticationExpiration = true;
+    })
+    .RequireAuthorization(AuthPolicies.Org);
 
 // Settings (Organization defaults)
-app.MapGet("/api/settings", async (HttpContext http, AppDbContext db) =>
+orgApi.MapGet("/settings", async (HttpContext http, AppDbContext db) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
+    var auth = http.GetAuth();
     var org = await db.Organizations.FirstOrDefaultAsync(o => o.Id == auth.OrgId);
     if (org == null)
     {
@@ -116,17 +143,9 @@ app.MapGet("/api/settings", async (HttpContext http, AppDbContext db) =>
     ));
 }).WithOpenApi();
 
-app.MapPut("/api/settings", async (HttpContext http, OrgSettingsUpdate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+adminApi.MapPut("/settings", async (HttpContext http, OrgSettingsUpdate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
-    if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
-    {
-        return Api.Forbidden();
-    }
+    var auth = http.GetAuth();
     var settingsError =
         Api.CheckDruck(dto.DefaultStartdruckPerson1Bar, "Startdruck Person 1")
         ?? Api.CheckDruck(dto.DefaultStartdruckPerson2Bar, "Startdruck Person 2")
@@ -188,13 +207,16 @@ app.MapPost("/api/auth/login", async (HttpContext http, LoginRequest dto, AppDbC
     }
     throttle.Reset(throttleKey);
 
-    var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
+    // Abgelaufene Sessions bei Gelegenheit aufraeumen.
+    await db.Sessions.Where(s => s.ExpiresAt <= DateTime.UtcNow).ExecuteDeleteAsync();
+
+    var token = SessionAuth.NewToken();
     var session = new Session
     {
         Id = Guid.NewGuid(),
-        Token = token,
+        TokenHash = SessionAuth.HashToken(token),
         OrganizationId = org.Id,
-        Role = match.Role,
+        Role = match.Role.ToLowerInvariant(),
         CreatedAt = DateTime.UtcNow,
         ExpiresAt = DateTime.UtcNow.AddHours(12)
     };
@@ -210,13 +232,9 @@ app.MapPost("/api/auth/login", async (HttpContext http, LoginRequest dto, AppDbC
     });
 }).RequireRateLimiting("login").WithOpenApi();
 
-app.MapGet("/api/auth/me", async (HttpContext http, AppDbContext db) =>
+orgApi.MapGet("/auth/me", async (HttpContext http, AppDbContext db) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
+    var auth = http.GetAuth();
     return Results.Ok(new
     {
         role = auth.Role,
@@ -225,20 +243,30 @@ app.MapGet("/api/auth/me", async (HttpContext http, AppDbContext db) =>
     });
 }).WithOpenApi();
 
+// Bewusst ohne Autorisierung: Abmelden muss auch mit abgelaufener Session funktionieren.
 app.MapPost("/api/auth/logout", async (HttpContext http, AppDbContext db) =>
 {
-    var token = AuthHelpers.GetBearerToken(http);
+    var token = SessionAuth.ReadToken(http.Request, "Bearer");
     if (string.IsNullOrWhiteSpace(token))
     {
         return Results.Ok();
     }
 
-    var session = await db.Sessions.FirstOrDefaultAsync(s => s.Token == token);
-    if (session != null)
+    var tokenHash = SessionAuth.HashToken(token);
+    await db.Sessions.Where(s => s.TokenHash == tokenHash).ExecuteDeleteAsync();
+    return Results.Ok();
+}).WithOpenApi();
+
+app.MapPost("/api/system/logout", async (HttpContext http, AppDbContext db) =>
+{
+    var token = SessionAuth.ReadToken(http.Request, "System");
+    if (string.IsNullOrWhiteSpace(token))
     {
-        db.Sessions.Remove(session);
-        await db.SaveChangesAsync();
+        return Results.Ok();
     }
+
+    var tokenHash = SessionAuth.HashToken(token);
+    await db.SystemSessions.Where(s => s.TokenHash == tokenHash).ExecuteDeleteAsync();
     return Results.Ok();
 }).WithOpenApi();
 
@@ -258,11 +286,13 @@ app.MapPost("/api/system/login", async (HttpContext http, SystemLoginRequest dto
     }
     throttle.Reset(throttleKey);
 
-    var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
+    await db.SystemSessions.Where(s => s.ExpiresAt <= DateTime.UtcNow).ExecuteDeleteAsync();
+
+    var token = SessionAuth.NewToken();
     var session = new SystemSession
     {
         Id = Guid.NewGuid(),
-        Token = token,
+        TokenHash = SessionAuth.HashToken(token),
         CreatedAt = DateTime.UtcNow,
         ExpiresAt = DateTime.UtcNow.AddHours(8)
     };
@@ -271,22 +301,14 @@ app.MapPost("/api/system/login", async (HttpContext http, SystemLoginRequest dto
     return Results.Ok(new { token });
 }).RequireRateLimiting("login").WithOpenApi();
 
-app.MapGet("/api/system/orgs", async (HttpContext http, AppDbContext db) =>
+systemApi.MapGet("/orgs", async (HttpContext http, AppDbContext db) =>
 {
-    if (!await AuthHelpers.IsSystemAuthorized(http, db))
-    {
-        return Results.Unauthorized();
-    }
     var list = await db.Organizations.OrderBy(o => o.Name).ToListAsync();
     return Results.Ok(list);
 }).WithOpenApi();
 
-app.MapPost("/api/system/orgs", async (HttpContext http, OrgCreate dto, AppDbContext db) =>
+systemApi.MapPost("/orgs", async (HttpContext http, OrgCreate dto, AppDbContext db) =>
 {
-    if (!await AuthHelpers.IsSystemAuthorized(http, db))
-    {
-        return Results.Unauthorized();
-    }
     var name = Api.Clean(dto.Name);
     var status = string.IsNullOrWhiteSpace(dto.Status) ? "aktiv" : dto.Status.Trim().ToLowerInvariant();
     var adminPin = (dto.AdminPin ?? string.Empty).Trim();
@@ -335,12 +357,8 @@ app.MapPost("/api/system/orgs", async (HttpContext http, OrgCreate dto, AppDbCon
     return Results.Ok(org);
 }).WithOpenApi();
 
-app.MapPut("/api/system/orgs/{id:guid}", async (Guid id, HttpContext http, OrgUpdate dto, AppDbContext db) =>
+systemApi.MapPut("/orgs/{id:guid}", async (Guid id, HttpContext http, OrgUpdate dto, AppDbContext db) =>
 {
-    if (!await AuthHelpers.IsSystemAuthorized(http, db))
-    {
-        return Results.Unauthorized();
-    }
     var org = await db.Organizations.FindAsync(id);
     if (org == null)
     {
@@ -370,6 +388,10 @@ app.MapPut("/api/system/orgs/{id:guid}", async (Guid id, HttpContext http, OrgUp
     if (!string.IsNullOrWhiteSpace(newStatus))
     {
         org.Status = newStatus;
+        if (newStatus != "aktiv")
+        {
+            await db.Sessions.Where(s => s.OrganizationId == org.Id).ExecuteDeleteAsync();
+        }
     }
     await db.SaveChangesAsync();
 
@@ -385,12 +407,8 @@ app.MapPut("/api/system/orgs/{id:guid}", async (Guid id, HttpContext http, OrgUp
     return Results.Ok(org);
 }).WithOpenApi();
 
-app.MapDelete("/api/system/orgs/{id:guid}", async (Guid id, HttpContext http, AppDbContext db) =>
+systemApi.MapDelete("/orgs/{id:guid}", async (Guid id, HttpContext http, AppDbContext db) =>
 {
-    if (!await AuthHelpers.IsSystemAuthorized(http, db))
-    {
-        return Results.Unauthorized();
-    }
     var org = await db.Organizations.FindAsync(id);
     if (org == null)
     {
@@ -401,19 +419,19 @@ app.MapDelete("/api/system/orgs/{id:guid}", async (Guid id, HttpContext http, Ap
     {
         return Results.BadRequest(new { error = "Organisation hat Einsaetze und kann nicht geloescht werden." });
     }
+    await db.Sessions.Where(s => s.OrganizationId == id).ExecuteDeleteAsync();
+    db.UserAccounts.RemoveRange(await db.UserAccounts.Where(u => u.OrganizationId == id).ToListAsync());
+    db.Geraetetraeger.RemoveRange(await db.Geraetetraeger.Where(t => t.OrganizationId == id).ToListAsync());
+    db.Truppnamen.RemoveRange(await db.Truppnamen.Where(t => t.OrganizationId == id).ToListAsync());
     db.Organizations.Remove(org);
     await db.SaveChangesAsync();
     return Results.Ok();
 }).WithOpenApi();
 
 // Geraetetraeger
-app.MapGet("/api/geraetetraeger", async (HttpContext http, AppDbContext db) =>
+orgApi.MapGet("/geraetetraeger", async (HttpContext http, AppDbContext db) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
+    var auth = http.GetAuth();
     var list = await db.Geraetetraeger
         .Where(t => t.OrganizationId == auth.OrgId)
         .OrderBy(t => t.Nachname)
@@ -422,17 +440,9 @@ app.MapGet("/api/geraetetraeger", async (HttpContext http, AppDbContext db) =>
     return Results.Ok(list);
 }).WithOpenApi();
 
-app.MapPost("/api/geraetetraeger", async (HttpContext http, GeraetetraegerCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+adminApi.MapPost("/geraetetraeger", async (HttpContext http, GeraetetraegerCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
-    if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
-    {
-        return Api.Forbidden();
-    }
+    var auth = http.GetAuth();
     var personError = Api.CheckPerson(dto.Vorname, dto.Nachname, dto.Funkrufname);
     if (personError != null)
     {
@@ -454,17 +464,9 @@ app.MapPost("/api/geraetetraeger", async (HttpContext http, GeraetetraegerCreate
     return Results.Ok(entity);
 }).WithOpenApi();
 
-app.MapPut("/api/geraetetraeger/{id:guid}", async (Guid id, HttpContext http, GeraetetraegerUpdate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+adminApi.MapPut("/geraetetraeger/{id:guid}", async (Guid id, HttpContext http, GeraetetraegerUpdate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
-    if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
-    {
-        return Api.Forbidden();
-    }
+    var auth = http.GetAuth();
     var entity = await db.Geraetetraeger.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == auth.OrgId);
     if (entity == null)
     {
@@ -486,17 +488,9 @@ app.MapPut("/api/geraetetraeger/{id:guid}", async (Guid id, HttpContext http, Ge
     return Results.Ok(entity);
 }).WithOpenApi();
 
-app.MapDelete("/api/geraetetraeger/{id:guid}", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+adminApi.MapDelete("/geraetetraeger/{id:guid}", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
-    if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
-    {
-        return Api.Forbidden();
-    }
+    var auth = http.GetAuth();
     var entity = await db.Geraetetraeger.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == auth.OrgId);
     if (entity == null)
     {
@@ -510,13 +504,9 @@ app.MapDelete("/api/geraetetraeger/{id:guid}", async (Guid id, HttpContext http,
 }).WithOpenApi();
 
 // Truppnamen (Vorlagen)
-app.MapGet("/api/truppnamen", async (HttpContext http, AppDbContext db) =>
+orgApi.MapGet("/truppnamen", async (HttpContext http, AppDbContext db) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
+    var auth = http.GetAuth();
     var list = await db.Truppnamen
         .Where(t => t.OrganizationId == auth.OrgId)
         .OrderBy(t => t.OrderIndex)
@@ -525,17 +515,9 @@ app.MapGet("/api/truppnamen", async (HttpContext http, AppDbContext db) =>
     return Results.Ok(list);
 }).WithOpenApi();
 
-app.MapPost("/api/truppnamen", async (HttpContext http, TruppNameCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+adminApi.MapPost("/truppnamen", async (HttpContext http, TruppNameCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
-    if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
-    {
-        return Api.Forbidden();
-    }
+    var auth = http.GetAuth();
     var nameError = Api.CheckText(Api.Clean(dto.Name), "Truppname", 100);
     if (nameError != null)
     {
@@ -557,17 +539,9 @@ app.MapPost("/api/truppnamen", async (HttpContext http, TruppNameCreate dto, App
     return Results.Ok(entity);
 }).WithOpenApi();
 
-app.MapPut("/api/truppnamen/{id:guid}", async (Guid id, HttpContext http, TruppNameUpdate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+adminApi.MapPut("/truppnamen/{id:guid}", async (Guid id, HttpContext http, TruppNameUpdate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
-    if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
-    {
-        return Api.Forbidden();
-    }
+    var auth = http.GetAuth();
     var entity = await db.Truppnamen.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == auth.OrgId);
     if (entity == null)
     {
@@ -587,17 +561,9 @@ app.MapPut("/api/truppnamen/{id:guid}", async (Guid id, HttpContext http, TruppN
     return Results.Ok(entity);
 }).WithOpenApi();
 
-app.MapDelete("/api/truppnamen/{id:guid}", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+adminApi.MapDelete("/truppnamen/{id:guid}", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
-    if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
-    {
-        return Api.Forbidden();
-    }
+    var auth = http.GetAuth();
     var entity = await db.Truppnamen.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == auth.OrgId);
     if (entity == null)
     {
@@ -610,17 +576,9 @@ app.MapDelete("/api/truppnamen/{id:guid}", async (Guid id, HttpContext http, App
     return Results.Ok();
 }).WithOpenApi();
 
-app.MapPost("/api/truppnamen/reorder", async (HttpContext http, TruppNameReorder dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+adminApi.MapPost("/truppnamen/reorder", async (HttpContext http, TruppNameReorder dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
-    if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
-    {
-        return Api.Forbidden();
-    }
+    var auth = http.GetAuth();
     if (dto.Ids == null || dto.Ids.Length == 0)
     {
         return Results.BadRequest();
@@ -643,13 +601,9 @@ app.MapPost("/api/truppnamen/reorder", async (HttpContext http, TruppNameReorder
 }).WithOpenApi();
 
 // Einsatz
-app.MapPost("/api/einsaetze", async (HttpContext http, EinsatzCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+orgApi.MapPost("/einsaetze", async (HttpContext http, EinsatzCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
+    var auth = http.GetAuth();
     var einsatzError = Api.CheckText(Api.Clean(dto.Name), "Einsatzname", 200) ?? Api.CheckText(Api.Clean(dto.Ort), "Ort", 200);
     if (einsatzError != null)
     {
@@ -671,13 +625,9 @@ app.MapPost("/api/einsaetze", async (HttpContext http, EinsatzCreate dto, AppDbC
     return Results.Ok(einsatz);
 }).WithOpenApi();
 
-app.MapGet("/api/einsaetze/aktiv", async (HttpContext http, AppDbContext db) =>
+orgApi.MapGet("/einsaetze/aktiv", async (HttpContext http, AppDbContext db) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
+    var auth = http.GetAuth();
     var aktive = await db.Einsaetze
         .Where(e => e.OrganizationId == auth.OrgId && e.Status == "aktiv")
         .OrderByDescending(e => e.Alarmzeit)
@@ -685,13 +635,9 @@ app.MapGet("/api/einsaetze/aktiv", async (HttpContext http, AppDbContext db) =>
     return Results.Ok(aktive);
 }).WithOpenApi();
 
-app.MapGet("/api/einsaetze/letzte", async (HttpContext http, int? limit, AppDbContext db) =>
+orgApi.MapGet("/einsaetze/letzte", async (HttpContext http, int? limit, AppDbContext db) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
+    var auth = http.GetAuth();
     var take = Math.Clamp(limit ?? 10, 1, 50);
     var letzte = await db.Einsaetze
         .Where(e => e.OrganizationId == auth.OrgId)
@@ -701,13 +647,9 @@ app.MapGet("/api/einsaetze/letzte", async (HttpContext http, int? limit, AppDbCo
     return Results.Ok(letzte);
 }).WithOpenApi();
 
-app.MapPost("/api/einsaetze/{id:guid}/beenden", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+orgApi.MapPost("/einsaetze/{id:guid}/beenden", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
+    var auth = http.GetAuth();
     var einsatz = await db.Einsaetze.FirstOrDefaultAsync(e => e.Id == id && e.OrganizationId == auth.OrgId);
     if (einsatz == null)
     {
@@ -732,18 +674,9 @@ app.MapPost("/api/einsaetze/{id:guid}/beenden", async (Guid id, HttpContext http
     return Results.Ok(einsatz);
 }).WithOpenApi();
 
-app.MapDelete("/api/einsaetze/{id:guid}", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+adminApi.MapDelete("/einsaetze/{id:guid}", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
-    // Einsatzdokumentation darf nur ein Admin loeschen, und nur fuer beendete Einsaetze.
-    if (!string.Equals(auth.Role, "admin", StringComparison.OrdinalIgnoreCase))
-    {
-        return Api.Forbidden();
-    }
+    var auth = http.GetAuth();
     var einsatz = await db.Einsaetze.FirstOrDefaultAsync(e => e.Id == id && e.OrganizationId == auth.OrgId);
     if (einsatz == null)
     {
@@ -774,13 +707,9 @@ app.MapDelete("/api/einsaetze/{id:guid}", async (Guid id, HttpContext http, AppD
 }).WithOpenApi();
 
 // Trupps
-app.MapPost("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpContext http, TruppCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+orgApi.MapPost("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpContext http, TruppCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
+    var auth = http.GetAuth();
     var einsatz = await db.Einsaetze.FirstOrDefaultAsync(e => e.Id == einsatzId && e.OrganizationId == auth.OrgId);
     if (einsatz == null)
     {
@@ -865,13 +794,9 @@ app.MapPost("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Htt
     return Results.Ok(trupp);
 }).WithOpenApi();
 
-app.MapGet("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpContext http, AppDbContext db) =>
+orgApi.MapGet("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpContext http, AppDbContext db) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
+    var auth = http.GetAuth();
     var trupps = await db.Trupps
         .Where(t => t.EinsatzId == einsatzId && t.OrganizationId == auth.OrgId)
         .OrderBy(t => t.Startzeit)
@@ -933,13 +858,9 @@ app.MapGet("/api/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Http
     return Results.Ok(result);
 }).WithOpenApi();
 
-app.MapPost("/api/trupps/{id:guid}/beenden", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+orgApi.MapPost("/trupps/{id:guid}/beenden", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
+    var auth = http.GetAuth();
     var trupp = await db.Trupps.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == auth.OrgId);
     if (trupp == null)
     {
@@ -955,13 +876,9 @@ app.MapPost("/api/trupps/{id:guid}/beenden", async (Guid id, HttpContext http, A
     return Results.Ok(trupp);
 }).WithOpenApi();
 
-app.MapPost("/api/trupps/{id:guid}/druckmessungen", async (Guid id, HttpContext http, DruckmessungCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+orgApi.MapPost("/trupps/{id:guid}/druckmessungen", async (Guid id, HttpContext http, DruckmessungCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
+    var auth = http.GetAuth();
     var trupp = await db.Trupps.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == auth.OrgId);
     if (trupp == null)
     {
@@ -1012,13 +929,9 @@ app.MapPost("/api/trupps/{id:guid}/druckmessungen", async (Guid id, HttpContext 
     return Results.Ok(messung);
 }).WithOpenApi();
 
-app.MapPost("/api/trupps/{id:guid}/events", async (Guid id, HttpContext http, AlarmEventCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+orgApi.MapPost("/trupps/{id:guid}/events", async (Guid id, HttpContext http, AlarmEventCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
-    var auth = await AuthHelpers.GetAuthAsync(http, db);
-    if (auth == null)
-    {
-        return Results.Unauthorized();
-    }
+    var auth = http.GetAuth();
     var trupp = await db.Trupps.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == auth.OrgId);
     if (trupp == null)
     {
@@ -1394,6 +1307,40 @@ static async Task MigrateTimestampsToUtc(AppDbContext db, bool isNewDatabase, st
     await db.Database.ExecuteSqlRawAsync($"PRAGMA user_version = {utcSchemaVersion};");
 }
 
+// Frueher lagen Session-Tokens im Klartext in der Datenbank; einmalig durch ihren Hash ersetzen.
+static async Task MigrateSessionTokensToHash(AppDbContext db)
+{
+    const int hashedTokensSchemaVersion = 2;
+    var connection = db.Database.GetDbConnection();
+    if (connection.State != System.Data.ConnectionState.Open)
+    {
+        await connection.OpenAsync();
+    }
+
+    await using (var cmd = connection.CreateCommand())
+    {
+        cmd.CommandText = "PRAGMA user_version;";
+        var version = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+        if (version >= hashedTokensSchemaVersion)
+        {
+            return;
+        }
+    }
+
+    await using var tx = await db.Database.BeginTransactionAsync();
+    foreach (var s in await db.Sessions.ToListAsync())
+    {
+        s.TokenHash = SessionAuth.HashToken(s.TokenHash);
+    }
+    foreach (var s in await db.SystemSessions.ToListAsync())
+    {
+        s.TokenHash = SessionAuth.HashToken(s.TokenHash);
+    }
+    await db.SaveChangesAsync();
+    await db.Database.ExecuteSqlRawAsync($"PRAGMA user_version = {hashedTokensSchemaVersion};");
+    await tx.CommitAsync();
+}
+
 static string GenerateOrgCode()
 {
     const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -1443,6 +1390,8 @@ static async Task UpdatePin(AppDbContext db, Guid orgId, string role, string pin
         db.UserAccounts.Add(account);
     }
     account.PinHash = HashPin(pin);
+    // Neue PIN beendet alle bestehenden Sessions dieser Rolle.
+    await db.Sessions.Where(s => s.OrganizationId == orgId && s.Role == role).ExecuteDeleteAsync();
     await db.SaveChangesAsync();
 }
 
@@ -1509,63 +1458,121 @@ static async Task NotifyOrgAsync(IHubContext<UpdatesHub> hub, Guid orgId, string
     await hub.Clients.Group($"org-{orgId}").SendAsync("update", type);
 }
 
-static class AuthHelpers
+static class AuthPolicies
 {
-    public static string? GetBearerToken(HttpContext http)
+    public const string Org = "org";
+    public const string Admin = "admin";
+    public const string System = "system";
+}
+
+static class SessionAuth
+{
+    public const string OrgScheme = "OrgSession";
+    public const string SystemScheme = "SystemSession";
+    public const string OrgIdClaim = "org_id";
+    public const string OrgNameClaim = "org_name";
+    public const string OrgCodeClaim = "org_code";
+
+    public static string NewToken() => Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+
+    // In der Datenbank liegt nur der Hash; ein Datenbank-Leck liefert so keine gueltigen Tokens.
+    public static string HashToken(string token) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+
+    public static string? ReadToken(HttpRequest request, string prefix)
     {
-        var auth = http.Request.Headers.Authorization.ToString();
-        if (auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        var header = request.Headers.Authorization.ToString();
+        if (header.StartsWith(prefix + " ", StringComparison.OrdinalIgnoreCase))
         {
-            return auth.Substring("Bearer ".Length).Trim();
+            var token = header[(prefix.Length + 1)..].Trim();
+            return string.IsNullOrWhiteSpace(token) ? null : token;
+        }
+        // Browser koennen bei WebSockets keine Header setzen; Query-Token daher nur fuer den SignalR-Hub.
+        if (prefix == "Bearer" && request.Path.StartsWithSegments("/hubs"))
+        {
+            var token = request.Query["access_token"].ToString();
+            return string.IsNullOrWhiteSpace(token) ? null : token;
         }
         return null;
     }
 
-    public static async Task<AuthContext?> GetAuthAsync(HttpContext http, AppDbContext db)
+    public static AuthContext GetAuth(this HttpContext http)
     {
-        var token = GetBearerToken(http);
-        if (string.IsNullOrWhiteSpace(token))
+        var user = http.User;
+        return new AuthContext(
+            Guid.Parse(user.FindFirstValue(OrgIdClaim)!),
+            user.FindFirstValue(ClaimTypes.Role)!,
+            user.FindFirstValue(OrgNameClaim)!,
+            user.FindFirstValue(OrgCodeClaim)!);
+    }
+}
+
+class OrgSessionHandler(
+    IOptionsMonitor<AuthenticationSchemeOptions> options,
+    ILoggerFactory logger,
+    UrlEncoder encoder,
+    AppDbContext db)
+    : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+{
+    protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
+    {
+        var token = SessionAuth.ReadToken(Request, "Bearer");
+        if (token == null)
         {
-            token = http.Request.Query["access_token"].ToString();
-        }
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            return null;
+            return AuthenticateResult.NoResult();
         }
 
-        var session = await db.Sessions.FirstOrDefaultAsync(s => s.Token == token);
+        var tokenHash = SessionAuth.HashToken(token);
+        var session = await db.Sessions.AsNoTracking().FirstOrDefaultAsync(s => s.TokenHash == tokenHash);
         if (session == null || session.ExpiresAt <= DateTime.UtcNow)
         {
-            return null;
+            return AuthenticateResult.Fail("Session ungueltig oder abgelaufen.");
         }
 
-        var org = await db.Organizations.FindAsync(session.OrganizationId);
+        var org = await db.Organizations.AsNoTracking().FirstOrDefaultAsync(o => o.Id == session.OrganizationId);
         if (org == null || !string.Equals(org.Status, "aktiv", StringComparison.OrdinalIgnoreCase))
         {
-            return null;
+            return AuthenticateResult.Fail("Organisation nicht aktiv.");
         }
 
-        return new AuthContext(org.Id, session.Role, org.Name, org.Code);
+        var identity = new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.Role, session.Role),
+                new Claim(SessionAuth.OrgIdClaim, org.Id.ToString()),
+                new Claim(SessionAuth.OrgNameClaim, org.Name),
+                new Claim(SessionAuth.OrgCodeClaim, org.Code)
+            ],
+            Scheme.Name);
+        var properties = new AuthenticationProperties { ExpiresUtc = session.ExpiresAt };
+        return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), properties, Scheme.Name));
     }
+}
 
-    public static async Task<bool> IsSystemAuthorized(HttpContext http, AppDbContext db)
+class SystemSessionHandler(
+    IOptionsMonitor<AuthenticationSchemeOptions> options,
+    ILoggerFactory logger,
+    UrlEncoder encoder,
+    AppDbContext db)
+    : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+{
+    protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var auth = http.Request.Headers.Authorization.ToString();
-        if (!auth.StartsWith("System ", StringComparison.OrdinalIgnoreCase))
+        var token = SessionAuth.ReadToken(Request, "System");
+        if (token == null)
         {
-            return false;
+            return AuthenticateResult.NoResult();
         }
-        var token = auth.Substring("System ".Length).Trim();
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            return false;
-        }
-        var session = await db.SystemSessions.FirstOrDefaultAsync(s => s.Token == token);
+
+        var tokenHash = SessionAuth.HashToken(token);
+        var session = await db.SystemSessions.AsNoTracking().FirstOrDefaultAsync(s => s.TokenHash == tokenHash);
         if (session == null || session.ExpiresAt <= DateTime.UtcNow)
         {
-            return false;
+            return AuthenticateResult.Fail("Session ungueltig oder abgelaufen.");
         }
-        return true;
+
+        var identity = new ClaimsIdentity([new Claim(ClaimTypes.Role, "system")], Scheme.Name);
+        var properties = new AuthenticationProperties { ExpiresUtc = session.ExpiresAt };
+        return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), properties, Scheme.Name));
     }
 }
 
@@ -1811,7 +1818,8 @@ class UserAccount
 class Session
 {
     public Guid Id { get; set; }
-    public string Token { get; set; } = string.Empty;
+    [Column("Token")]
+    public string TokenHash { get; set; } = string.Empty;
     public Guid OrganizationId { get; set; }
     public string Role { get; set; } = "user";
     public DateTime CreatedAt { get; set; }
@@ -1821,7 +1829,8 @@ class Session
 class SystemSession
 {
     public Guid Id { get; set; }
-    public string Token { get; set; } = string.Empty;
+    [Column("Token")]
+    public string TokenHash { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime ExpiresAt { get; set; }
 }
@@ -1852,24 +1861,18 @@ record OrgCreate(string? Name, string? AdminPin, string? UserPin, string? Status
 record OrgUpdate(string? Name, string? AdminPin, string? UserPin, string? Status);
 record AuthContext(Guid OrgId, string Role, string OrgName, string OrgCode);
 
-class UpdatesHub(AppDbContext db) : Hub
+// Zugriff wird ueber RequireAuthorization beim MapHub erzwungen.
+class UpdatesHub : Hub
 {
     public override async Task OnConnectedAsync()
     {
-        var http = Context.GetHttpContext();
-        if (http == null)
+        if (!Guid.TryParse(Context.User?.FindFirstValue(SessionAuth.OrgIdClaim), out var orgId))
         {
             Context.Abort();
             return;
         }
-        var auth = await AuthHelpers.GetAuthAsync(http, db);
-        if (auth == null)
-        {
-            Context.Abort();
-            return;
-        }
-        Context.Items["orgId"] = auth.OrgId;
-        await Groups.AddToGroupAsync(Context.ConnectionId, $"org-{auth.OrgId}");
+        Context.Items["orgId"] = orgId;
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"org-{orgId}");
         await base.OnConnectedAsync();
     }
 
