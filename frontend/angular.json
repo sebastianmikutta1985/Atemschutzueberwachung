@@ -25,6 +25,7 @@
               }
             ],
             "styles": [
+              "@fontsource-variable/manrope/index.css",
               "src/styles.css"
             ],
             "allowedCommonJsDependencies": [
@@ -48,7 +49,15 @@
                   "maximumError": "50kB"
                 }
               ],
-              "outputHashing": "all"
+              "outputHashing": "all",
+              "optimization": {
+                "scripts": true,
+                "styles": {
+                  "minify": true,
+                  "inlineCritical": false
+                },
+                "fonts": true
+              }
             },
             "development": {
               "optimization": false,
