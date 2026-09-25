@@ -318,7 +318,8 @@ app.MapPost("/api/system/login", async (HttpContext http, SystemLoginRequest dto
         Id = Guid.NewGuid(),
         TokenHash = SessionAuth.HashToken(token),
         CreatedAt = DateTime.UtcNow,
-        ExpiresAt = DateTime.UtcNow.AddHours(8)
+        // Hersteller-Zugang hat die hoechsten Rechte: kurze Laufzeit, passend zum Frontend.
+        ExpiresAt = DateTime.UtcNow.AddMinutes(30)
     };
     db.SystemSessions.Add(session);
     await db.SaveChangesAsync();
