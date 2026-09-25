@@ -28,12 +28,10 @@
               "src/styles.css"
             ],
             "allowedCommonJsDependencies": [
-              "canvg",
+              "core-js",
               "raf",
               "rgbcolor",
-              "jspdf",
-              "html2canvas",
-              "dompurify"
+              "html2canvas"
             ]
           },
           "configurations": {
