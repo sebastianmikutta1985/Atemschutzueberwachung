@@ -3,12 +3,13 @@ import { HttpClient } from '@angular/common/http';
 import { Component, effect, OnInit, OnDestroy } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
 import { ThemeMode, ThemeStore } from './theme.store';
 import { Geraetetraeger, OrgSettings, TruppName } from './models';
 import { RealtimeService } from './realtime.service';
+import { SessionService } from './session.service';
 import { TranslationService } from './translation.service';
 
 @Component({
@@ -58,8 +59,8 @@ export class SettingsPage implements OnInit, OnDestroy {
 
   constructor(
     private http: HttpClient,
-    private router: Router,
     private realtime: RealtimeService,
+    private session: SessionService,
     private title: Title,
     public i18n: TranslationService
   ) {
@@ -142,13 +143,7 @@ export class SettingsPage implements OnInit, OnDestroy {
   }
 
   logout(): void {
-    this.http.post(`${this.baseUrl}/auth/logout`, {}).subscribe({
-      complete: () => {
-        AuthStore.clear();
-        this.realtime.stop();
-        this.router.navigateByUrl('/login');
-      }
-    });
+    this.session.logout();
   }
 
   loadGeraetetraeger(): void {

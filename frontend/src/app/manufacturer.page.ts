@@ -76,6 +76,12 @@ export class ManufacturerPage implements OnInit {
   }
 
   logoutSystem(): void {
+    if (this.systemToken) {
+      // Session auch am Server beenden; lokal wird in jedem Fall abgemeldet.
+      this.http
+        .post(`${this.baseUrl}/system/logout`, {}, { headers: this.authHeaders() })
+        .subscribe({ error: () => undefined });
+    }
     SystemStore.clear();
     this.systemToken = null;
     this.orgs = [];

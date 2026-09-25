@@ -1,7 +1,8 @@
 import { CommonModule } from '@angular/common';
 import { Component, HostListener, OnDestroy, OnInit, ViewEncapsulation } from '@angular/core';
-import { Router, RouterOutlet } from '@angular/router';
+import { RouterOutlet } from '@angular/router';
 import { AuthStore } from './auth.store';
+import { SessionService } from './session.service';
 import { ThemeStore } from './theme.store';
 import { TranslationService } from './translation.service';
 
@@ -21,7 +22,7 @@ export class App implements OnInit {
   private idleCheck?: number;
   idleWarningOpen = false;
 
-  constructor(private router: Router, public i18n: TranslationService) {}
+  constructor(private session: SessionService, public i18n: TranslationService) {}
 
   ngOnInit(): void {
     const themeKey = AuthStore.themeKey();
@@ -104,7 +105,6 @@ export class App implements OnInit {
       return;
     }
     this.idleWarningOpen = false;
-    AuthStore.clear();
-    this.router.navigateByUrl('/login');
+    this.session.logout();
   }
 }
