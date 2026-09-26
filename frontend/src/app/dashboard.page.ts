@@ -3,11 +3,12 @@ import { HttpClient } from '@angular/common/http';
 import { Component, effect, ElementRef, HostListener, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
 import { DruckInfo, Einsatz, Geraetetraeger, OrgSettings, Trupp, TruppName } from './models';
 import { RealtimeService } from './realtime.service';
+import { SessionService } from './session.service';
 import { ThemeMode, ThemeStore } from './theme.store';
 import { TranslationService } from './translation.service';
 import jsPDF from 'jspdf';
@@ -89,8 +90,8 @@ export class DashboardPage implements OnInit, OnDestroy {
   constructor(
     private http: HttpClient,
     private zone: NgZone,
-    private router: Router,
     private realtime: RealtimeService,
+    private session: SessionService,
     private title: Title,
     public i18n: TranslationService
   ) {
@@ -314,13 +315,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   logout(): void {
-    this.http.post(`${this.baseUrl}/auth/logout`, {}).subscribe({
-      complete: () => {
-        AuthStore.clear();
-        this.realtime.stop();
-        this.router.navigateByUrl('/login');
-      }
-    });
+    this.session.logout();
   }
 
   loadActiveEinsatz(): void {
@@ -408,13 +403,8 @@ export class DashboardPage implements OnInit, OnDestroy {
     });
   }
 
-  // Liefert die Fehlermeldung des Backends bzw. einen uebersetzten Standardtext; bei 401 zurueck zum Login.
-  private apiError(err: { status?: number; error?: { error?: string } } | null, fallbackKey: string): string {
-    if (err?.status === 401) {
-      AuthStore.clear();
-      this.realtime.stop();
-      this.router.navigateByUrl('/login');
-    }
+  // Liefert die Fehlermeldung des Backends bzw. einen uebersetzten Standardtext (401 behandelt der Interceptor).
+  private apiError(err: { error?: { error?: string } } | null, fallbackKey: string): string {
     return err?.error?.error ?? this.i18n.t(fallbackKey);
   }
 

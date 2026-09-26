@@ -25,15 +25,14 @@
               }
             ],
             "styles": [
+              "@fontsource-variable/manrope/index.css",
               "src/styles.css"
             ],
             "allowedCommonJsDependencies": [
-              "canvg",
+              "core-js",
               "raf",
               "rgbcolor",
-              "jspdf",
-              "html2canvas",
-              "dompurify"
+              "html2canvas"
             ]
           },
           "configurations": {
@@ -50,7 +49,15 @@
                   "maximumError": "50kB"
                 }
               ],
-              "outputHashing": "all"
+              "outputHashing": "all",
+              "optimization": {
+                "scripts": true,
+                "styles": {
+                  "minify": true,
+                  "inlineCritical": false
+                },
+                "fonts": true
+              }
             },
             "development": {
               "optimization": false,
