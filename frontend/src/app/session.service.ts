@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
@@ -10,6 +10,9 @@ export class SessionService {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private readonly realtime = inject(RealtimeService);
+
+  // Solange Trupps im Einsatz ueberwacht werden, darf die automatische Abmeldung nicht greifen.
+  readonly monitoringActive = signal(false);
 
   // Beendet die Session auch am Server. Lokal wird immer abgemeldet, selbst wenn der Server nicht erreichbar ist.
   logout(): void {
@@ -22,6 +25,7 @@ export class SessionService {
 
   // Fuer abgelaufene oder widerrufene Sessions (401): der Server kennt sie ohnehin nicht mehr.
   endLocalSession(): void {
+    this.monitoringActive.set(false);
     AuthStore.clear();
     this.realtime.stop();
     if (!this.router.url.startsWith('/login')) {
