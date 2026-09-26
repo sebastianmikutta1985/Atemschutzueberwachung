@@ -60,7 +60,7 @@ export class LoginPage {
     }
     this.loading = true;
     this.http
-      .post<{ token: string; role: 'admin' | 'user'; orgName: string; orgCode: string }>(
+      .post<{ role: 'admin' | 'user'; orgName: string; orgCode: string }>(
         `${this.baseUrl}/auth/login`,
         { orgaCode: code, pin }
       )
@@ -75,7 +75,6 @@ export class LoginPage {
           ThemeStore.migrateLegacyKey(code, pin, themeKey);
           this.pin = '';
           AuthStore.save({
-            token: res.token,
             role: res.role,
             orgName: res.orgName,
             orgCode: res.orgCode,

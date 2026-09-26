@@ -23,6 +23,8 @@ Webanwendung zur einfachen Atemschutzüberwachung für die Feuerwehr.
 - Hersteller-Portal: `/admin-login` (System-Secret)
 - Admin kann Stammdaten und Standardwerte verwalten
 - Sessions: 12 h für Organisationen, 30 min für das Hersteller-Portal. In der Datenbank liegt nur ein SHA-256-Hash der Tokens.
+- Organisations-Sessions laufen über ein httpOnly-Cookie (`ats_session`, `SameSite=Strict`, in Produktion `Secure`); JavaScript kommt nicht an den Token. Ändernde Anfragen müssen zusätzlich den Header `X-Requested-With` tragen (CSRF-Schutz). API-Clients können weiterhin `Authorization: Bearer` nutzen.
+- Nach dem Update auf die Cookie-Anmeldung müssen sich alle Geräte einmal neu anmelden.
 - Eine neue PIN beendet alle Sessions dieser Rolle; eine gesperrte Organisation verliert alle Sessions sofort.
 
 ## Betrieb / Deployment
@@ -36,6 +38,8 @@ Webanwendung zur einfachen Atemschutzüberwachung für die Feuerwehr.
 - Außerhalb von `Development` erzwingt das Backend HTTPS (Redirect + HSTS); Swagger ist dort deaktiviert.
 - Die API setzt Sicherheits-Header (u. a. `X-Frame-Options: DENY`, `nosniff`, restriktive CSP, `Cache-Control: no-store`).
 - Das Frontend bringt eine Content-Security-Policy per `<meta>`-Tag mit und lädt nur eigene Ressourcen (Schrift ist lokal eingebunden, kein Google Fonts). Der Webserver, der das Frontend ausliefert, sollte zusätzlich `Content-Security-Policy: frame-ancestors 'none'` und `X-Frame-Options: DENY` setzen, da `frame-ancestors` im `<meta>`-Tag nicht wirkt.
+- **Offline-Verhalten:** Im Produktions-Build hält ein Service Worker die App-Hülle (Seite, Skripte, Schrift) vor; ein Neuladen ohne Netz zeigt die App statt einer Fehlerseite. API-Daten werden bewusst nicht zwischengespeichert. Bei Verbindungsverlust erscheint nach 5 s ein Hinweis; Zeiten und Alarme laufen auf dem Gerät weiter, Eingaben werden erst nach der Wiederverbindung gespeichert. Die Live-Verbindung wird unbegrenzt neu aufgebaut, danach werden die Daten neu geladen.
+- Der Webserver muss `ngsw-worker.js` und `ngsw.json` ohne Caching ausliefern (`Cache-Control: no-cache`), damit Updates ankommen. Liegt eine neue Version bereit, zeigt die App „Neu laden“ an.
 - Läuft das Backend hinter einem Reverse Proxy auf einem anderen Host, müssen dessen Adressen für `X-Forwarded-For` konfiguriert werden, sonst greifen Login-Sperre und Rate-Limit pro Proxy statt pro Client.
 
 ## Standardwerte

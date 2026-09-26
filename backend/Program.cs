@@ -247,9 +247,11 @@ app.MapPost("/api/auth/login", async (HttpContext http, LoginRequest dto, AppDbC
     db.Sessions.Add(session);
     await db.SaveChangesAsync();
 
+    // Token nur als httpOnly-Cookie: fuer JavaScript unsichtbar, ein eingeschleustes Skript kann ihn nicht auslesen.
+    SessionAuth.SetSessionCookie(http, token, session.ExpiresAt, secure: http.Request.IsHttps || !app.Environment.IsDevelopment());
+
     return Results.Ok(new
     {
-        token,
         role = match.Role,
         orgName = org.Name,
         orgCode = org.Code
@@ -270,7 +272,8 @@ orgApi.MapGet("/auth/me", async (HttpContext http, AppDbContext db) =>
 // Bewusst ohne Autorisierung: Abmelden muss auch mit abgelaufener Session funktionieren.
 app.MapPost("/api/auth/logout", async (HttpContext http, AppDbContext db) =>
 {
-    var token = SessionAuth.ReadToken(http.Request, "Bearer");
+    var token = SessionAuth.ReadToken(http.Request, "Bearer") ?? SessionAuth.ReadSessionCookie(http.Request);
+    SessionAuth.ClearSessionCookie(http, secure: http.Request.IsHttps || !app.Environment.IsDevelopment());
     if (string.IsNullOrWhiteSpace(token))
     {
         return Results.Ok();
@@ -1512,14 +1515,37 @@ static class SessionAuth
             var token = header[(prefix.Length + 1)..].Trim();
             return string.IsNullOrWhiteSpace(token) ? null : token;
         }
-        // Browser koennen bei WebSockets keine Header setzen; Query-Token daher nur fuer den SignalR-Hub.
-        if (prefix == "Bearer" && request.Path.StartsWithSegments("/hubs"))
-        {
-            var token = request.Query["access_token"].ToString();
-            return string.IsNullOrWhiteSpace(token) ? null : token;
-        }
         return null;
     }
+
+    // Browser-Sessions laufen ueber ein httpOnly-Cookie (auch fuer den SignalR-Hub, daher keine Tokens mehr in URLs).
+    public const string SessionCookie = "ats_session";
+    // Aendernde Anfragen mit Cookie-Anmeldung muessen diesen Header tragen. Fremde Seiten koennen ihn nicht setzen
+    // (Schutz vor CSRF zusaetzlich zu SameSite=Strict).
+    public const string CsrfHeader = "X-Requested-With";
+
+    public static string? ReadSessionCookie(HttpRequest request) =>
+        request.Cookies.TryGetValue(SessionCookie, out var value) && !string.IsNullOrWhiteSpace(value) ? value : null;
+
+    public static void SetSessionCookie(HttpContext http, string token, DateTime expiresUtc, bool secure) =>
+        http.Response.Cookies.Append(SessionCookie, token, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = secure,
+            SameSite = SameSiteMode.Strict,
+            Path = "/",
+            Expires = expiresUtc,
+            IsEssential = true
+        });
+
+    public static void ClearSessionCookie(HttpContext http, bool secure) =>
+        http.Response.Cookies.Delete(SessionCookie, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = secure,
+            SameSite = SameSiteMode.Strict,
+            Path = "/"
+        });
 
     public static AuthContext GetAuth(this HttpContext http)
     {
@@ -1544,7 +1570,16 @@ class OrgSessionHandler(
         var token = SessionAuth.ReadToken(Request, "Bearer");
         if (token == null)
         {
-            return AuthenticateResult.NoResult();
+            token = SessionAuth.ReadSessionCookie(Request);
+            if (token == null)
+            {
+                return AuthenticateResult.NoResult();
+            }
+            var readOnly = HttpMethods.IsGet(Request.Method) || HttpMethods.IsHead(Request.Method) || HttpMethods.IsOptions(Request.Method);
+            if (!readOnly && !Request.Headers.ContainsKey(SessionAuth.CsrfHeader))
+            {
+                return AuthenticateResult.Fail("CSRF-Header fehlt.");
+            }
         }
 
         var tokenHash = SessionAuth.HashToken(token);
