@@ -42,22 +42,39 @@
             <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'en'" (click)="i18n.setLang('en')">EN</button>
           </div>
         </div>
-        <label>
-          {{ i18n.t('login.organizationCode') }}
-          <input type="text" [(ngModel)]="orgaCode" [placeholder]="i18n.t('login.organizationCodePlaceholder')" />
-        </label>
-        <label>
-          {{ i18n.t('login.pin') }}
-          <input type="password" [(ngModel)]="pin" [placeholder]="i18n.t('login.pinPlaceholder')" />
-        </label>
-        <label class="checkbox">
-          <input type="checkbox" [(ngModel)]="remember" />
-          {{ i18n.t('login.remember') }}
-        </label>
-        <div class="muted" *ngIf="error">{{ error }}</div>
-        <button class="primary btn-icon" type="button" (click)="login()" [disabled]="loading">
-          {{ loading ? i18n.t('login.wait') : i18n.t('login.submit') }}
-        </button>
+        <form class="login-form" (ngSubmit)="login()">
+          <label>
+            {{ i18n.t('login.organizationCode') }}
+            <input
+              type="text"
+              name="orgaCode"
+              autocomplete="organization"
+              autocapitalize="characters"
+              spellcheck="false"
+              [(ngModel)]="orgaCode"
+              [placeholder]="i18n.t('login.organizationCodePlaceholder')"
+            />
+          </label>
+          <label>
+            {{ i18n.t('login.pin') }}
+            <input
+              type="password"
+              name="pin"
+              autocomplete="current-password"
+              inputmode="numeric"
+              [(ngModel)]="pin"
+              [placeholder]="i18n.t('login.pinPlaceholder')"
+            />
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" name="remember" [(ngModel)]="remember" />
+            {{ i18n.t('login.remember') }}
+          </label>
+          <div class="form-error" *ngIf="error" role="alert">{{ error }}</div>
+          <button class="primary btn-icon" type="submit" [disabled]="loading">
+            {{ loading ? i18n.t('login.wait') : i18n.t('login.submit') }}
+          </button>
+        </form>
         <div class="login-footer">
           <a href="mailto:contact@crew-trace.com">{{ i18n.t('common.support') }}</a>
           <a [routerLink]="['/impressum']">{{ i18n.t('legal.imprint') }}</a>

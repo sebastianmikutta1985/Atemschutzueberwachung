@@ -126,6 +126,11 @@ export class SettingsPage implements OnInit, OnDestroy {
     }
   }
 
+  // Fehlermeldung des Backends anzeigen statt still zu scheitern (401 behandelt der Interceptor).
+  private showApiError(err: { error?: { error?: string } } | null): void {
+    this.pushToast(err?.error?.error ?? this.i18n.t('settings.saveFailed'), 'warn');
+  }
+
   private pushToast(text: string, type: 'warn'): void {
     const id = ++this.toastId;
     this.toasts = [...this.toasts, { id, text, type }];
@@ -203,12 +208,15 @@ export class SettingsPage implements OnInit, OnDestroy {
       return;
     }
 
-    this.http.post<Geraetetraeger>(`${this.baseUrl}/geraetetraeger`, payload).subscribe(() => {
-      this.geraetetraegerForm.vorname = '';
-      this.geraetetraegerForm.nachname = '';
-      this.geraetetraegerForm.funkrufname = '';
-      this.geraetetraegerForm.aktiv = true;
-      this.loadGeraetetraeger();
+    this.http.post<Geraetetraeger>(`${this.baseUrl}/geraetetraeger`, payload).subscribe({
+      next: () => {
+        this.geraetetraegerForm.vorname = '';
+        this.geraetetraegerForm.nachname = '';
+        this.geraetetraegerForm.funkrufname = '';
+        this.geraetetraegerForm.aktiv = true;
+        this.loadGeraetetraeger();
+      },
+      error: (err) => this.showApiError(err)
     });
   }
 
@@ -360,8 +368,11 @@ export class SettingsPage implements OnInit, OnDestroy {
       aktiv: !traeger.aktiv
     };
 
-    this.http.put<Geraetetraeger>(`${this.baseUrl}/geraetetraeger/${traeger.id}`, payload).subscribe(() => {
-      this.loadGeraetetraeger();
+    this.http.put<Geraetetraeger>(`${this.baseUrl}/geraetetraeger/${traeger.id}`, payload).subscribe({
+      next: () => {
+        this.loadGeraetetraeger();
+      },
+      error: (err) => this.showApiError(err)
     });
   }
 
@@ -373,8 +384,11 @@ export class SettingsPage implements OnInit, OnDestroy {
       return;
     }
 
-    this.http.delete(`${this.baseUrl}/geraetetraeger/${traeger.id}`).subscribe(() => {
-      this.loadGeraetetraeger();
+    this.http.delete(`${this.baseUrl}/geraetetraeger/${traeger.id}`).subscribe({
+      next: () => {
+        this.loadGeraetetraeger();
+      },
+      error: (err) => this.showApiError(err)
     });
   }
 
@@ -388,10 +402,13 @@ export class SettingsPage implements OnInit, OnDestroy {
       return;
     }
 
-    this.http.post<TruppName>(`${this.baseUrl}/truppnamen`, payload).subscribe(() => {
-      this.truppNameForm.name = '';
-      this.truppNameForm.aktiv = true;
-      this.loadTruppnamen();
+    this.http.post<TruppName>(`${this.baseUrl}/truppnamen`, payload).subscribe({
+      next: () => {
+        this.truppNameForm.name = '';
+        this.truppNameForm.aktiv = true;
+        this.loadTruppnamen();
+      },
+      error: (err) => this.showApiError(err)
     });
   }
 
@@ -402,8 +419,11 @@ export class SettingsPage implements OnInit, OnDestroy {
       orderIndex: item.orderIndex
     };
 
-    this.http.put<TruppName>(`${this.baseUrl}/truppnamen/${item.id}`, payload).subscribe(() => {
-      this.loadTruppnamen();
+    this.http.put<TruppName>(`${this.baseUrl}/truppnamen/${item.id}`, payload).subscribe({
+      next: () => {
+        this.loadTruppnamen();
+      },
+      error: (err) => this.showApiError(err)
     });
   }
 
@@ -413,8 +433,11 @@ export class SettingsPage implements OnInit, OnDestroy {
       return;
     }
 
-    this.http.delete(`${this.baseUrl}/truppnamen/${item.id}`).subscribe(() => {
-      this.loadTruppnamen();
+    this.http.delete(`${this.baseUrl}/truppnamen/${item.id}`).subscribe({
+      next: () => {
+        this.loadTruppnamen();
+      },
+      error: (err) => this.showApiError(err)
     });
   }
 
@@ -439,9 +462,12 @@ export class SettingsPage implements OnInit, OnDestroy {
       return;
     }
 
-    this.http.put<TruppName>(`${this.baseUrl}/truppnamen/${item.id}`, payload).subscribe(() => {
-      this.cancelEditTruppName();
-      this.loadTruppnamen();
+    this.http.put<TruppName>(`${this.baseUrl}/truppnamen/${item.id}`, payload).subscribe({
+      next: () => {
+        this.cancelEditTruppName();
+        this.loadTruppnamen();
+      },
+      error: (err) => this.showApiError(err)
     });
   }
 
@@ -488,8 +514,11 @@ export class SettingsPage implements OnInit, OnDestroy {
 
   private saveTruppnamenOrder(): void {
     const ids = this.truppnamen.map((t) => t.id);
-    this.http.post(`${this.baseUrl}/truppnamen/reorder`, { ids }).subscribe(() => {
-      this.loadTruppnamen();
+    this.http.post(`${this.baseUrl}/truppnamen/reorder`, { ids }).subscribe({
+      next: () => {
+        this.loadTruppnamen();
+      },
+      error: (err) => this.showApiError(err)
     });
   }
 }

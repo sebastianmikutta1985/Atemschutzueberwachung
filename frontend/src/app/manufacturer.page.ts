@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Component, effect, OnInit } from '@angular/core';
+import { Component, effect, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -30,6 +30,9 @@ export class ManufacturerPage implements OnInit {
   error = '';
 
   orgs: Org[] = [];
+  pinReset: { org: Org; role: 'admin' | 'user'; pin: string; error: string } | null = null;
+  blockConfirm: Org | null = null;
+  @ViewChild('pinResetInput') pinResetInput?: ElementRef<HTMLInputElement>;
   orgForm = {
     name: '',
     adminPin: '',
@@ -152,11 +155,27 @@ export class ManufacturerPage implements OnInit {
     return err?.error?.error ?? this.i18n.t(fallbackKey);
   }
 
+  // Sperren sofort wirksam: alle Sessions der Organisation enden. Daher erst nachfragen.
   toggleStatus(org: Org): void {
+    if (org.status === 'aktiv') {
+      this.blockConfirm = org;
+      return;
+    }
+    this.updateStatus(org, 'aktiv');
+  }
+
+  confirmBlock(): void {
+    const org = this.blockConfirm;
+    this.blockConfirm = null;
+    if (org) {
+      this.updateStatus(org, 'gesperrt');
+    }
+  }
+
+  private updateStatus(org: Org, status: 'aktiv' | 'gesperrt'): void {
     if (!this.systemToken) {
       return;
     }
-    const status = org.status === 'aktiv' ? 'gesperrt' : 'aktiv';
     this.error = '';
     this.http
       .put<Org>(
@@ -170,27 +189,31 @@ export class ManufacturerPage implements OnInit {
       });
   }
 
-  resetPin(org: Org, role: 'admin' | 'user'): void {
-    if (!this.systemToken) {
+  // Eigener Dialog statt window.prompt: PIN-Eingabe verdeckt und mit Pruefung im Dialog.
+  openPinReset(org: Org, role: 'admin' | 'user'): void {
+    this.pinReset = { org, role, pin: '', error: '' };
+    window.setTimeout(() => this.pinResetInput?.nativeElement.focus(), 0);
+  }
+
+  submitPinReset(): void {
+    const reset = this.pinReset;
+    if (!reset || !this.systemToken) {
       return;
     }
-    const pin = window.prompt(
-      this.i18n.t('manufacturer.resetPinPrompt', { role: role.toUpperCase() })
-    );
-    if (!pin) {
+    const pin = reset.pin.trim();
+    if (pin.length < MIN_PIN_LENGTH) {
+      reset.error = this.i18n.t('manufacturer.pinTooShort');
       return;
     }
-    if (pin.trim().length < MIN_PIN_LENGTH) {
-      this.error = this.i18n.t('manufacturer.pinTooShort');
-      return;
-    }
-    this.error = '';
-    const payload = role === 'admin' ? { adminPin: pin.trim() } : { userPin: pin.trim() };
+    const payload = reset.role === 'admin' ? { adminPin: pin } : { userPin: pin };
     this.http
-      .put<Org>(`${this.baseUrl}/system/orgs/${org.id}`, payload, { headers: this.authHeaders() })
+      .put<Org>(`${this.baseUrl}/system/orgs/${reset.org.id}`, payload, { headers: this.authHeaders() })
       .subscribe({
-        next: () => this.loadOrgs(),
-        error: (err) => (this.error = this.apiError(err, 'manufacturer.actionFailed'))
+        next: () => {
+          this.pinReset = null;
+          this.loadOrgs();
+        },
+        error: (err) => (reset.error = this.apiError(err, 'manufacturer.actionFailed'))
       });
   }
 }
