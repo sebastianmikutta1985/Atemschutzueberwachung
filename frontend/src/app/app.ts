@@ -1,14 +1,17 @@
 import { CommonModule } from '@angular/common';
 import { Component, HostListener, OnDestroy, OnInit, ViewEncapsulation } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
+import { AlarmOverlayComponent } from './alarm-overlay.component';
 import { AuthStore } from './auth.store';
+import { MonitoringService } from './monitoring.service';
 import { SessionService } from './session.service';
 import { ThemeStore } from './theme.store';
 import { TranslationService } from './translation.service';
 
 @Component({
   selector: 'app-root',
-  imports: [CommonModule, RouterOutlet],
+  imports: [CommonModule, RouterOutlet, AlarmOverlayComponent],
   templateUrl: './app.html',
   styleUrl: './app.css',
   encapsulation: ViewEncapsulation.None
@@ -22,7 +25,12 @@ export class App implements OnInit {
   private idleCheck?: number;
   idleWarningOpen = false;
 
-  constructor(private session: SessionService, public i18n: TranslationService) {}
+  constructor(
+    private session: SessionService,
+    private monitoring: MonitoringService,
+    private router: Router,
+    public i18n: TranslationService
+  ) {}
 
   ngOnInit(): void {
     const themeKey = AuthStore.themeKey();
@@ -31,6 +39,12 @@ export class App implements OnInit {
     this.markActivity();
     this.resetIdleTimer();
     this.startIdleCheck();
+    // Ueberwachung laeuft, sobald eine Organisation angemeldet ist – auf jeder Seite, nicht nur im Dashboard.
+    this.router.events.pipe(filter((e) => e instanceof NavigationEnd)).subscribe(() => {
+      if (AuthStore.token()) {
+        this.monitoring.start();
+      }
+    });
   }
 
   ngOnDestroy(): void {
@@ -106,7 +120,7 @@ export class App implements OnInit {
 
   // Waehrend Trupps ueberwacht werden, nie automatisch abmelden – sonst verschwinden Timer und Alarme.
   private deferWhileMonitoring(): boolean {
-    if (!this.session.monitoringActive()) {
+    if (!this.monitoring.active()) {
       return false;
     }
     this.markActivity();

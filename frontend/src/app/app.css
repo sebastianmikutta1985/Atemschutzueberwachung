@@ -1429,3 +1429,15 @@ button.btn-attention {
   min-height: 48px;
   min-width: 120px;
 }
+
+/* Ton-Hinweis app-weit am unteren Rand, damit er auf jeder Seite sichtbar ist */
+.audio-hint--floating {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 55;
+  margin: 0;
+  background: color-mix(in srgb, var(--warn) 22%, rgb(30, 22, 18));
+  box-shadow: 0 16px 36px -20px rgba(0, 0, 0, 0.7);
+}

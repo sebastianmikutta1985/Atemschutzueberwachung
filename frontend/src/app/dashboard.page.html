@@ -48,7 +48,7 @@
         <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'de'" (click)="i18n.setLang('de')">DE</button>
         <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'en'" (click)="i18n.setLang('en')">EN</button>
       </div>
-      <button class="ghost btn-icon" type="button" (click)="loadActiveEinsatz()">{{ i18n.t('common.refresh') }}</button>
+      <button class="ghost btn-icon" type="button" (click)="refresh()">{{ i18n.t('common.refresh') }}</button>
       <button
         class="ghost btn-icon"
         type="button"
@@ -167,10 +167,6 @@
   </div>
 
   <section class="card list" #dashboardSection>
-    <div class="audio-hint" *ngIf="audioLocked && currentEinsatz" role="alert">
-      <span>{{ i18n.t('dashboard.audioBlocked') }}</span>
-      <button class="primary" type="button" (click)="unlockAudio()">{{ i18n.t('dashboard.audioEnable') }}</button>
-    </div>
     <div class="list__head">
       <h2>{{ i18n.t('dashboard.board') }}</h2>
       <div class="muted">
@@ -209,86 +205,13 @@
     </div>
 
     <div class="list__body list__body--grid" *ngIf="trupps.length > 0">
-      <div class="trupp trupp--stack" *ngFor="let trupp of trupps" [attr.data-status]="statusFor(trupp, currentEpoch)">
-        <div class="trupp__top">
-          <div class="trupp__status" [attr.data-status]="statusFor(trupp, currentEpoch)">
-            {{ statusLabel(trupp) | uppercase }}
-          </div>
-          <div class="trupp__info">
-            <div class="trupp__title">{{ trupp.bezeichnung }}</div>
-            <div class="muted">{{ i18n.t('dashboard.p1') }}: {{ trupp.person1Name }}</div>
-            <div class="muted">{{ i18n.t('dashboard.p2') }}: {{ trupp.person2Name }}</div>
-            <div class="pressure-due" *ngIf="pressureCheckDue(trupp, currentEpoch) as stage" role="status">
-              {{ i18n.t('dashboard.pressureCheckDue', { fraction: pressureCheckFraction(stage) }) }}
-            </div>
-          </div>
-          <div class="trupp__metrics">
-            <div class="trupp__metric">
-              <div class="muted">{{ trupp.endzeit ? i18n.t('dashboard.duration') : i18n.t('dashboard.remainingTime') }}</div>
-              <div class="metric__value">
-                {{ trupp.endzeit ? durationDisplay(trupp) : remainingDisplay(trupp, currentEpoch) }}
-              </div>
-            </div>
-            <div class="trupp__metric">
-              <div class="muted">{{ i18n.t('dashboard.lowestPressure') }}</div>
-              <div class="metric__value">{{ lowestPressure(trupp) }} bar</div>
-            </div>
-            <div class="trupp__metric">
-              <div class="muted">{{ i18n.t('dashboard.start') }}</div>
-              <div class="metric__value">{{ trupp.startzeit | date: 'HH:mm:ss' }}</div>
-            </div>
-            <div class="trupp__metric">
-              <div class="muted">{{ i18n.t('dashboard.startPressureP1Short') }}</div>
-              <div class="metric__value">{{ trupp.startdruckPerson1Bar }} bar</div>
-              <div class="muted" *ngIf="trupp.druckMessungenPerson1.length">
-                {{ i18n.t('dashboard.latestMeasurements') }}
-                <div class="druck-list">
-                  <div *ngFor="let m of trupp.druckMessungenPerson1">
-                    {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="trupp__metric">
-              <div class="muted">{{ i18n.t('dashboard.startPressureP2Short') }}</div>
-              <div class="metric__value">{{ trupp.startdruckPerson2Bar }} bar</div>
-              <div class="muted" *ngIf="trupp.druckMessungenPerson2.length">
-                {{ i18n.t('dashboard.latestMeasurements') }}
-                <div class="druck-list">
-                  <div *ngFor="let m of trupp.druckMessungenPerson2">
-                    {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="trupp__bottom">
-          <button
-            class="ghost"
-            type="button"
-            (click)="addDruckmessung(trupp, trupp.person1Id)"
-            *ngIf="trupp.endzeit == null"
-            [disabled]="trupp.druckCountPerson1 >= 3"
-            [class.btn-attention]="(pressureCheckDue(trupp, currentEpoch) ?? 0) > trupp.druckCountPerson1"
-          >
-            {{ i18n.t('dashboard.pressureP1Button', { count: trupp.druckCountPerson1 }) }}
-          </button>
-          <button
-            class="ghost"
-            type="button"
-            (click)="addDruckmessung(trupp, trupp.person2Id)"
-            *ngIf="trupp.endzeit == null"
-            [disabled]="trupp.druckCountPerson2 >= 3"
-            [class.btn-attention]="(pressureCheckDue(trupp, currentEpoch) ?? 0) > trupp.druckCountPerson2"
-          >
-            {{ i18n.t('dashboard.pressureP2Button', { count: trupp.druckCountPerson2 }) }}
-          </button>
-          <button class="primary" type="button" (click)="endTrupp(trupp)" *ngIf="trupp.endzeit == null">
-            {{ i18n.t('dashboard.endCrew') }}
-          </button>
-        </div>
-      </div>
+      <app-trupp-card
+        *ngFor="let trupp of trupps; trackBy: trackTrupp"
+        [trupp]="trupp"
+        [now]="currentEpoch"
+        (pressure)="addDruckmessung(trupp, $event)"
+        (end)="endTrupp(trupp)"
+      ></app-trupp-card>
     </div>
   </section>
 
@@ -337,12 +260,6 @@
       </div>
     </div>
   </section>
-</div>
-
-<div class="toast-stack" *ngIf="toasts.length">
-  <div class="toast" *ngFor="let t of toasts" [class.toast--warn]="t.type === 'warn'" [class.toast--max]="t.type === 'max'">
-    {{ t.text }}
-  </div>
 </div>
 
 <div class="modal" *ngIf="druckModal?.open">
@@ -442,26 +359,6 @@
     <div class="modal__actions">
       <button class="ghost" type="button" (click)="closeDeleteModal()">{{ i18n.t('common.cancel') }}</button>
       <button class="danger" type="button" (click)="confirmDeleteEinsatz()">{{ i18n.t('common.delete') }}</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal" *ngIf="alarmModal?.open">
-  <div class="modal__backdrop"></div>
-  <div
-    #alarmPanel
-    tabindex="-1"
-    class="modal__panel"
-    [class.modal__panel--max]="alarmModal?.type === 'max'"
-    role="alertdialog"
-    aria-modal="true"
-    aria-labelledby="alarm-title"
-  >
-    <h3 id="alarm-title">{{ alarmModal?.type === 'max' ? i18n.t('dashboard.maxReached') : i18n.t('dashboard.warnReached') }}</h3>
-    <p class="alarm-crew">{{ alarmModal!.trupp.bezeichnung }}</p>
-    <p class="muted">{{ i18n.t('dashboard.alarmAckHint') }}</p>
-    <div class="modal__actions">
-      <button class="primary" type="button" [disabled]="!alarmModal!.ackReady" (click)="acknowledgeAlarm()">{{ i18n.t('dashboard.acknowledge') }}</button>
     </div>
   </div>
 </div>
