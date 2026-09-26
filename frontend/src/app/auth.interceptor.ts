@@ -11,8 +11,8 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const clock = inject(ClockService);
   const session = inject(SessionService);
   const requestStart = Date.now();
-  // Hersteller-Portal nutzt einen eigenen System-Token im Authorization-Header.
-  const isSystemRequest = req.headers.has('Authorization');
+  // Hersteller-Portal hat eine eigene Session (Cookie nur fuer /api/system); deren 401 beendet nicht die Org-Session.
+  const isSystemRequest = req.url.includes('/system/');
 
   return next(req.clone({ setHeaders: { 'X-Requested-With': 'CrewTrace' } })).pipe(
     tap((event: HttpEvent<unknown>) => {
