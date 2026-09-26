@@ -291,7 +291,7 @@
     </div>
     <div class="modal__actions">
       <button class="ghost" type="button" (click)="closeDruckModal()">{{ i18n.t('common.cancel') }}</button>
-      <button class="primary" type="submit">{{ i18n.t('common.save') }}</button>
+      <button class="primary" type="submit" [disabled]="druckSaving">{{ i18n.t('common.save') }}</button>
     </div>
   </form>
 </div>

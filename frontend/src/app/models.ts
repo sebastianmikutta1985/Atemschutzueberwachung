@@ -8,10 +8,12 @@ export interface Einsatz {
 }
 
 export interface DruckInfo {
-  id: string;
-  personId: string;
+  id?: string;
+  personId?: string;
   druckBar: number;
   zeit: string;
+  // Offline erfasst, noch nicht beim Server angekommen.
+  pending?: boolean;
 }
 
 export interface Trupp {
@@ -36,6 +38,8 @@ export interface Trupp {
   druckMessungenPerson2: DruckInfo[];
   warnAcked?: boolean;
   maxAcked?: boolean;
+  // Beenden offline erfasst, noch nicht beim Server angekommen.
+  endPending?: boolean;
 }
 
 export interface Geraetetraeger {

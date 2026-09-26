@@ -1,4 +1,5 @@
-import { Trupp } from './models';
+import { DruckInfo, Trupp } from './models';
+import type { OutboxItem } from './outbox.service';
 
 // Reine Berechnungen rund um einen Trupp – ohne Angular-Abhaengigkeiten, damit sie einzeln testbar sind.
 
@@ -95,4 +96,48 @@ export function lowestPressure(trupp: Trupp): number {
   const p1 = trupp.druckMessungenPerson1[0]?.druckBar ?? trupp.startdruckPerson1Bar;
   const p2 = trupp.druckMessungenPerson2[0]?.druckBar ?? trupp.startdruckPerson2Bar;
   return Math.min(p1, p2);
+}
+
+// Blendet noch nicht uebertragene Eingaben der Offline-Warteschlange in die Serverdaten ein: sie erscheinen sofort
+// auf dem Geraet und zaehlen fuer Druckabfrage, niedrigsten Druck und Alarme mit.
+export function applyPending(trupps: Trupp[], pending: OutboxItem[]): Trupp[] {
+  if (!pending.length) {
+    return trupps;
+  }
+  return trupps.map((original) => {
+    const own = pending.filter((p) => p.truppId === original.id);
+    if (!own.length) {
+      return original;
+    }
+    const trupp: Trupp = {
+      ...original,
+      druckMessungenPerson1: [...original.druckMessungenPerson1],
+      druckMessungenPerson2: [...original.druckMessungenPerson2]
+    };
+    for (const item of own) {
+      if (item.kind === 'druck' && item.druckBar !== undefined) {
+        const reading: DruckInfo = { id: item.id, personId: item.personId, druckBar: item.druckBar, zeit: item.zeit, pending: true };
+        if (item.personId === trupp.person1Id) {
+          trupp.druckMessungenPerson1.push(reading);
+          trupp.druckCountPerson1 += 1;
+        } else if (item.personId === trupp.person2Id) {
+          trupp.druckMessungenPerson2.push(reading);
+          trupp.druckCountPerson2 += 1;
+        }
+      } else if (item.kind === 'end' && !trupp.endzeit) {
+        trupp.endzeit = item.zeit;
+        trupp.endEpoch = parseEpoch(item.zeit);
+        trupp.endPending = true;
+      } else if (item.kind === 'event' && item.typ === 'warn_ack') {
+        trupp.warnAcked = true;
+      } else if (item.kind === 'event' && item.typ === 'max_ack') {
+        trupp.maxAcked = true;
+      }
+    }
+    // Neueste Messung zuerst, wie vom Server geliefert.
+    const newestFirst = (a: DruckInfo, b: DruckInfo) => (parseEpoch(b.zeit) ?? 0) - (parseEpoch(a.zeit) ?? 0);
+    trupp.druckMessungenPerson1.sort(newestFirst);
+    trupp.druckMessungenPerson2.sort(newestFirst);
+    return trupp;
+  });
 }

@@ -1,8 +1,10 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { computed, inject, Injectable, NgZone, signal } from '@angular/core';
 import { environment } from '../environments/environment';
 import { ClockService } from './clock.service';
+import { AuthStore } from './auth.store';
 import {
+  applyPending,
   elapsedSeconds,
   normalizeTrupp,
   pressureCheckDue,
@@ -10,6 +12,7 @@ import {
   sortTrupps
 } from './crew-status';
 import { Einsatz, Trupp } from './models';
+import { OutboxService } from './outbox.service';
 import { RealtimeService } from './realtime.service';
 import { TranslationService } from './translation.service';
 
@@ -39,10 +42,13 @@ export class MonitoringService {
   private readonly clock = inject(ClockService);
   private readonly i18n = inject(TranslationService);
   private readonly zone = inject(NgZone);
+  readonly outbox = inject(OutboxService);
   private readonly baseUrl = environment.apiBaseUrl;
 
   readonly einsatz = signal<Einsatz | null>(null);
-  readonly trupps = signal<Trupp[]>([]);
+  // Stand des Servers; angezeigt wird er zusammen mit den noch nicht uebertragenen Eingaben.
+  readonly serverTrupps = signal<Trupp[]>([]);
+  readonly trupps = computed(() => sortTrupps(applyPending(this.serverTrupps(), this.outbox.pending())));
   readonly now = signal(Date.now());
   readonly alarm = signal<AlarmState | null>(null);
   readonly toasts = signal<Toast[]>([]);
@@ -53,10 +59,14 @@ export class MonitoringService {
   readonly running = signal(false);
   // Verbindung zum Server seit mindestens 5 s weg (kein Netz oder Live-Verbindung getrennt).
   readonly connectionLost = signal(false);
+  // Gesetzt, wenn statt Serverdaten der lokale Schnappschuss angezeigt wird (Neuladen ohne Netz): Zeitpunkt des Stands.
+  readonly snapshotFrom = signal<string | null>(null);
+  private snapshotKey: string | null = null;
 
   private timerId?: number;
   private unsubscribeRealtime?: () => void;
   private unsubscribeStatus?: () => void;
+  private unsubscribeSent?: () => void;
   private realtimeStatus: 'connected' | 'connecting' | 'disconnected' = 'connecting';
   private lostSince: number | null = null;
   private toastId = 0;
@@ -72,6 +82,7 @@ export class MonitoringService {
   // Nach der Wiederverbindung alles neu laden – Aenderungen anderer Geraete waehrend der Funkstille nachholen.
   private readonly onOnline = () => {
     this.realtime.start();
+    this.outbox.flush();
     this.refresh();
   };
   private readonly onVisibilityChange = () => {
@@ -85,12 +96,20 @@ export class MonitoringService {
       return;
     }
     this.running.set(true);
+    // Gespeicherte, noch nicht uebertragene Eingaben dieser Organisation laden und senden.
+    const orgCode = AuthStore.load()?.orgCode;
+    if (orgCode) {
+      this.outbox.start(orgCode);
+      this.snapshotKey = `crewtrace_snapshot_${orgCode.toLowerCase()}`;
+    }
+    this.unsubscribeSent = this.outbox.onSent(() => this.loadTrupps());
     this.realtime.start();
     this.realtimeStatus = this.realtime.status;
     this.unsubscribeStatus = this.realtime.onStatus((status) => {
       const wasDisconnected = this.realtimeStatus !== 'connected';
       this.realtimeStatus = status;
       if (status === 'connected' && wasDisconnected) {
+        this.outbox.flush();
         this.refresh();
       }
     });
@@ -123,6 +142,8 @@ export class MonitoringService {
     window.clearInterval(this.timerId);
     this.unsubscribeRealtime?.();
     this.unsubscribeStatus?.();
+    this.unsubscribeSent?.();
+    this.outbox.stop();
     window.removeEventListener('online', this.onOnline);
     this.realtimeStatus = 'connecting';
     this.lostSince = null;
@@ -133,8 +154,12 @@ export class MonitoringService {
     this.releaseWakeLock();
     this.audioCtx?.close().catch(() => undefined);
     this.audioCtx = null;
+    // Schnappschuss enthaelt Namen der Geraetetraeger: beim Abmelden vom Geraet entfernen.
+    this.writeSnapshot(null);
+    this.snapshotKey = null;
+    this.snapshotFrom.set(null);
     this.einsatz.set(null);
-    this.trupps.set([]);
+    this.serverTrupps.set([]);
     this.alarm.set(null);
     this.toasts.set([]);
     this.notifiedWarn.clear();
@@ -145,14 +170,20 @@ export class MonitoringService {
   }
 
   refresh(): void {
-    this.http.get<Einsatz[]>(`${this.baseUrl}/einsaetze/aktiv`).subscribe((list) => {
-      this.einsatz.set(list[0] ?? null);
-      this.updateWakeLock();
-      if (this.einsatz()) {
-        this.loadTrupps();
-      } else {
-        this.trupps.set([]);
-      }
+    this.http.get<Einsatz[]>(`${this.baseUrl}/einsaetze/aktiv`).subscribe({
+      next: (list) => {
+        this.einsatz.set(list[0] ?? null);
+        this.updateWakeLock();
+        if (this.einsatz()) {
+          this.loadTrupps();
+        } else {
+          this.serverTrupps.set([]);
+          this.outbox.clearSent();
+          this.snapshotFrom.set(null);
+          this.writeSnapshot(null);
+        }
+      },
+      error: (err) => this.restoreSnapshotIfOffline(err)
     });
   }
 
@@ -161,10 +192,60 @@ export class MonitoringService {
     if (!einsatz) {
       return;
     }
-    this.http.get<Trupp[]>(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`).subscribe((list) => {
-      this.trupps.set(sortTrupps(list.map(normalizeTrupp)));
-      this.checkThresholds();
+    this.http.get<Trupp[]>(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`).subscribe({
+      next: (list) => {
+        this.serverTrupps.set(list.map(normalizeTrupp));
+        this.outbox.clearSent();
+        this.snapshotFrom.set(null);
+        this.writeSnapshot({ einsatz, trupps: list, savedAt: new Date(this.clock.now()).toISOString() });
+        this.checkThresholds();
+      },
+      error: (err) => this.restoreSnapshotIfOffline(err)
     });
+  }
+
+  // Server nicht erreichbar und noch keine Daten (z. B. Neuladen ohne Netz): letzten bekannten Stand anzeigen,
+  // damit Timer und Alarme weiterlaufen. Die Zeiten rechnen von den Startzeiten aus und bleiben korrekt.
+  private restoreSnapshotIfOffline(err: unknown): void {
+    const offline = err instanceof HttpErrorResponse && (err.status === 0 || err.status >= 500);
+    if (!offline || this.einsatz()) {
+      return;
+    }
+    const snapshot = this.readSnapshot();
+    if (!snapshot) {
+      return;
+    }
+    this.einsatz.set(snapshot.einsatz);
+    this.serverTrupps.set(snapshot.trupps.map(normalizeTrupp));
+    this.snapshotFrom.set(snapshot.savedAt);
+    this.updateWakeLock();
+  }
+
+  private readSnapshot(): { einsatz: Einsatz; trupps: Trupp[]; savedAt: string } | null {
+    if (!this.snapshotKey) {
+      return null;
+    }
+    try {
+      const raw = localStorage.getItem(this.snapshotKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private writeSnapshot(snapshot: { einsatz: Einsatz; trupps: Trupp[]; savedAt: string } | null): void {
+    if (!this.snapshotKey) {
+      return;
+    }
+    try {
+      if (snapshot) {
+        localStorage.setItem(this.snapshotKey, JSON.stringify(snapshot));
+      } else {
+        localStorage.removeItem(this.snapshotKey);
+      }
+    } catch {
+      // Speicher nicht verfuegbar: ohne Schnappschuss weiter
+    }
   }
 
   notify(text: string, type: ToastType): void {
@@ -179,17 +260,22 @@ export class MonitoringService {
       return;
     }
     const { trupp, type } = alarm;
-    if (type === 'warn') {
-      trupp.warnAcked = true;
-    } else {
-      trupp.maxAcked = true;
-    }
     this.alarm.set(null);
-    // Erst nach dem Speichern neu laden, sonst ueberschreibt der alte Serverstand die Quittierung.
-    this.http.post(`${this.baseUrl}/trupps/${trupp.id}/events`, { typ: `${type}_ack` }).subscribe({
-      next: () => this.loadTrupps(),
-      error: (err) => this.notify(err?.error?.error ?? this.i18n.t('dashboard.actionFailed'), 'warn')
-    });
+    // Ueber die Warteschlange: die Quittierung gilt sofort (auch offline) und wird uebertragen, sobald moeglich.
+    this.outbox
+      .submit({
+        id: this.outbox.newId(),
+        kind: 'event',
+        truppId: trupp.id,
+        truppName: trupp.bezeichnung,
+        typ: type === 'warn' ? 'warn_ack' : 'max_ack',
+        zeit: this.outbox.nowIso()
+      })
+      .then((result) => {
+        if (result.status === 'rejected') {
+          this.notify(result.error, 'warn');
+        }
+      });
   }
 
   // Ein gemeinsamer AudioContext, freigeschaltet bei der ersten Beruehrung/Taste. Neue Contexts ohne
@@ -284,8 +370,13 @@ export class MonitoringService {
       return;
     }
     notified.add(trupp.id);
-    this.http.post(`${this.baseUrl}/trupps/${trupp.id}/events`, { typ: type }).subscribe({
-      error: () => notified.delete(trupp.id)
+    this.outbox.submit({
+      id: this.outbox.newId(),
+      kind: 'event',
+      truppId: trupp.id,
+      truppName: trupp.bezeichnung,
+      typ: type,
+      zeit: this.outbox.nowIso()
     });
   }
 

@@ -1,16 +1,45 @@
+import { DatePipe } from '@angular/common';
 import { Component, effect, ElementRef, inject, signal, ViewChild } from '@angular/core';
 import { SwUpdate } from '@angular/service-worker';
 import { filter } from 'rxjs';
 import { MonitoringService } from './monitoring.service';
+import { OutboxItem } from './outbox.service';
 import { TranslationService } from './translation.service';
 
 // Alarm-Dialog, Einblendungen und Ton-Hinweis – eingebunden in der App-Huelle, damit Alarme auf jeder Seite
 // erscheinen (auch in den Einstellungen).
 @Component({
   selector: 'app-alarm-overlay',
+  imports: [DatePipe],
   template: `
-    @if (monitoring.running() && monitoring.connectionLost()) {
-      <div class="connection-lost" role="alert">{{ i18n.t('common.connectionLost') }}</div>
+    @if (monitoring.running() && (monitoring.connectionLost() || monitoring.snapshotFrom())) {
+      <div class="connection-lost" role="alert">
+        {{ i18n.t('common.connectionLost') }}
+        @if (monitoring.snapshotFrom(); as from) {
+          <div>{{ i18n.t('common.snapshotFrom', { time: (from | date: 'HH:mm:ss') ?? '' }) }}</div>
+        }
+      </div>
+    }
+
+    @if (monitoring.outbox.waiting().length) {
+      <div class="outbox-waiting" role="status">
+        {{ i18n.t('outbox.waiting', { count: monitoring.outbox.waiting().length }) }}
+      </div>
+    }
+
+    @if (monitoring.outbox.failed().length) {
+      <div class="outbox-failed" role="alert">
+        <strong>{{ i18n.t('outbox.failedTitle') }}</strong>
+        @for (item of monitoring.outbox.failed(); track item.id) {
+          <div class="outbox-failed__item">
+            <div>
+              <div>{{ describe(item) }} · {{ item.zeit | date: 'HH:mm:ss' }}</div>
+              <div class="muted">{{ item.error }}</div>
+            </div>
+            <button class="ghost" type="button" (click)="monitoring.outbox.discard(item.id)">{{ i18n.t('outbox.discard') }}</button>
+          </div>
+        }
+      </div>
     }
 
     @if (updateReady()) {
@@ -85,6 +114,16 @@ export class AlarmOverlayComponent {
       }
       this.lastAlarmKey = key;
     });
+  }
+
+  describe(item: OutboxItem): string {
+    if (item.kind === 'druck') {
+      return this.i18n.t('outbox.itemPressure', { crew: item.truppName, person: item.personName ?? '', value: item.druckBar ?? 0 });
+    }
+    if (item.kind === 'end') {
+      return this.i18n.t('outbox.itemEnd', { crew: item.truppName });
+    }
+    return this.i18n.t('outbox.itemEvent', { crew: item.truppName });
   }
 
   reload(): void {

@@ -1470,3 +1470,50 @@ button.btn-attention {
   border: 1px solid var(--glass-border);
   background: rgba(30, 22, 18, 0.92);
 }
+
+/* Offline-Warteschlange */
+.druck-list .pending {
+  font-style: italic;
+  color: var(--warn);
+}
+
+.pending-note {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--warn);
+}
+
+/* Oberhalb des Ton-Hinweises, der unten die ganze Breite einnimmt */
+.outbox-waiting {
+  position: fixed;
+  right: 16px;
+  bottom: 96px;
+  z-index: 56;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-weight: 600;
+  border: 1px solid var(--warn);
+  background: rgba(30, 22, 18, 0.92);
+}
+
+.outbox-failed {
+  position: fixed;
+  right: 16px;
+  bottom: 150px;
+  z-index: 56;
+  display: grid;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 2px solid var(--danger);
+  background: rgba(30, 22, 18, 0.95);
+}
+
+.outbox-failed__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
