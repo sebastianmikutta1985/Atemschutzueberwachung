@@ -88,6 +88,9 @@ export class App implements OnInit {
     if (!AuthStore.load()) {
       return;
     }
+    if (this.deferWhileMonitoring()) {
+      return;
+    }
     this.idleWarningOpen = true;
   }
 
@@ -97,11 +100,25 @@ export class App implements OnInit {
   }
 
   logoutNow(): void {
-    this.handleIdleTimeout();
+    this.idleWarningOpen = false;
+    this.session.logout();
+  }
+
+  // Waehrend Trupps ueberwacht werden, nie automatisch abmelden – sonst verschwinden Timer und Alarme.
+  private deferWhileMonitoring(): boolean {
+    if (!this.session.monitoringActive()) {
+      return false;
+    }
+    this.markActivity();
+    this.resetIdleTimer();
+    return true;
   }
 
   private handleIdleTimeout(): void {
     if (!AuthStore.load()) {
+      return;
+    }
+    if (this.deferWhileMonitoring()) {
       return;
     }
     this.idleWarningOpen = false;
