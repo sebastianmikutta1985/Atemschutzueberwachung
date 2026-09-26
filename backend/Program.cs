@@ -886,7 +886,7 @@ orgApi.MapGet("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpC
     return Results.Ok(result);
 }).WithOpenApi();
 
-orgApi.MapPost("/trupps/{id:guid}/beenden", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+orgApi.MapPost("/trupps/{id:guid}/beenden", async (Guid id, HttpContext http, TruppEnd? dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
     var auth = http.GetAuth();
     var trupp = await db.Trupps.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == auth.OrgId);
@@ -895,9 +895,15 @@ orgApi.MapPost("/trupps/{id:guid}/beenden", async (Guid id, HttpContext http, Ap
         return Results.NotFound();
     }
 
+    // Idempotent: ein bereits beendeter Trupp behaelt sein erstes Ende (auch bei wiederholter Uebertragung).
     if (trupp.Endzeit == null)
     {
-        trupp.Endzeit = DateTime.UtcNow;
+        var timeError = Api.CheckClientTime(dto?.Endzeit, trupp.Startzeit, out var endzeit);
+        if (timeError != null)
+        {
+            return Api.Bad(timeError);
+        }
+        trupp.Endzeit = endzeit;
     }
     await db.SaveChangesAsync();
     await NotifyOrgAsync(hub, auth.OrgId, "trupp");
@@ -913,42 +919,65 @@ orgApi.MapPost("/trupps/{id:guid}/druckmessungen", async (Guid id, HttpContext h
         return Results.NotFound();
     }
 
-    if (trupp.Endzeit != null)
-    {
-        return Results.BadRequest(new { error = "Trupp ist bereits beendet." });
-    }
-
     if (dto.PersonId != trupp.Person1Id && dto.PersonId != trupp.Person2Id)
     {
         return Results.BadRequest(new { error = "Person gehoert nicht zu diesem Trupp." });
     }
 
-    var bisherige = await db.Druckmessungen
+    // Wiederholte Uebertragung aus der Offline-Warteschlange (Antwort ging verloren): nichts doppelt anlegen.
+    if (dto.Id is { } clientId)
+    {
+        var existing = await db.Druckmessungen.FirstOrDefaultAsync(m => m.Id == clientId);
+        if (existing != null)
+        {
+            return existing.OrganizationId == auth.OrgId && existing.TruppId == id
+                && existing.PersonId == dto.PersonId && existing.DruckBar == dto.DruckBar
+                ? Results.Ok(existing)
+                : Results.Conflict(new { error = "Diese Messungs-ID ist bereits vergeben." });
+        }
+    }
+
+    var timeError = Api.CheckClientTime(dto.Zeit, trupp.Startzeit, out var zeit);
+    if (timeError != null)
+    {
+        return Api.Bad(timeError);
+    }
+    // Eine Messung von vor dem Trupp-Ende darf nachgereicht werden (z. B. offline erfasst).
+    if (trupp.Endzeit != null && zeit > trupp.Endzeit)
+    {
+        return Results.BadRequest(new { error = "Trupp ist bereits beendet." });
+    }
+
+    var bisherige = (await db.Druckmessungen
         .Where(m => m.OrganizationId == auth.OrgId && m.TruppId == id && m.PersonId == dto.PersonId)
-        .OrderByDescending(m => m.Zeit)
-        .ToListAsync();
+        .ToListAsync())
+        .OrderBy(m => m.Zeit)
+        .ToList();
     if (bisherige.Count >= 3)
     {
         return Results.BadRequest(new { error = "Maximal 3 Druckmessungen pro Person." });
     }
 
-    // Der Druck kann nur sinken: Obergrenze ist die letzte Messung bzw. der Startdruck.
-    var maxDruck = bisherige.Count > 0
-        ? bisherige[0].DruckBar
-        : dto.PersonId == trupp.Person1Id ? trupp.StartdruckPerson1Bar : trupp.StartdruckPerson2Bar;
-    if (dto.DruckBar < 1 || dto.DruckBar > maxDruck)
+    // Der Druck kann nur sinken – zeitlich geprueft, damit nachgereichte Messungen richtig eingeordnet werden:
+    // hoechstens die Messung davor (bzw. der Startdruck), mindestens die Messung danach.
+    var vorher = bisherige.LastOrDefault(m => m.Zeit <= zeit);
+    var danach = bisherige.FirstOrDefault(m => m.Zeit > zeit);
+    var maxDruck = vorher?.DruckBar
+        ?? (dto.PersonId == trupp.Person1Id ? trupp.StartdruckPerson1Bar : trupp.StartdruckPerson2Bar);
+    var minDruck = Math.Max(1, danach?.DruckBar ?? 1);
+    if (dto.DruckBar < minDruck || dto.DruckBar > maxDruck)
     {
-        return Api.Bad($"Druck muss zwischen 1 und {maxDruck} bar liegen.");
+        return Api.Bad($"Druck muss zwischen {minDruck} und {maxDruck} bar liegen.");
     }
 
     var messung = new Druckmessung
     {
-        Id = Guid.NewGuid(),
+        Id = dto.Id ?? Guid.NewGuid(),
         OrganizationId = auth.OrgId,
         TruppId = id,
         PersonId = dto.PersonId,
         DruckBar = dto.DruckBar,
-        Zeit = DateTime.UtcNow
+        Zeit = zeit
     };
 
     db.Druckmessungen.Add(messung);
@@ -977,13 +1006,31 @@ orgApi.MapPost("/trupps/{id:guid}/events", async (Guid id, HttpContext http, Ala
         return Api.Bad("Nachricht darf hoechstens 500 Zeichen lang sein.");
     }
 
+    // Wiederholte Uebertragung aus der Offline-Warteschlange: nichts doppelt anlegen.
+    if (dto.Id is { } clientId)
+    {
+        var existing = await db.AlarmEvents.FirstOrDefaultAsync(e => e.Id == clientId);
+        if (existing != null)
+        {
+            return existing.OrganizationId == auth.OrgId && existing.TruppId == id && existing.Typ == type
+                ? Results.Ok(existing)
+                : Results.Conflict(new { error = "Diese Event-ID ist bereits vergeben." });
+        }
+    }
+
+    var timeError = Api.CheckClientTime(dto.Zeit, trupp.Startzeit, out var zeit);
+    if (timeError != null)
+    {
+        return Api.Bad(timeError);
+    }
+
     var ev = new AlarmEvent
     {
-        Id = Guid.NewGuid(),
+        Id = dto.Id ?? Guid.NewGuid(),
         OrganizationId = auth.OrgId,
         TruppId = id,
         Typ = type,
-        Zeit = DateTime.UtcNow,
+        Zeit = zeit,
         Nachricht = nachricht
     };
 
@@ -1688,6 +1735,25 @@ static class Api
         return null;
     }
 
+    // Erfassungszeit einer Eingabe, die offline gespeichert und spaeter uebertragen wurde. Die Geraeteuhr ist mit
+    // dem Server abgeglichen; plausibel ist die Zeit nicht vor dem Truppstart, hoechstens 24 h alt und nicht mehr
+    // als 2 min in der Zukunft (leichte Abweichungen werden auf "jetzt" begrenzt). Ohne Angabe gilt die Serverzeit.
+    public static string? CheckClientTime(DateTime? clientTime, DateTime notBefore, out DateTime result)
+    {
+        var now = DateTime.UtcNow;
+        result = now;
+        if (clientTime == null)
+        {
+            return null;
+        }
+        var time = ToUtc(clientTime)!.Value;
+        if (time > now.AddMinutes(2)) return "Der Zeitstempel liegt in der Zukunft.";
+        if (time < now.AddHours(-24)) return "Der Zeitstempel ist aelter als 24 Stunden.";
+        if (time < notBefore.AddMinutes(-1)) return "Der Zeitstempel liegt vor dem Beginn des Trupps.";
+        result = time > now ? now : time;
+        return null;
+    }
+
     // Zeitangaben vom Client kommen als ISO-String mit "Z" oder Offset. Werte ohne Angabe gelten als UTC.
     public static DateTime? ToUtc(DateTime? value) => value switch
     {
@@ -1911,8 +1977,10 @@ record GeraetetraegerUpdate(string? Vorname, string? Nachname, string? Funkrufna
 record TruppNameCreate(string? Name, bool Aktiv);
 record TruppNameUpdate(string? Name, bool Aktiv, int OrderIndex);
 record TruppNameReorder(Guid[] Ids);
-record DruckmessungCreate(Guid PersonId, int DruckBar);
-record AlarmEventCreate(string? Typ, string? Nachricht);
+// Id und Zeit sind optional: gesetzt von der Offline-Warteschlange des Frontends (idempotent, Erfassungszeit).
+record DruckmessungCreate(Guid PersonId, int DruckBar, Guid? Id = null, DateTime? Zeit = null);
+record AlarmEventCreate(string? Typ, string? Nachricht, Guid? Id = null, DateTime? Zeit = null);
+record TruppEnd(DateTime? Endzeit);
 record LoginRequest(string? OrgaCode, string? Pin);
 record SystemLoginRequest(string? Secret);
 record OrgSettingsDto(int DefaultStartdruckPerson1Bar, int DefaultStartdruckPerson2Bar, int DefaultWarnzeitMin, int DefaultMaxzeitMin);
