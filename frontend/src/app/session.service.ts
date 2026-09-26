@@ -15,8 +15,7 @@ export class SessionService {
 
   // Beendet die Session auch am Server. Lokal wird immer abgemeldet, selbst wenn der Server nicht erreichbar ist.
   logout(): void {
-    const token = AuthStore.token();
-    if (token) {
+    if (AuthStore.isSignedIn()) {
       this.http.post(`${environment.apiBaseUrl}/auth/logout`, {}).subscribe({ error: () => undefined });
     }
     this.endLocalSession();

@@ -14,13 +14,14 @@ export class RealtimeService {
     if (this.connection) {
       return;
     }
-    const auth = AuthStore.load();
-    if (!auth?.token) {
+    if (!AuthStore.isSignedIn()) {
       return;
     }
+    // Anmeldung ueber das Session-Cookie (kein Token in der URL); negotiate ist ein POST und braucht den CSRF-Header.
     this.connection = new signalR.HubConnectionBuilder()
       .withUrl(`${this.baseUrl}/hubs/updates`, {
-        accessTokenFactory: () => auth.token
+        withCredentials: true,
+        headers: { 'X-Requested-With': 'CrewTrace' }
       })
       .withAutomaticReconnect()
       .build();

@@ -2,8 +2,9 @@ import { ThemeStore } from './theme.store';
 
 export type AuthRole = 'admin' | 'user';
 
+// Nur Anzeige-Informationen. Der Login-Token liegt als httpOnly-Cookie beim Browser und ist fuer
+// JavaScript bewusst nicht erreichbar.
 export type AuthState = {
-  token: string;
   role: AuthRole;
   orgName: string;
   orgCode: string;
@@ -19,7 +20,13 @@ export const AuthStore = {
       return null;
     }
     try {
-      const state = JSON.parse(raw) as AuthState;
+      const state = JSON.parse(raw) as AuthState & { token?: string };
+      if (state.token !== undefined) {
+        // Aeltere Versionen speicherten den Token im localStorage – entfernen. Die Session endet dann beim
+        // naechsten Aufruf (401), danach meldet man sich einmal neu an und erhaelt das Cookie.
+        delete state.token;
+        this.save(state);
+      }
       const themeKey = ThemeStore.keyFromOrgRole(state.orgCode, state.role);
       if (state.themeKey !== themeKey) {
         // Alter Schluessel enthielt einen Hash der PIN – ersetzen, Einstellung uebernehmen.
@@ -41,8 +48,8 @@ export const AuthStore = {
     localStorage.removeItem(AUTH_KEY);
   },
 
-  token(): string | null {
-    return this.load()?.token ?? null;
+  isSignedIn(): boolean {
+    return this.load() !== null;
   },
 
   role(): AuthRole | null {

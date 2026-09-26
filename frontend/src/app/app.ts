@@ -41,7 +41,7 @@ export class App implements OnInit {
     this.startIdleCheck();
     // Ueberwachung laeuft, sobald eine Organisation angemeldet ist – auf jeder Seite, nicht nur im Dashboard.
     this.router.events.pipe(filter((e) => e instanceof NavigationEnd)).subscribe(() => {
-      if (AuthStore.token()) {
+      if (AuthStore.isSignedIn()) {
         this.monitoring.start();
       }
     });
