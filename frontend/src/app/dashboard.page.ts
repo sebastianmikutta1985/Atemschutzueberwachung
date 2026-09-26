@@ -7,7 +7,7 @@ import { RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
 import { ClockService } from './clock.service';
-import { normalizeTrupp, parseEpoch } from './crew-status';
+import { parseEpoch } from './crew-status';
 import { ExportService } from './export.service';
 import { DruckInfo, Einsatz, Geraetetraeger, OrgSettings, Trupp, TruppName } from './models';
 import { MonitoringService } from './monitoring.service';
@@ -71,6 +71,8 @@ export class DashboardPage implements OnInit, OnDestroy {
     last: DruckInfo[];
   } | null = null;
   druckModalError = '';
+  // Verhindert eine doppelte Messung durch erneutes Tippen, waehrend die erste noch uebertragen wird.
+  druckSaving = false;
 
   detailsModal: {
     open: boolean;
@@ -243,7 +245,19 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   logout(): void {
-    this.session.logout();
+    const waiting = this.monitoring.outbox.waiting().length;
+    if (waiting === 0) {
+      this.session.logout();
+      return;
+    }
+    // Nicht uebertragene Eingaben bleiben auf diesem Geraet und werden nach der naechsten Anmeldung gesendet.
+    this.confirmModal = {
+      title: this.i18n.t('outbox.logoutTitle'),
+      text: this.i18n.t('outbox.logoutText', { count: waiting }),
+      confirmLabel: this.i18n.t('common.logout'),
+      action: () => this.session.logout()
+    };
+    this.focusSoon(() => this.confirmCancel);
   }
 
   refresh(): void {
@@ -440,10 +454,7 @@ export class DashboardPage implements OnInit, OnDestroy {
 
     this.truppError = '';
     this.http.post<Trupp>(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`, payload).subscribe({
-      next: (created) => {
-        if (created) {
-          this.monitoring.trupps.update((list) => [...list, normalizeTrupp(created)]);
-        }
+      next: () => {
         this.truppForm.truppNameId = '';
         this.truppForm.person1Id = '';
         this.truppForm.person2Id = '';
@@ -486,11 +497,20 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.confirmModal = null;
   }
 
-  private doEndTrupp(trupp: Trupp): void {
-    this.http.post<Trupp>(`${this.baseUrl}/trupps/${trupp.id}/beenden`, {}).subscribe({
-      next: () => this.monitoring.loadTrupps(),
-      error: (err) => this.monitoring.notify(this.apiError(err, 'dashboard.actionFailed'), 'warn')
+  // Ueber die Warteschlange: das Ende gilt sofort (auch offline) mit der Zeit des Tippens.
+  private async doEndTrupp(trupp: Trupp): Promise<void> {
+    const result = await this.monitoring.outbox.submit({
+      id: this.monitoring.outbox.newId(),
+      kind: 'end',
+      truppId: trupp.id,
+      truppName: trupp.bezeichnung,
+      zeit: this.monitoring.outbox.nowIso()
     });
+    if (result.status === 'rejected') {
+      this.monitoring.notify(result.error, 'warn');
+    } else if (result.status === 'queued') {
+      this.monitoring.notify(this.i18n.t('outbox.savedOffline'), 'warn');
+    }
   }
 
   addDruckmessung(trupp: Trupp, personId: string): void {
@@ -516,8 +536,8 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.druckModalError = '';
   }
 
-  saveDruckModal(): void {
-    if (!this.druckModal) {
+  async saveDruckModal(): Promise<void> {
+    if (!this.druckModal || this.druckSaving) {
       return;
     }
     const value = Number(this.druckModal.value);
@@ -530,21 +550,29 @@ export class DashboardPage implements OnInit, OnDestroy {
       this.monitoring.notify(this.i18n.t('dashboard.pressureTooHigh', { value: maxAllowed }), 'warn');
       return;
     }
-    this.http
-      .post(`${this.baseUrl}/trupps/${this.druckModal.trupp.id}/druckmessungen`, {
-        personId: this.druckModal.personId,
-        druckBar: value
-      })
-      .subscribe({
-        next: () => {
-          this.closeDruckModal();
-          this.monitoring.loadTrupps();
-        },
-        error: (err) => {
-          // Modal offen lassen, damit der Wert nicht verloren geht und erneut gesendet werden kann.
-          this.druckModalError = this.apiError(err, 'dashboard.actionFailed');
-        }
-      });
+    // Ueber die Warteschlange: ohne Netz wird die Messung mit ihrer Erfassungszeit gespeichert und spaeter gesendet.
+    const modal = this.druckModal;
+    this.druckSaving = true;
+    const result = await this.monitoring.outbox.submit({
+      id: this.monitoring.outbox.newId(),
+      kind: 'druck',
+      truppId: modal.trupp.id,
+      truppName: modal.trupp.bezeichnung,
+      personId: modal.personId,
+      personName: modal.personName,
+      druckBar: value,
+      zeit: this.monitoring.outbox.nowIso()
+    });
+    this.druckSaving = false;
+    if (result.status === 'rejected') {
+      // Dialog offen lassen, damit der Wert korrigiert werden kann.
+      this.druckModalError = result.error;
+      return;
+    }
+    this.closeDruckModal();
+    if (result.status === 'queued') {
+      this.monitoring.notify(this.i18n.t('outbox.savedOffline'), 'warn');
+    }
   }
 
   maxDruckForModal(): number | null {

@@ -1,4 +1,6 @@
 import {
+  applyPending,
+  elapsedSeconds,
   formatMinSec,
   lowestPressure,
   normalizeTrupp,
@@ -66,6 +68,36 @@ describe('crew-status', () => {
       druckMessungenPerson2: [{ id: 'm1', personId: 'p2', druckBar: 200, zeit: '2026-09-26T10:10:00Z' }]
     });
     expect(lowestPressure(t)).toBe(150);
+  });
+
+  it('shows pending entries immediately and counts them for pressure checks and alarms', () => {
+    const t = crew({
+      druckCountPerson1: 1,
+      druckMessungenPerson1: [{ druckBar: 260, zeit: '2026-09-26T10:08:00Z' }]
+    });
+    const [merged] = applyPending(
+      [t],
+      [
+        { id: 'm1', kind: 'druck', truppId: 't1', truppName: 'AT', personId: 'p1', druckBar: 240, zeit: '2026-09-26T10:12:00Z' },
+        { id: 'm2', kind: 'druck', truppId: 't1', truppName: 'AT', personId: 'p2', druckBar: 250, zeit: '2026-09-26T10:12:30Z' },
+        { id: 'a1', kind: 'event', truppId: 't1', truppName: 'AT', typ: 'warn_ack', zeit: '2026-09-26T10:13:00Z' },
+        { id: 'x', kind: 'druck', truppId: 'other', truppName: 'X', personId: 'p1', druckBar: 100, zeit: '2026-09-26T10:13:00Z' }
+      ]
+    );
+    expect(merged.druckCountPerson1).toBe(2);
+    expect(merged.druckMessungenPerson1.map((m) => [m.druckBar, !!m.pending])).toEqual([[240, true], [260, false]]);
+    expect(lowestPressure(merged)).toBe(240);
+    expect(pressureCheckDue(merged, start + 10 * min)).toBeNull();
+    expect(merged.warnAcked).toBe(true);
+    // Das Original bleibt unveraendert.
+    expect(t.druckCountPerson1).toBe(1);
+  });
+
+  it('ends a crew locally with the captured time while the end is pending', () => {
+    const [merged] = applyPending([crew()], [{ id: 'e1', kind: 'end', truppId: 't1', truppName: 'AT', zeit: '2026-09-26T10:15:00Z' }]);
+    expect(merged.endPending).toBe(true);
+    expect(statusFor(merged, start + 40 * min)).toBe('beendet');
+    expect(formatMinSec(elapsedSeconds(merged, start + 40 * min))).toBe('15:00');
   });
 
   it('sorts active crews first, then by start time', () => {

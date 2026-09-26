@@ -12,8 +12,9 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       appName: 'CrewTrace',
       language: 'Sprache',
       timeSuffix: ' Uhr',
-      connectionLost: 'Keine Verbindung zum Server. Zeiten und Alarme laufen auf diesem Gerät weiter – neue Eingaben werden erst nach der Wiederverbindung gespeichert.',
+      connectionLost: 'Keine Verbindung zum Server. Zeiten und Alarme laufen auf diesem Gerät weiter. Druckmessungen, Trupp-Ende und Quittierungen werden gespeichert und automatisch übertragen – neue Einsätze und Trupps erst wieder mit Verbindung.',
       updateAvailable: 'Eine neue Version von CrewTrace ist bereit.',
+      snapshotFrom: 'Angezeigt wird der zuletzt geladene Stand von {time} – Änderungen anderer Geräte fehlen bis zur Wiederverbindung.',
       reload: 'Neu laden',
       save: 'Speichern',
       cancel: 'Abbrechen',
@@ -77,6 +78,19 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       errorLogin: 'Login fehlgeschlagen. Code oder PIN falsch.',
       errorTooManyAttempts: 'Zu viele Fehlversuche. Bitte in einigen Minuten erneut versuchen.',
       titleTag: 'CrewTrace - Anmeldung'
+    },
+    outbox: {
+      savedOffline: 'Keine Verbindung – Eingabe auf diesem Gerät gespeichert, sie wird automatisch übertragen.',
+      pendingShort: 'ausstehend',
+      endPending: 'Beenden wird übertragen …',
+      waiting: '{count} Eingabe(n) warten auf Übertragung',
+      failedTitle: 'Vom Server abgelehnt – nicht gespeichert:',
+      itemPressure: '{crew}, {person}: {value} bar',
+      itemEnd: '{crew}: Trupp beenden',
+      itemEvent: '{crew}: Alarm-Protokoll',
+      discard: 'Verwerfen',
+      logoutTitle: 'Eingaben noch nicht übertragen',
+      logoutText: '{count} Eingabe(n) sind noch nicht beim Server. Sie bleiben auf diesem Gerät gespeichert und werden nach der nächsten Anmeldung übertragen. Trotzdem abmelden?'
     },
     dashboard: {
       eyebrow: 'Einsatzübersicht',
@@ -280,8 +294,9 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       appName: 'CrewTrace',
       language: 'Language',
       timeSuffix: '',
-      connectionLost: 'No connection to the server. Timers and alarms keep running on this device – new entries are only saved once the connection is back.',
+      connectionLost: 'No connection to the server. Timers and alarms keep running on this device. Pressure readings, crew finishing and acknowledgements are stored and sent automatically – new incidents and crews only once reconnected.',
       updateAvailable: 'A new version of CrewTrace is ready.',
+      snapshotFrom: 'Showing the last loaded state from {time} – changes from other devices are missing until reconnected.',
       reload: 'Reload',
       save: 'Save',
       cancel: 'Cancel',
@@ -344,6 +359,19 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       errorLogin: 'Login failed. Code or PIN is incorrect.',
       errorTooManyAttempts: 'Too many failed attempts. Please try again in a few minutes.',
       titleTag: 'CrewTrace - Login'
+    },
+    outbox: {
+      savedOffline: 'No connection – entry saved on this device, it will be sent automatically.',
+      pendingShort: 'pending',
+      endPending: 'Finishing is being sent …',
+      waiting: '{count} entry(ies) waiting to be sent',
+      failedTitle: 'Rejected by the server – not saved:',
+      itemPressure: '{crew}, {person}: {value} bar',
+      itemEnd: '{crew}: finish crew',
+      itemEvent: '{crew}: alarm log',
+      discard: 'Discard',
+      logoutTitle: 'Entries not sent yet',
+      logoutText: '{count} entry(ies) have not reached the server. They stay on this device and are sent after the next sign-in. Sign out anyway?'
     },
     dashboard: {
       eyebrow: 'Incident overview',

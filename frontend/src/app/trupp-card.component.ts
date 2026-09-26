@@ -23,6 +23,9 @@ import { TranslationService } from './translation.service';
         <div class="trupp__title">{{ trupp().bezeichnung }}</div>
         <div class="muted">{{ i18n.t('dashboard.p1') }}: {{ trupp().person1Name }}</div>
         <div class="muted">{{ i18n.t('dashboard.p2') }}: {{ trupp().person2Name }}</div>
+        @if (trupp().endPending) {
+          <div class="pending-note" role="status">{{ i18n.t('outbox.endPending') }}</div>
+        }
         @if (pressureStage(); as stage) {
           <div class="pressure-due" role="status">
             {{ i18n.t('dashboard.pressureCheckDue', { fraction: fraction(stage) }) }}
@@ -50,7 +53,9 @@ import { TranslationService } from './translation.service';
               {{ i18n.t('dashboard.latestMeasurements') }}
               <div class="druck-list">
                 @for (m of trupp().druckMessungenPerson1; track m.zeit) {
-                  <div>{{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}</div>
+                  <div [class.pending]="m.pending">
+                    {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}@if (m.pending) { · {{ i18n.t('outbox.pendingShort') }}}
+                  </div>
                 }
               </div>
             </div>
@@ -64,7 +69,9 @@ import { TranslationService } from './translation.service';
               {{ i18n.t('dashboard.latestMeasurements') }}
               <div class="druck-list">
                 @for (m of trupp().druckMessungenPerson2; track m.zeit) {
-                  <div>{{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}</div>
+                  <div [class.pending]="m.pending">
+                    {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}@if (m.pending) { · {{ i18n.t('outbox.pendingShort') }}}
+                  </div>
                 }
               </div>
             </div>
