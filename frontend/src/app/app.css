@@ -1441,3 +1441,32 @@ button.btn-attention {
   background: color-mix(in srgb, var(--warn) 22%, rgb(30, 22, 18));
   box-shadow: 0 16px 36px -20px rgba(0, 0, 0, 0.7);
 }
+
+/* Verbindungsverlust: oben und unuebersehbar, solange er andauert */
+.connection-lost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 58;
+  padding: 10px 16px;
+  text-align: center;
+  font-weight: 700;
+  color: #fff;
+  background: var(--danger);
+  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.7);
+}
+
+.update-hint {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 54;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--glass-border);
+  background: rgba(30, 22, 18, 0.92);
+}

@@ -1,4 +1,6 @@
-import { Component, effect, ElementRef, inject, ViewChild } from '@angular/core';
+import { Component, effect, ElementRef, inject, signal, ViewChild } from '@angular/core';
+import { SwUpdate } from '@angular/service-worker';
+import { filter } from 'rxjs';
 import { MonitoringService } from './monitoring.service';
 import { TranslationService } from './translation.service';
 
@@ -7,6 +9,17 @@ import { TranslationService } from './translation.service';
 @Component({
   selector: 'app-alarm-overlay',
   template: `
+    @if (monitoring.running() && monitoring.connectionLost()) {
+      <div class="connection-lost" role="alert">{{ i18n.t('common.connectionLost') }}</div>
+    }
+
+    @if (updateReady()) {
+      <div class="update-hint" role="status">
+        <span>{{ i18n.t('common.updateAvailable') }}</span>
+        <button class="ghost" type="button" (click)="reload()">{{ i18n.t('common.reload') }}</button>
+      </div>
+    }
+
     @if (monitoring.active() && monitoring.audioLocked()) {
       <div class="audio-hint audio-hint--floating" role="alert">
         <span>{{ i18n.t('dashboard.audioBlocked') }}</span>
@@ -52,8 +65,17 @@ export class AlarmOverlayComponent {
   readonly i18n = inject(TranslationService);
   @ViewChild('alarmPanel') alarmPanel?: ElementRef<HTMLElement>;
   private lastAlarmKey: string | null = null;
+  // Neue App-Version geladen (Service Worker). Kein automatisches Neuladen: das wuerde laufende Eingaben verwerfen.
+  readonly updateReady = signal(false);
 
   constructor() {
+    const updates = inject(SwUpdate, { optional: true });
+    if (updates?.isEnabled) {
+      updates.versionUpdates
+        .pipe(filter((event) => event.type === 'VERSION_READY'))
+        .subscribe(() => this.updateReady.set(true));
+    }
+
     // Fokus auf den Dialog statt auf den Button: Enter aus einem anderen Eingabefeld bestaetigt nicht.
     effect(() => {
       const alarm = this.monitoring.alarm();
@@ -63,5 +85,9 @@ export class AlarmOverlayComponent {
       }
       this.lastAlarmKey = key;
     });
+  }
+
+  reload(): void {
+    document.location.reload();
   }
 }

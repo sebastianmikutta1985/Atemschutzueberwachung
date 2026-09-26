@@ -50,10 +50,15 @@ export class MonitoringService {
   readonly audioLocked = signal(true);
   // Solange ein Einsatz laeuft, darf die automatische Abmeldung nicht greifen.
   readonly active = computed(() => this.einsatz() !== null);
+  readonly running = signal(false);
+  // Verbindung zum Server seit mindestens 5 s weg (kein Netz oder Live-Verbindung getrennt).
+  readonly connectionLost = signal(false);
 
-  private running = false;
   private timerId?: number;
   private unsubscribeRealtime?: () => void;
+  private unsubscribeStatus?: () => void;
+  private realtimeStatus: 'connected' | 'connecting' | 'disconnected' = 'connecting';
+  private lostSince: number | null = null;
   private toastId = 0;
   private notifiedWarn = new Set<string>();
   private notifiedMax = new Set<string>();
@@ -64,6 +69,11 @@ export class MonitoringService {
   private wakeLock: WakeLockSentinel | null = null;
 
   private readonly onUserGesture = () => this.unlockAudio();
+  // Nach der Wiederverbindung alles neu laden – Aenderungen anderer Geraete waehrend der Funkstille nachholen.
+  private readonly onOnline = () => {
+    this.realtime.start();
+    this.refresh();
+  };
   private readonly onVisibilityChange = () => {
     if (document.visibilityState === 'visible') {
       this.updateWakeLock();
@@ -71,11 +81,20 @@ export class MonitoringService {
   };
 
   start(): void {
-    if (this.running) {
+    if (this.running()) {
       return;
     }
-    this.running = true;
+    this.running.set(true);
     this.realtime.start();
+    this.realtimeStatus = this.realtime.status;
+    this.unsubscribeStatus = this.realtime.onStatus((status) => {
+      const wasDisconnected = this.realtimeStatus !== 'connected';
+      this.realtimeStatus = status;
+      if (status === 'connected' && wasDisconnected) {
+        this.refresh();
+      }
+    });
+    window.addEventListener('online', this.onOnline);
     this.unsubscribeRealtime = this.realtime.onUpdate((type) => {
       if (type === 'einsatz' || type === 'trupp' || type === 'druck') {
         this.refresh();
@@ -89,6 +108,7 @@ export class MonitoringService {
       this.zone.run(() => {
         this.now.set(this.clock.now());
         this.audioLocked.set(!this.audioCtx || this.audioCtx.state !== 'running');
+        this.updateConnectionState();
         this.checkThresholds();
       });
     }, 1000);
@@ -96,12 +116,17 @@ export class MonitoringService {
   }
 
   stop(): void {
-    if (!this.running) {
+    if (!this.running()) {
       return;
     }
-    this.running = false;
+    this.running.set(false);
     window.clearInterval(this.timerId);
     this.unsubscribeRealtime?.();
+    this.unsubscribeStatus?.();
+    window.removeEventListener('online', this.onOnline);
+    this.realtimeStatus = 'connecting';
+    this.lostSince = null;
+    this.connectionLost.set(false);
     document.removeEventListener('pointerdown', this.onUserGesture);
     document.removeEventListener('keydown', this.onUserGesture);
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
@@ -178,6 +203,17 @@ export class MonitoringService {
     } catch {
       // kein Audio verfuegbar
     }
+  }
+
+  private updateConnectionState(): void {
+    const lost = !navigator.onLine || this.realtimeStatus !== 'connected';
+    if (!lost) {
+      this.lostSince = null;
+      this.connectionLost.set(false);
+      return;
+    }
+    this.lostSince ??= Date.now();
+    this.connectionLost.set(Date.now() - this.lostSince >= 5000);
   }
 
   private checkThresholds(): void {
