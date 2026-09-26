@@ -9,6 +9,7 @@ import { AuthStore } from './auth.store';
 import { DruckInfo, Einsatz, Geraetetraeger, OrgSettings, Trupp, TruppName } from './models';
 import { RealtimeService } from './realtime.service';
 import { SessionService } from './session.service';
+import { ClockService } from './clock.service';
 import { ThemeMode, ThemeStore } from './theme.store';
 import { TranslationService } from './translation.service';
 import jsPDF from 'jspdf';
@@ -24,7 +25,8 @@ export class DashboardPage implements OnInit, OnDestroy {
   private timerId?: number;
   @ViewChild('druckInput') druckInput?: ElementRef<HTMLInputElement>;
   @ViewChild('dashboardSection') dashboardSection?: ElementRef<HTMLElement>;
-  openSelect: 'trupp' | 'p1' | 'p2' | null = null;
+  @ViewChild('confirmCancel') confirmCancel?: ElementRef<HTMLButtonElement>;
+  @ViewChild('alarmPanel') alarmPanel?: ElementRef<HTMLElement>;
   private unsubscribeRealtime?: () => void;
   private unsubscribeStatus?: () => void;
   liveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
@@ -61,6 +63,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   };
 
   private lastAutoStartzeit = '';
+  private lastAutoAlarmzeit = '';
   errorMessage = '';
   truppError = '';
 
@@ -85,13 +88,21 @@ export class DashboardPage implements OnInit, OnDestroy {
   toasts: { id: number; text: string; type: 'warn' | 'max' }[] = [];
   private toastId = 0;
   private lastLiveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
-  alarmModal: { open: boolean; trupp: Trupp; type: 'warn' | 'max' } | null = null;
+  // ackReady: Bestaetigen erst nach kurzer Verzoegerung moeglich, damit ein Tipp, der fuer einen anderen Dialog
+  // gedacht war, den gerade erscheinenden Alarm nicht versehentlich bestaetigt.
+  alarmModal: { open: boolean; trupp: Trupp; type: 'warn' | 'max'; ackReady: boolean } | null = null;
+  // Bestaetigung fuer nicht umkehrbare Aktionen (Einsatz/Trupp beenden).
+  confirmModal: { title: string; text: string; confirmLabel: string; action: () => void } | null = null;
+  private wakeLock: WakeLockSentinel | null = null;
+  private audioCtx: AudioContext | null = null;
+  private remindedPressureChecks = new Set<string>();
 
   constructor(
     private http: HttpClient,
     private zone: NgZone,
     private realtime: RealtimeService,
     private session: SessionService,
+    private clock: ClockService,
     private title: Title,
     public i18n: TranslationService
   ) {
@@ -108,14 +119,13 @@ export class DashboardPage implements OnInit, OnDestroy {
     const pad = (v: number) => v.toString().padStart(2, '0');
     return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(
       d.getHours()
-    )}:${pad(d.getMinutes())}:${pad(d.getSeconds())} Uhr`;
+    )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${this.i18n.t('common.timeSuffix')}`;
   }
 
   ngOnInit(): void {
     this.loadTheme();
     this.updatePageTitle();
-    const now = new Date();
-    this.einsatzForm.alarmzeit = this.toLocalInputValue(now);
+    this.setAutoAlarmzeitNow();
     this.setAutoStartzeitNow();
     this.loadActiveEinsatz();
     this.loadGeraetetraeger();
@@ -163,69 +173,51 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.mobileMetaOpen = !this.mobileMetaOpen;
   }
 
-  @HostListener('document:click')
-  closeOpenSelect(): void {
-    this.openSelect = null;
+  // Escape schliesst Dialoge – ausser dem Alarm, der ausdruecklich bestaetigt werden muss.
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.alarmModal) {
+      return;
+    }
+    if (this.confirmModal) {
+      this.closeConfirmModal();
+    } else if (this.druckModal) {
+      this.closeDruckModal();
+    } else if (this.detailsModal) {
+      this.closeEinsatzDetails();
+    } else if (this.deleteModal) {
+      this.closeDeleteModal();
+    }
   }
 
-  @HostListener('document:keydown', ['$event'])
-  onKeydown(event: KeyboardEvent): void {
-    if (event.key !== 'Enter' || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
-      return;
-    }
-    if (this.druckModal || this.detailsModal || this.deleteModal || this.alarmModal) {
-      return;
-    }
-    if (this.openSelect) {
-      return;
-    }
-    const target = event.target as HTMLElement | null;
-    if (target?.tagName === 'TEXTAREA') {
-      return;
-    }
-    if (!this.canAddTrupp()) {
-      return;
-    }
-    event.preventDefault();
-    this.addTrupp();
-  }
-
-  toggleSelect(key: 'trupp' | 'p1' | 'p2', event: MouseEvent): void {
-    event.stopPropagation();
+  // Bildschirm waehrend eines Einsatzes wach halten, sonst schaltet das Tablet ab und Alarme bleiben ungesehen.
+  private async updateWakeLock(): Promise<void> {
     if (!this.currentEinsatz) {
+      this.releaseWakeLock();
       return;
     }
-    this.openSelect = this.openSelect === key ? null : key;
+    if (this.wakeLock || !('wakeLock' in navigator) || document.visibilityState !== 'visible') {
+      return;
+    }
+    try {
+      this.wakeLock = await navigator.wakeLock.request('screen');
+      this.wakeLock.addEventListener('release', () => (this.wakeLock = null));
+    } catch {
+      // z. B. Energiesparmodus; Anzeige laeuft trotzdem weiter
+    }
   }
 
-  selectTruppName(id: string, event?: Event): void {
-    event?.preventDefault();
-    event?.stopPropagation();
-    if (this.isTruppNameInActiveTrupp(id)) {
-      return;
-    }
-    this.truppForm.truppNameId = id;
-    this.openSelect = null;
+  private releaseWakeLock(): void {
+    this.wakeLock?.release().catch(() => undefined);
+    this.wakeLock = null;
   }
 
-  selectPerson(id: string, target: 'p1' | 'p2', event?: Event): void {
-    event?.preventDefault();
-    event?.stopPropagation();
-    if (this.isPersonInActiveTrupp(id)) {
-      return;
+  // Der Browser gibt die Sperre beim Wechsel in den Hintergrund frei; beim Zurueckkehren neu anfordern.
+  @HostListener('document:visibilitychange')
+  onVisibilityChange(): void {
+    if (document.visibilityState === 'visible') {
+      this.updateWakeLock();
     }
-    if (target === 'p1') {
-      if (id === this.truppForm.person2Id) {
-        return;
-      }
-      this.truppForm.person1Id = id;
-    } else {
-      if (id === this.truppForm.person1Id) {
-        return;
-      }
-      this.truppForm.person2Id = id;
-    }
-    this.openSelect = null;
   }
 
   canAddTrupp(): boolean {
@@ -237,23 +229,8 @@ export class DashboardPage implements OnInit, OnDestroy {
     );
   }
 
-  truppNameLabel(id: string): string {
-    if (!id) {
-      return this.i18n.t('common.pleaseSelect');
-    }
-    const found = this.truppnamen.find((t) => t.id === id);
-    return found?.name ?? this.i18n.t('common.pleaseSelect');
-  }
-
-  personLabel(id: string): string {
-    if (!id) {
-      return this.i18n.t('common.pleaseSelect');
-    }
-    const found = this.geraetetraeger.find((t) => t.id === id);
-    if (!found) {
-      return this.i18n.t('common.pleaseSelect');
-    }
-    return `${found.nachname} ${found.vorname}${found.funkrufname ? ' (' + found.funkrufname + ')' : ''}`;
+  personOptionLabel(person: Geraetetraeger): string {
+    return `${person.nachname} ${person.vorname}${person.funkrufname ? ' (' + person.funkrufname + ')' : ''}`;
   }
 
   statusLabel(trupp: Trupp): string {
@@ -270,6 +247,53 @@ export class DashboardPage implements OnInit, OnDestroy {
       default:
         return status;
     }
+  }
+
+  // Druckkontrolle nach etwa 1/3 und 2/3 der Einsatzzeit (FwDV 7). Faellig, solange nicht fuer beide
+  // Personen mindestens so viele Messungen vorliegen, wie Kontrollpunkte erreicht sind.
+  pressureCheckDue(trupp: Trupp, nowEpoch: number): 1 | 2 | null {
+    if (trupp.endzeit) {
+      return null;
+    }
+    const elapsedSec = this.elapsedSeconds(trupp, nowEpoch);
+    const maxSec = trupp.maxzeitMin * 60;
+    const stage = elapsedSec >= (maxSec * 2) / 3 ? 2 : elapsedSec >= maxSec / 3 ? 1 : 0;
+    if (stage === 0) {
+      return null;
+    }
+    const done = Math.min(trupp.druckCountPerson1, trupp.druckCountPerson2);
+    return done < stage ? stage : null;
+  }
+
+  pressureCheckFraction(stage: 1 | 2): string {
+    return stage === 1 ? '⅓' : '⅔';
+  }
+
+  private remindPressureCheck(trupp: Trupp, nowEpoch: number): void {
+    const stage = this.pressureCheckDue(trupp, nowEpoch);
+    if (!stage) {
+      return;
+    }
+    const key = `${trupp.id}:${stage}`;
+    if (this.remindedPressureChecks.has(key)) {
+      return;
+    }
+    this.remindedPressureChecks.add(key);
+    this.pushToast(
+      this.i18n.t('dashboard.pressureCheckDueCrew', {
+        name: trupp.bezeichnung,
+        fraction: this.pressureCheckFraction(stage)
+      }),
+      'warn'
+    );
+    this.playBeep(1);
+  }
+
+  // Der Trupp muss sich nach dem Geraet mit dem niedrigsten Druck richten.
+  lowestPressure(trupp: Trupp): number {
+    const p1 = trupp.druckMessungenPerson1[0]?.druckBar ?? trupp.startdruckPerson1Bar;
+    const p2 = trupp.druckMessungenPerson2[0]?.druckBar ?? trupp.startdruckPerson2Bar;
+    return Math.min(p1, p2);
   }
 
   get availableTruppnamen(): TruppName[] {
@@ -295,6 +319,9 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.session.monitoringActive.set(false);
+    this.releaseWakeLock();
+    this.audioCtx?.close().catch(() => undefined);
     if (this.timerId) {
       window.clearInterval(this.timerId);
     }
@@ -304,6 +331,16 @@ export class DashboardPage implements OnInit, OnDestroy {
     if (this.unsubscribeStatus) {
       this.unsubscribeStatus();
     }
+  }
+
+  // Hinweis, wenn die Geraeteuhr um mindestens eine Minute abweicht; die Anzeige ist bereits korrigiert.
+  // Negativer Offset = Server liegt zurueck = Geraeteuhr geht vor.
+  get clockDeviationText(): string | null {
+    const minutes = Math.round(this.clock.offsetMs() / 60000);
+    if (Math.abs(minutes) < 1) {
+      return null;
+    }
+    return this.i18n.t(minutes < 0 ? 'dashboard.clockAhead' : 'dashboard.clockBehind', { minutes: Math.abs(minutes) });
   }
 
   get authInfo(): { orgName: string; orgCode: string; role: string } | null {
@@ -321,6 +358,8 @@ export class DashboardPage implements OnInit, OnDestroy {
   loadActiveEinsatz(): void {
     this.http.get<Einsatz[]>(`${this.baseUrl}/einsaetze/aktiv`).subscribe((list) => {
       this.currentEinsatz = list[0] ?? null;
+      this.session.monitoringActive.set(this.currentEinsatz !== null);
+      this.updateWakeLock();
       if (this.currentEinsatz) {
         this.loadTrupps();
       } else {
@@ -374,7 +413,9 @@ export class DashboardPage implements OnInit, OnDestroy {
     const payload = {
       name,
       ort,
-      alarmzeit: this.toUtcIso(this.einsatzForm.alarmzeit)
+      // Unveraenderte Vorbelegung: Server setzt die Zeit, damit eine lange offene Seite keine alte Zeit sendet.
+      alarmzeit:
+        this.einsatzForm.alarmzeit === this.lastAutoAlarmzeit ? null : this.toUtcIso(this.einsatzForm.alarmzeit)
     };
 
     this.http.post<Einsatz>(`${this.baseUrl}/einsaetze`, payload).subscribe({
@@ -390,11 +431,25 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   endEinsatz(): void {
-    if (!this.currentEinsatz) {
+    const einsatz = this.currentEinsatz;
+    if (!einsatz) {
       return;
     }
+    const activeCrews = this.trupps.filter((t) => !t.endzeit).length;
+    this.confirmModal = {
+      title: this.i18n.t('dashboard.endOperationConfirmTitle'),
+      text:
+        activeCrews > 0
+          ? this.i18n.t('dashboard.endOperationConfirmActiveCrews', { name: einsatz.name, count: activeCrews })
+          : this.i18n.t('dashboard.endOperationConfirmText', { name: einsatz.name }),
+      confirmLabel: this.i18n.t('dashboard.endOperation'),
+      action: () => this.doEndEinsatz(einsatz)
+    };
+    this.focusSoon(() => this.confirmCancel);
+  }
 
-    this.http.post<Einsatz>(`${this.baseUrl}/einsaetze/${this.currentEinsatz.id}/beenden`, {}).subscribe({
+  private doEndEinsatz(einsatz: Einsatz): void {
+    this.http.post<Einsatz>(`${this.baseUrl}/einsaetze/${einsatz.id}/beenden`, {}).subscribe({
       next: () => {
         this.loadActiveEinsatz();
         this.loadLetzteEinsaetze();
@@ -719,9 +774,8 @@ export class DashboardPage implements OnInit, OnDestroy {
       return;
     }
 
-    if (this.truppForm.startzeit === this.lastAutoStartzeit) {
-      this.setAutoStartzeitNow();
-    }
+    // Unveraenderte Vorbelegung: Startzeit setzt der Server, unabhaengig von der Uhr dieses Geraets.
+    const autoStartzeit = this.truppForm.startzeit === this.lastAutoStartzeit;
 
     const payload = {
       truppNameId: this.truppForm.truppNameId,
@@ -729,7 +783,7 @@ export class DashboardPage implements OnInit, OnDestroy {
       person2Id: this.truppForm.person2Id,
       startdruckPerson1Bar: this.truppForm.startdruckPerson1Bar,
       startdruckPerson2Bar: this.truppForm.startdruckPerson2Bar,
-      startzeit: this.toUtcIso(this.truppForm.startzeit),
+      startzeit: autoStartzeit ? null : this.toUtcIso(this.truppForm.startzeit),
       warnzeitMin: this.truppForm.warnzeitMin,
       maxzeitMin: this.truppForm.maxzeitMin
     };
@@ -786,6 +840,31 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   endTrupp(trupp: Trupp): void {
+    this.confirmModal = {
+      title: this.i18n.t('dashboard.endCrewConfirmTitle'),
+      text: this.i18n.t('dashboard.endCrewConfirmText', { name: trupp.bezeichnung }),
+      confirmLabel: this.i18n.t('dashboard.endCrew'),
+      action: () => this.doEndTrupp(trupp)
+    };
+    this.focusSoon(() => this.confirmCancel);
+  }
+
+  // Fokus erst nach dem Rendern des Dialogs setzen.
+  private focusSoon(target: () => ElementRef<HTMLElement> | undefined): void {
+    window.setTimeout(() => target()?.nativeElement.focus(), 0);
+  }
+
+  confirmAction(): void {
+    const action = this.confirmModal?.action;
+    this.confirmModal = null;
+    action?.();
+  }
+
+  closeConfirmModal(): void {
+    this.confirmModal = null;
+  }
+
+  private doEndTrupp(trupp: Trupp): void {
     this.http.post<Trupp>(`${this.baseUrl}/trupps/${trupp.id}/beenden`, {}).subscribe({
       next: () => this.loadTrupps(),
       error: (err) => this.pushToast(this.apiError(err, 'dashboard.actionFailed'), 'warn')
@@ -950,10 +1029,10 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   private startClock(): void {
-    this.currentEpoch = Date.now();
+    this.currentEpoch = this.clock.now();
     this.timerId = window.setInterval(() => {
       this.zone.run(() => {
-        this.currentEpoch = Date.now();
+        this.currentEpoch = this.clock.now();
         this.checkThresholds();
       });
     }, 1000);
@@ -966,10 +1045,11 @@ export class DashboardPage implements OnInit, OnDestroy {
       }
       const now = this.currentEpoch;
       const elapsedMin = this.elapsedMinutes(trupp, now);
+      this.remindPressureCheck(trupp, now);
       if (elapsedMin >= trupp.maxzeitMin && !trupp.maxAcked) {
         if (this.shouldAlert(this.lastMaxAlert, trupp.id, now, 15000)) {
           this.pushToast(this.i18n.t('dashboard.maxReachedCrew', { name: trupp.bezeichnung }), 'max');
-          this.playBeep(2);
+          this.playBeep(4, true);
           this.triggerVibration([250, 120, 250, 120, 250]);
           this.logEvent(trupp, 'max');
           this.openAlarmModal(trupp, 'max');
@@ -977,7 +1057,7 @@ export class DashboardPage implements OnInit, OnDestroy {
       } else if (elapsedMin >= trupp.warnzeitMin && !trupp.warnAcked) {
         if (this.shouldAlert(this.lastWarnAlert, trupp.id, now, 30000)) {
           this.pushToast(this.i18n.t('dashboard.warnReachedCrew', { name: trupp.bezeichnung }), 'warn');
-          this.playBeep(1);
+          this.playBeep(2);
           this.triggerVibration([180, 120, 180]);
           this.logEvent(trupp, 'warn');
           this.openAlarmModal(trupp, 'warn');
@@ -1011,11 +1091,15 @@ export class DashboardPage implements OnInit, OnDestroy {
     if (this.alarmModal?.open) {
       return;
     }
-    this.alarmModal = { open: true, trupp, type };
+    const modal = { open: true, trupp, type, ackReady: false };
+    this.alarmModal = modal;
+    // Fokus auf den Dialog statt auf den Button: Enter aus einem anderen Eingabefeld bestaetigt nicht.
+    this.focusSoon(() => this.alarmPanel);
+    window.setTimeout(() => (modal.ackReady = true), 1500);
   }
 
   acknowledgeAlarm(): void {
-    if (!this.alarmModal) {
+    if (!this.alarmModal?.ackReady) {
       return;
     }
     const { trupp, type } = this.alarmModal;
@@ -1033,10 +1117,6 @@ export class DashboardPage implements OnInit, OnDestroy {
     });
   }
 
-  closeAlarmModal(): void {
-    this.alarmModal = null;
-  }
-
   private triggerVibration(pattern: number[]): void {
     try {
       if (navigator && 'vibrate' in navigator) {
@@ -1047,32 +1127,54 @@ export class DashboardPage implements OnInit, OnDestroy {
     }
   }
 
-  private playBeep(times: number): void {
+  // Browser blockieren Ton bis zur ersten Beruehrung; waehrend eines Einsatzes wird dann ein Hinweis angezeigt.
+  get audioLocked(): boolean {
+    return !this.audioCtx || this.audioCtx.state !== 'running';
+  }
+
+  // Ein gemeinsamer AudioContext, freigeschaltet bei der ersten Beruehrung/Taste. Neue Contexts ohne
+  // Nutzerinteraktion bleiben in Browsern stumm – genau dann, wenn der Alarm kommt.
+  @HostListener('document:pointerdown')
+  @HostListener('document:keydown')
+  unlockAudio(): void {
     try {
-      const ctx = new AudioContext();
-      let count = 0;
-      const play = () => {
+      this.audioCtx ??= new AudioContext();
+      if (this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume().catch(() => undefined);
+      }
+    } catch {
+      // kein Audio verfuegbar
+    }
+  }
+
+  // Deutlich hoerbarer Signalton: warn = 2 Toene, max = 4 Toene im Wechsel, Erinnerung = 1 Ton.
+  private playBeep(times: number, alternate = false): void {
+    try {
+      this.audioCtx ??= new AudioContext();
+      const ctx = this.audioCtx;
+      if (ctx.state !== 'running') {
+        ctx.resume().catch(() => undefined);
+        return;
+      }
+      const toneSec = 0.3;
+      const gapSec = 0.15;
+      for (let i = 0; i < times; i += 1) {
+        const start = ctx.currentTime + i * (toneSec + gapSec);
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = 880;
+        osc.type = 'square';
+        osc.frequency.value = alternate && i % 2 === 1 ? 1320 : 880;
+        gain.gain.setValueAtTime(0.25, start);
+        gain.gain.setValueAtTime(0, start + toneSec);
         osc.connect(gain);
         gain.connect(ctx.destination);
-        gain.gain.value = 0.05;
-        osc.start();
-        setTimeout(() => {
-          osc.stop();
+        osc.start(start);
+        osc.stop(start + toneSec);
+        osc.onended = () => {
           osc.disconnect();
           gain.disconnect();
-          count += 1;
-          if (count < times) {
-            setTimeout(play, 180);
-          } else {
-            ctx.close();
-          }
-        }, 120);
-      };
-      play();
+        };
+      }
     } catch {
       // ignore audio errors
     }
@@ -1094,10 +1196,15 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   private setAutoStartzeitNow(): void {
-    const now = new Date();
-    const value = this.toLocalInputValue(now);
+    const value = this.toLocalInputValue(new Date(this.clock.now()));
     this.truppForm.startzeit = value;
     this.lastAutoStartzeit = value;
+  }
+
+  private setAutoAlarmzeitNow(): void {
+    const value = this.toLocalInputValue(new Date(this.clock.now()));
+    this.einsatzForm.alarmzeit = value;
+    this.lastAutoAlarmzeit = value;
   }
 }
 

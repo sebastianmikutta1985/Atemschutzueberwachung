@@ -22,13 +22,14 @@
           }}
         </span>
       </div>
-      <div class="pill">
+      <div class="pill" [class.pill--warn]="clockDeviationText" [attr.title]="clockDeviationText">
         <span class="pill__label">{{ i18n.t('common.systemTime') }}</span>
         <span class="pill__value">{{ currentEpoch | date: 'HH:mm:ss' }}</span>
+        <span class="pill__label" *ngIf="clockDeviationText">{{ i18n.t('dashboard.clockCorrectedShort') }}</span>
       </div>
       <div class="pill" *ngIf="authInfo">
         <span class="pill__label">{{ i18n.t('common.organization') }}</span>
-        <span class="pill__value">{{ authInfo.orgName }} ({{ authInfo.orgCode }})</span>
+        <span class="pill__value">{{ authInfo.orgName }}</span>
       </div>
       <div class="pill" [class.pill--live]="currentEinsatz">
         <span class="pill__label">{{ i18n.t('common.operation') }}</span>
@@ -63,11 +64,13 @@
   <div class="grid">
     <section class="card">
       <h2>{{ i18n.t('dashboard.createOperation') }}</h2>
-      <div class="card__body" *ngIf="!currentEinsatz">
+      <form class="card__body" *ngIf="!currentEinsatz" (ngSubmit)="createEinsatz()">
         <label>
           {{ i18n.t('dashboard.operationName') }}
           <input
             type="text"
+            name="einsatzName"
+            maxlength="200"
             [(ngModel)]="einsatzForm.name"
             [placeholder]="i18n.t('dashboard.operationNamePlaceholder')"
           />
@@ -76,17 +79,19 @@
           {{ i18n.t('dashboard.operationPlace') }}
           <input
             type="text"
+            name="einsatzOrt"
+            maxlength="200"
             [(ngModel)]="einsatzForm.ort"
             [placeholder]="i18n.t('dashboard.operationPlacePlaceholder')"
           />
         </label>
         <label>
           {{ i18n.t('dashboard.operationAlarmTime') }}
-          <input type="datetime-local" [(ngModel)]="einsatzForm.alarmzeit" />
+          <input type="datetime-local" name="einsatzAlarmzeit" [(ngModel)]="einsatzForm.alarmzeit" />
         </label>
-        <button class="primary" type="button" (click)="createEinsatz()">{{ i18n.t('dashboard.startOperation') }}</button>
-        <div class="muted" *ngIf="errorMessage">{{ errorMessage }}</div>
-      </div>
+        <button class="primary" type="submit">{{ i18n.t('dashboard.startOperation') }}</button>
+        <div class="form-error" *ngIf="errorMessage">{{ errorMessage }}</div>
+      </form>
 
       <div class="card__body" *ngIf="currentEinsatz">
         <div class="info">
@@ -105,123 +110,67 @@
 
     <section class="card">
       <h2>{{ i18n.t('dashboard.crewCapture') }}</h2>
-      <div class="card__body">
+      <form class="card__body" (ngSubmit)="addTrupp()">
         <fieldset [disabled]="!currentEinsatz">
           <label>
             {{ i18n.t('dashboard.crewLabel') }}
-            <div class="select" [class.select--disabled]="!currentEinsatz">
-              <button class="select__button" type="button" (click)="toggleSelect('trupp', $event)">
-                {{ truppNameLabel(truppForm.truppNameId) }}
-              </button>
-              <div class="select__panel" *ngIf="openSelect === 'trupp'">
-                <button
-                  class="select__option"
-                  type="button"
-                  (click)="selectTruppName('', $event)"
-                  (touchend)="selectTruppName('', $event)"
-                >
-                  {{ i18n.t('common.pleaseSelect') }}
-                </button>
-                <button
-                  class="select__option"
-                  type="button"
-                  *ngFor="let t of availableTruppnamen"
-                  (click)="selectTruppName(t.id, $event)"
-                  (touchend)="selectTruppName(t.id, $event)"
-                >
-                  {{ t.name }}
-                </button>
-              </div>
-            </div>
+            <select name="truppNameId" [(ngModel)]="truppForm.truppNameId">
+              <option value="">{{ i18n.t('common.pleaseSelect') }}</option>
+              <option *ngFor="let t of availableTruppnamen" [value]="t.id">{{ t.name }}</option>
+            </select>
           </label>
           <label>
             {{ i18n.t('dashboard.person1') }}
-            <div class="select" [class.select--disabled]="!currentEinsatz">
-              <button class="select__button" type="button" (click)="toggleSelect('p1', $event)">
-                {{ personLabel(truppForm.person1Id) }}
-              </button>
-              <div class="select__panel" *ngIf="openSelect === 'p1'">
-                <button
-                  class="select__option"
-                  type="button"
-                  (click)="selectPerson('', 'p1', $event)"
-                  (touchend)="selectPerson('', 'p1', $event)"
-                >
-                  {{ i18n.t('common.pleaseSelect') }}
-                </button>
-                <button
-                  class="select__option"
-                  type="button"
-                  *ngFor="let t of availablePerson1"
-                  (click)="selectPerson(t.id, 'p1', $event)"
-                  (touchend)="selectPerson(t.id, 'p1', $event)"
-                >
-                  {{ t.nachname }} {{ t.vorname }}{{ t.funkrufname ? ' (' + t.funkrufname + ')' : '' }}
-                </button>
-              </div>
-            </div>
+            <select name="person1Id" [(ngModel)]="truppForm.person1Id">
+              <option value="">{{ i18n.t('common.pleaseSelect') }}</option>
+              <option *ngFor="let t of availablePerson1" [value]="t.id">{{ personOptionLabel(t) }}</option>
+            </select>
           </label>
           <label>
             {{ i18n.t('dashboard.person2') }}
-            <div class="select" [class.select--disabled]="!currentEinsatz">
-              <button class="select__button" type="button" (click)="toggleSelect('p2', $event)">
-                {{ personLabel(truppForm.person2Id) }}
-              </button>
-              <div class="select__panel" *ngIf="openSelect === 'p2'">
-                <button
-                  class="select__option"
-                  type="button"
-                  (click)="selectPerson('', 'p2', $event)"
-                  (touchend)="selectPerson('', 'p2', $event)"
-                >
-                  {{ i18n.t('common.pleaseSelect') }}
-                </button>
-                <button
-                  class="select__option"
-                  type="button"
-                  *ngFor="let t of availablePerson2"
-                  (click)="selectPerson(t.id, 'p2', $event)"
-                  (touchend)="selectPerson(t.id, 'p2', $event)"
-                >
-                  {{ t.nachname }} {{ t.vorname }}{{ t.funkrufname ? ' (' + t.funkrufname + ')' : '' }}
-                </button>
-              </div>
-            </div>
+            <select name="person2Id" [(ngModel)]="truppForm.person2Id">
+              <option value="">{{ i18n.t('common.pleaseSelect') }}</option>
+              <option *ngFor="let t of availablePerson2" [value]="t.id">{{ personOptionLabel(t) }}</option>
+            </select>
           </label>
           <div class="row row--stack-sm">
             <label>
               {{ i18n.t('dashboard.startPressureP1') }}
-              <input type="number" min="0" [(ngModel)]="truppForm.startdruckPerson1Bar" />
+              <input type="number" name="startdruckP1" min="1" max="400" inputmode="numeric" [(ngModel)]="truppForm.startdruckPerson1Bar" />
             </label>
             <label>
               {{ i18n.t('dashboard.startPressureP2') }}
-              <input type="number" min="0" [(ngModel)]="truppForm.startdruckPerson2Bar" />
+              <input type="number" name="startdruckP2" min="1" max="400" inputmode="numeric" [(ngModel)]="truppForm.startdruckPerson2Bar" />
             </label>
           </div>
           <label>
             {{ i18n.t('dashboard.startTime') }}
-            <input type="datetime-local" step="1" [(ngModel)]="truppForm.startzeit" />
+            <input type="datetime-local" name="startzeit" step="1" [(ngModel)]="truppForm.startzeit" />
           </label>
           <div class="row row--stack-sm">
             <label>
               {{ i18n.t('dashboard.warnTime') }}
-              <input type="number" min="0" [(ngModel)]="truppForm.warnzeitMin" />
+              <input type="number" name="warnzeit" min="1" max="240" inputmode="numeric" [(ngModel)]="truppForm.warnzeitMin" />
             </label>
             <label>
               {{ i18n.t('dashboard.maxTime') }}
-              <input type="number" min="0" [(ngModel)]="truppForm.maxzeitMin" />
+              <input type="number" name="maxzeit" min="1" max="240" inputmode="numeric" [(ngModel)]="truppForm.maxzeitMin" />
             </label>
           </div>
         </fieldset>
-        <button class="primary" type="button" (click)="addTrupp()" [disabled]="!canAddTrupp()">
+        <button class="primary" type="submit" [disabled]="!canAddTrupp()">
           {{ i18n.t('dashboard.addCrew') }}
         </button>
         <div class="form-error" *ngIf="truppError">{{ truppError }}</div>
-      </div>
+      </form>
     </section>
   </div>
 
   <section class="card list" #dashboardSection>
+    <div class="audio-hint" *ngIf="audioLocked && currentEinsatz" role="alert">
+      <span>{{ i18n.t('dashboard.audioBlocked') }}</span>
+      <button class="primary" type="button" (click)="unlockAudio()">{{ i18n.t('dashboard.audioEnable') }}</button>
+    </div>
     <div class="list__head">
       <h2>{{ i18n.t('dashboard.board') }}</h2>
       <div class="muted">
@@ -269,6 +218,9 @@
             <div class="trupp__title">{{ trupp.bezeichnung }}</div>
             <div class="muted">{{ i18n.t('dashboard.p1') }}: {{ trupp.person1Name }}</div>
             <div class="muted">{{ i18n.t('dashboard.p2') }}: {{ trupp.person2Name }}</div>
+            <div class="pressure-due" *ngIf="pressureCheckDue(trupp, currentEpoch) as stage" role="status">
+              {{ i18n.t('dashboard.pressureCheckDue', { fraction: pressureCheckFraction(stage) }) }}
+            </div>
           </div>
           <div class="trupp__metrics">
             <div class="trupp__metric">
@@ -276,6 +228,10 @@
               <div class="metric__value">
                 {{ trupp.endzeit ? durationDisplay(trupp) : remainingDisplay(trupp, currentEpoch) }}
               </div>
+            </div>
+            <div class="trupp__metric">
+              <div class="muted">{{ i18n.t('dashboard.lowestPressure') }}</div>
+              <div class="metric__value">{{ lowestPressure(trupp) }} bar</div>
             </div>
             <div class="trupp__metric">
               <div class="muted">{{ i18n.t('dashboard.start') }}</div>
@@ -314,6 +270,7 @@
             (click)="addDruckmessung(trupp, trupp.person1Id)"
             *ngIf="trupp.endzeit == null"
             [disabled]="trupp.druckCountPerson1 >= 3"
+            [class.btn-attention]="(pressureCheckDue(trupp, currentEpoch) ?? 0) > trupp.druckCountPerson1"
           >
             {{ i18n.t('dashboard.pressureP1Button', { count: trupp.druckCountPerson1 }) }}
           </button>
@@ -323,6 +280,7 @@
             (click)="addDruckmessung(trupp, trupp.person2Id)"
             *ngIf="trupp.endzeit == null"
             [disabled]="trupp.druckCountPerson2 >= 3"
+            [class.btn-attention]="(pressureCheckDue(trupp, currentEpoch) ?? 0) > trupp.druckCountPerson2"
           >
             {{ i18n.t('dashboard.pressureP2Button', { count: trupp.druckCountPerson2 }) }}
           </button>
@@ -388,13 +346,22 @@
 </div>
 
 <div class="modal" *ngIf="druckModal?.open">
-  <div class="modal__backdrop" (click)="closeDruckModal()"></div>
-  <div class="modal__panel" role="dialog" aria-modal="true">
-    <h3>{{ i18n.t('dashboard.pressureMeasurement') }}</h3>
+  <!-- Kein Schliessen per Klick daneben: ein versehentlicher Tipp wuerde die Eingabe verwerfen. -->
+  <div class="modal__backdrop"></div>
+  <form class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="druck-title" (ngSubmit)="saveDruckModal()">
+    <h3 id="druck-title">{{ i18n.t('dashboard.pressureMeasurement') }}</h3>
     <p class="muted">{{ druckModal!.trupp.bezeichnung }} - {{ druckModal!.personName }}</p>
     <label>
       {{ i18n.t('dashboard.pressureBar') }}
-      <input #druckInput type="number" min="0" [max]="maxDruckForModal() ?? null" [(ngModel)]="druckModal!.value" />
+      <input
+        #druckInput
+        type="number"
+        name="druckValue"
+        inputmode="numeric"
+        min="1"
+        [max]="maxDruckForModal() ?? null"
+        [(ngModel)]="druckModal!.value"
+      />
     </label>
     <div class="form-error" *ngIf="druckModalError">{{ druckModalError }}</div>
     <div class="modal__last" *ngIf="druckModal?.last?.length">
@@ -407,9 +374,9 @@
     </div>
     <div class="modal__actions">
       <button class="ghost" type="button" (click)="closeDruckModal()">{{ i18n.t('common.cancel') }}</button>
-      <button class="primary" type="button" (click)="saveDruckModal()">{{ i18n.t('common.save') }}</button>
+      <button class="primary" type="submit">{{ i18n.t('common.save') }}</button>
     </div>
-  </div>
+  </form>
 </div>
 
 <div class="modal" *ngIf="detailsModal?.open">
@@ -481,12 +448,32 @@
 
 <div class="modal" *ngIf="alarmModal?.open">
   <div class="modal__backdrop"></div>
-  <div class="modal__panel" role="alertdialog" aria-modal="true">
-    <h3>{{ alarmModal?.type === 'max' ? i18n.t('dashboard.maxReached') : i18n.t('dashboard.warnReached') }}</h3>
-    <p class="muted">{{ alarmModal!.trupp.bezeichnung }}</p>
+  <div
+    #alarmPanel
+    tabindex="-1"
+    class="modal__panel"
+    [class.modal__panel--max]="alarmModal?.type === 'max'"
+    role="alertdialog"
+    aria-modal="true"
+    aria-labelledby="alarm-title"
+  >
+    <h3 id="alarm-title">{{ alarmModal?.type === 'max' ? i18n.t('dashboard.maxReached') : i18n.t('dashboard.warnReached') }}</h3>
+    <p class="alarm-crew">{{ alarmModal!.trupp.bezeichnung }}</p>
+    <p class="muted">{{ i18n.t('dashboard.alarmAckHint') }}</p>
     <div class="modal__actions">
-      <button class="ghost" type="button" (click)="closeAlarmModal()">{{ i18n.t('common.close') }}</button>
-      <button class="primary" type="button" (click)="acknowledgeAlarm()">{{ i18n.t('dashboard.acknowledge') }}</button>
+      <button class="primary" type="button" [disabled]="!alarmModal!.ackReady" (click)="acknowledgeAlarm()">{{ i18n.t('dashboard.acknowledge') }}</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" *ngIf="confirmModal">
+  <div class="modal__backdrop" (click)="closeConfirmModal()"></div>
+  <div class="modal__panel" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+    <h3 id="confirm-title">{{ confirmModal.title }}</h3>
+    <p class="muted">{{ confirmModal.text }}</p>
+    <div class="modal__actions">
+      <button class="ghost" type="button" #confirmCancel (click)="closeConfirmModal()">{{ i18n.t('common.cancel') }}</button>
+      <button class="danger" type="button" (click)="confirmAction()">{{ confirmModal.confirmLabel }}</button>
     </div>
   </div>
 </div>
