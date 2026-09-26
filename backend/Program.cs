@@ -286,7 +286,8 @@ app.MapPost("/api/auth/logout", async (HttpContext http, AppDbContext db) =>
 
 app.MapPost("/api/system/logout", async (HttpContext http, AppDbContext db) =>
 {
-    var token = SessionAuth.ReadToken(http.Request, "System");
+    var token = SessionAuth.ReadToken(http.Request, "System") ?? SessionAuth.ReadSystemCookie(http.Request);
+    SessionAuth.ClearSystemCookie(http, secure: http.Request.IsHttps || !app.Environment.IsDevelopment());
     if (string.IsNullOrWhiteSpace(token))
     {
         return Results.Ok();
@@ -326,7 +327,10 @@ app.MapPost("/api/system/login", async (HttpContext http, SystemLoginRequest dto
     };
     db.SystemSessions.Add(session);
     await db.SaveChangesAsync();
-    return Results.Ok(new { token });
+
+    // Token nur als httpOnly-Cookie, und nur fuer /api/system: die uebrige API und der Live-Kanal sehen es nie.
+    SessionAuth.SetSystemCookie(http, token, session.ExpiresAt, secure: http.Request.IsHttps || !app.Environment.IsDevelopment());
+    return Results.Ok(new { expiresAt = session.ExpiresAt });
 }).RequireRateLimiting("login").WithOpenApi();
 
 systemApi.MapGet("/orgs", async (HttpContext http, AppDbContext db) =>
@@ -1574,24 +1578,42 @@ static class SessionAuth
     public static string? ReadSessionCookie(HttpRequest request) =>
         request.Cookies.TryGetValue(SessionCookie, out var value) && !string.IsNullOrWhiteSpace(value) ? value : null;
 
+    public const string SystemCookie = "ats_system";
+    public const string SystemCookiePath = "/api/system";
+
+    public static string? ReadSystemCookie(HttpRequest request) =>
+        request.Cookies.TryGetValue(SystemCookie, out var value) && !string.IsNullOrWhiteSpace(value) ? value : null;
+
     public static void SetSessionCookie(HttpContext http, string token, DateTime expiresUtc, bool secure) =>
-        http.Response.Cookies.Append(SessionCookie, token, new CookieOptions
+        AppendCookie(http, SessionCookie, "/", token, expiresUtc, secure);
+
+    public static void ClearSessionCookie(HttpContext http, bool secure) =>
+        DeleteCookie(http, SessionCookie, "/", secure);
+
+    public static void SetSystemCookie(HttpContext http, string token, DateTime expiresUtc, bool secure) =>
+        AppendCookie(http, SystemCookie, SystemCookiePath, token, expiresUtc, secure);
+
+    public static void ClearSystemCookie(HttpContext http, bool secure) =>
+        DeleteCookie(http, SystemCookie, SystemCookiePath, secure);
+
+    private static void AppendCookie(HttpContext http, string name, string path, string token, DateTime expiresUtc, bool secure) =>
+        http.Response.Cookies.Append(name, token, new CookieOptions
         {
             HttpOnly = true,
             Secure = secure,
             SameSite = SameSiteMode.Strict,
-            Path = "/",
+            Path = path,
             Expires = expiresUtc,
             IsEssential = true
         });
 
-    public static void ClearSessionCookie(HttpContext http, bool secure) =>
-        http.Response.Cookies.Delete(SessionCookie, new CookieOptions
+    private static void DeleteCookie(HttpContext http, string name, string path, bool secure) =>
+        http.Response.Cookies.Delete(name, new CookieOptions
         {
             HttpOnly = true,
             Secure = secure,
             SameSite = SameSiteMode.Strict,
-            Path = "/"
+            Path = path
         });
 
     public static AuthContext GetAuth(this HttpContext http)
@@ -1667,7 +1689,16 @@ class SystemSessionHandler(
         var token = SessionAuth.ReadToken(Request, "System");
         if (token == null)
         {
-            return AuthenticateResult.NoResult();
+            token = SessionAuth.ReadSystemCookie(Request);
+            if (token == null)
+            {
+                return AuthenticateResult.NoResult();
+            }
+            var readOnly = HttpMethods.IsGet(Request.Method) || HttpMethods.IsHead(Request.Method) || HttpMethods.IsOptions(Request.Method);
+            if (!readOnly && !Request.Headers.ContainsKey(SessionAuth.CsrfHeader))
+            {
+                return AuthenticateResult.Fail("CSRF-Header fehlt.");
+            }
         }
 
         var tokenHash = SessionAuth.HashToken(token);

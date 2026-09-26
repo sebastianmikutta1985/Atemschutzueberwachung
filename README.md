@@ -25,6 +25,7 @@ Webanwendung zur einfachen Atemschutzüberwachung für die Feuerwehr.
 - Sessions: 12 h für Organisationen, 30 min für das Hersteller-Portal. In der Datenbank liegt nur ein SHA-256-Hash der Tokens.
 - Organisations-Sessions laufen über ein httpOnly-Cookie (`ats_session`, `SameSite=Strict`, in Produktion `Secure`); JavaScript kommt nicht an den Token. Ändernde Anfragen müssen zusätzlich den Header `X-Requested-With` tragen (CSRF-Schutz). API-Clients können weiterhin `Authorization: Bearer` nutzen.
 - Nach dem Update auf die Cookie-Anmeldung müssen sich alle Geräte einmal neu anmelden.
+- Das Hersteller-Portal nutzt ebenfalls ein httpOnly-Cookie (`ats_system`), das der Browser nur an `/api/system` schickt. API-Clients können weiterhin `Authorization: System <token>` nutzen.
 - Eine neue PIN beendet alle Sessions dieser Rolle; eine gesperrte Organisation verliert alle Sessions sofort.
 
 ## Betrieb / Deployment

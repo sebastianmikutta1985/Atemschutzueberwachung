@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Component, effect, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
@@ -26,7 +26,8 @@ export class ManufacturerPage implements OnInit {
   private readonly baseUrl = environment.apiBaseUrl;
 
   systemSecret = '';
-  systemToken = SystemStore.token();
+  // Die Session selbst liegt als httpOnly-Cookie beim Browser; hier nur, ob die Oberflaeche angemeldet ist.
+  signedIn = SystemStore.isSignedIn();
   error = '';
 
   orgs: Org[] = [];
@@ -52,7 +53,7 @@ export class ManufacturerPage implements OnInit {
   }
 
   ngOnInit(): void {
-    if (this.systemToken) {
+    if (this.signedIn) {
       this.loadOrgs();
     }
   }
@@ -64,11 +65,11 @@ export class ManufacturerPage implements OnInit {
       this.error = this.i18n.t('manufacturer.loginSecretRequired');
       return;
     }
-    this.http.post<{ token: string }>(`${this.baseUrl}/system/login`, { secret }).subscribe({
+    this.http.post<{ expiresAt: string }>(`${this.baseUrl}/system/login`, { secret }).subscribe({
       next: (res) => {
-        this.systemToken = res.token;
-        const expiresAt = Date.now() + 30 * 60 * 1000;
-        SystemStore.save({ token: res.token, expiresAt });
+        this.systemSecret = '';
+        this.signedIn = true;
+        SystemStore.save({ expiresAt: Date.parse(res.expiresAt) });
         this.loadOrgs();
       },
       error: (err) => {
@@ -79,28 +80,18 @@ export class ManufacturerPage implements OnInit {
   }
 
   logoutSystem(): void {
-    if (this.systemToken) {
-      // Session auch am Server beenden; lokal wird in jedem Fall abgemeldet.
-      this.http
-        .post(`${this.baseUrl}/system/logout`, {}, { headers: this.authHeaders() })
-        .subscribe({ error: () => undefined });
-    }
+    // Session (und Cookie) auch am Server beenden; lokal wird in jedem Fall abgemeldet.
+    this.http.post(`${this.baseUrl}/system/logout`, {}).subscribe({ error: () => undefined });
     SystemStore.clear();
-    this.systemToken = null;
+    this.signedIn = false;
     this.orgs = [];
   }
 
-  private authHeaders(): HttpHeaders {
-    return new HttpHeaders({
-      Authorization: `System ${this.systemToken}`
-    });
-  }
-
   loadOrgs(): void {
-    if (!this.systemToken) {
+    if (!this.signedIn) {
       return;
     }
-    this.http.get<Org[]>(`${this.baseUrl}/system/orgs`, { headers: this.authHeaders() }).subscribe({
+    this.http.get<Org[]>(`${this.baseUrl}/system/orgs`).subscribe({
       next: (list) => {
         this.orgs = list;
       },
@@ -111,7 +102,7 @@ export class ManufacturerPage implements OnInit {
   }
 
   createOrg(): void {
-    if (!this.systemToken) {
+    if (!this.signedIn) {
       return;
     }
     const name = this.orgForm.name.trim();
@@ -134,8 +125,7 @@ export class ManufacturerPage implements OnInit {
           adminPin,
           userPin,
           status: this.orgForm.status
-        },
-        { headers: this.authHeaders() }
+        }
       )
       .subscribe({
         next: (org) => {
@@ -150,7 +140,10 @@ export class ManufacturerPage implements OnInit {
 
   private apiError(err: { status?: number; error?: { error?: string } } | null, fallbackKey: string): string {
     if (err?.status === 401) {
-      this.logoutSystem();
+      // Session abgelaufen: nur lokal abmelden, der Server kennt sie nicht mehr.
+      SystemStore.clear();
+      this.signedIn = false;
+      this.orgs = [];
     }
     return err?.error?.error ?? this.i18n.t(fallbackKey);
   }
@@ -173,15 +166,14 @@ export class ManufacturerPage implements OnInit {
   }
 
   private updateStatus(org: Org, status: 'aktiv' | 'gesperrt'): void {
-    if (!this.systemToken) {
+    if (!this.signedIn) {
       return;
     }
     this.error = '';
     this.http
       .put<Org>(
         `${this.baseUrl}/system/orgs/${org.id}`,
-        { status },
-        { headers: this.authHeaders() }
+        { status }
       )
       .subscribe({
         next: () => this.loadOrgs(),
@@ -197,7 +189,7 @@ export class ManufacturerPage implements OnInit {
 
   submitPinReset(): void {
     const reset = this.pinReset;
-    if (!reset || !this.systemToken) {
+    if (!reset || !this.signedIn) {
       return;
     }
     const pin = reset.pin.trim();
@@ -207,7 +199,7 @@ export class ManufacturerPage implements OnInit {
     }
     const payload = reset.role === 'admin' ? { adminPin: pin } : { userPin: pin };
     this.http
-      .put<Org>(`${this.baseUrl}/system/orgs/${reset.org.id}`, payload, { headers: this.authHeaders() })
+      .put<Org>(`${this.baseUrl}/system/orgs/${reset.org.id}`, payload)
       .subscribe({
         next: () => {
           this.pinReset = null;

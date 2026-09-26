@@ -1,5 +1,6 @@
+// Nur der Ablaufzeitpunkt der Hersteller-Session. Der Token selbst liegt als httpOnly-Cookie (Path=/api/system)
+// beim Browser und ist fuer JavaScript bewusst nicht erreichbar.
 export type SystemState = {
-  token: string;
   expiresAt: number;
 };
 
@@ -12,7 +13,13 @@ export const SystemStore = {
       return null;
     }
     try {
-      return JSON.parse(raw) as SystemState;
+      const state = JSON.parse(raw) as SystemState & { token?: string };
+      if (state.token !== undefined) {
+        // Aeltere Versionen speicherten den Token im localStorage – entfernen; danach einmal neu anmelden.
+        this.clear();
+        return null;
+      }
+      return state;
     } catch {
       return null;
     }
@@ -26,15 +33,15 @@ export const SystemStore = {
     localStorage.removeItem(SYSTEM_KEY);
   },
 
-  token(): string | null {
+  isSignedIn(): boolean {
     const state = this.load();
     if (!state) {
-      return null;
+      return false;
     }
-    if (state.expiresAt && Date.now() > state.expiresAt) {
+    if (Date.now() > state.expiresAt) {
       this.clear();
-      return null;
+      return false;
     }
-    return state.token;
+    return true;
   }
 };

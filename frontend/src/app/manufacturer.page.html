@@ -12,11 +12,11 @@
         <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'en'" (click)="i18n.setLang('en')">EN</button>
       </div>
       <button class="ghost btn-icon" type="button" [routerLink]="['/login']">{{ i18n.t('common.back') }}</button>
-      <button class="ghost btn-icon" type="button" *ngIf="systemToken" (click)="logoutSystem()">{{ i18n.t('common.logout') }}</button>
+      <button class="ghost btn-icon" type="button" *ngIf="signedIn" (click)="logoutSystem()">{{ i18n.t('common.logout') }}</button>
     </div>
   </header>
 
-  <section class="card" *ngIf="!systemToken">
+  <section class="card" *ngIf="!signedIn">
     <form class="card__body" (ngSubmit)="loginSystem()">
       <label>
         {{ i18n.t('manufacturer.secret') }}
@@ -27,7 +27,7 @@
     </form>
   </section>
 
-  <section class="card" *ngIf="systemToken">
+  <section class="card" *ngIf="signedIn">
     <div class="list__head">
       <h2>{{ i18n.t('manufacturer.newOrganization') }}</h2>
     </div>
@@ -58,7 +58,7 @@
     </form>
   </section>
 
-  <section class="card list" *ngIf="systemToken">
+  <section class="card list" *ngIf="signedIn">
     <div class="list__head">
       <h2>{{ i18n.t('manufacturer.organizations') }}</h2>
       <div class="muted">{{ i18n.t('dashboard.entries', { count: orgs.length }) }}</div>
