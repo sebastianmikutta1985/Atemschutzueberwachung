@@ -42,7 +42,7 @@
 
 body {
   margin: 0;
-  font-family: "Manrope", "Source Sans 3", "Segoe UI", sans-serif;
+  font-family: "Manrope Variable", "Manrope", "Segoe UI", sans-serif;
   background: var(--bg);
   color: var(--ink-900);
 }

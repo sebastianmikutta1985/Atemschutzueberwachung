@@ -1,10 +1,15 @@
+import { provideHttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { App } from './app';
+import { AuthStore } from './auth.store';
 
 describe('App', () => {
   beforeEach(async () => {
+    localStorage.clear();
     await TestBed.configureTestingModule({
       imports: [App],
+      providers: [provideHttpClient(), provideRouter([])]
     }).compileComponents();
   });
 
@@ -14,10 +19,29 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('should render title', async () => {
+  it('should render the router outlet without the idle warning', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent).toContain('Hello, frontend');
+    expect(compiled.querySelector('router-outlet')).toBeTruthy();
+    expect(compiled.querySelector('.modal')).toBeNull();
+  });
+});
+
+describe('AuthStore', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('replaces a legacy PIN-derived theme key and keeps the theme preference', () => {
+    localStorage.setItem('crewtrace_theme_abc123_1x2y3z', 'light');
+    localStorage.setItem(
+      'ats_auth',
+      JSON.stringify({ token: 't', role: 'user', orgName: 'FW', orgCode: 'ABC123', themeKey: 'abc123_1x2y3z' })
+    );
+
+    const state = AuthStore.load();
+
+    expect(state?.themeKey).toBe('abc123_user');
+    expect(localStorage.getItem('crewtrace_theme_abc123_user')).toBe('light');
+    expect(localStorage.getItem('crewtrace_theme_abc123_1x2y3z')).toBeNull();
   });
 });

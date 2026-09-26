@@ -40,11 +40,14 @@
     <meta http-equiv="Expires" content="0">
     <link rel="canonical" href="https://www.crew-trace.com/login">
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
+    <!--
+      Nur eigene Ressourcen laden (Schrift liegt lokal, keine Drittanbieter).
+      style-src braucht 'unsafe-inline' fuer Angulars Komponenten-Styles.
+      frame-ancestors wirkt nur als HTTP-Header und muss vom Webserver gesetzt werden.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'"
     >
     <script type="application/ld+json">
       {
