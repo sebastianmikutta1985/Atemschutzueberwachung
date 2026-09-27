@@ -19,7 +19,8 @@ var systemSecret = builder.Configuration["SYSTEM_SECRET"];
 if (string.IsNullOrWhiteSpace(systemSecret) || systemSecret.Length < 16)
 {
     throw new InvalidOperationException(
-        "SYSTEM_SECRET ist nicht gesetzt oder kuerzer als 16 Zeichen. Backend wird nicht gestartet.");
+        "SYSTEM_SECRET ist nicht gesetzt oder kuerzer als 16 Zeichen. Backend wird nicht gestartet. "
+        + "Lokal: start-local.ps1 oder 'dotnet user-secrets set SYSTEM_SECRET <wert>'; auf dem Server als Umgebungsvariable.");
 }
 var systemSecretHash = SHA256.HashData(Encoding.UTF8.GetBytes(systemSecret));
 

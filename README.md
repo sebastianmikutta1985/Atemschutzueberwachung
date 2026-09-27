@@ -54,15 +54,26 @@ Im Einstellungsbereich können Default-Werte für neue Trupps gepflegt werden:
 
 ## Lokale Entwicklung
 
+### Schnellstart (Backend + Frontend)
+
+```powershell
+.start-local.ps1
+```
+
+- Beim ersten Start fragt das Skript das `SYSTEM_SECRET` ab (verdeckt, zur Kontrolle zweimal) und speichert es in den .NET User-Secrets unter `%APPDATA%MicrosoftUserSecrets` – außerhalb des Repositorys. Danach startet es ohne Nachfrage.
+- Mit diesem Secret meldest du dich im Hersteller-Portal an (`http://localhost:4200/admin-login`).
+- Secret vergessen oder ändern: `.start-local.ps1 -ResetSecret`.
+- Ein in der Sitzung gesetztes `$env:SYSTEM_SECRET` hat Vorrang vor den User-Secrets.
+
 ### Backend
 
 ```powershell
 cd backend
-$env:SYSTEM_SECRET="MINDESTENS-16-ZEICHEN-LANG"
+dotnet user-secrets set SYSTEM_SECRET "MINDESTENS-16-ZEICHEN-LANG"   # einmalig, oder start-local.ps1 nutzen
 dotnet run
 ```
 
-- `SYSTEM_SECRET` ist Pflicht (mind. 16 Zeichen), sonst startet das Backend nicht. Niemals ins Repository schreiben.
+- `SYSTEM_SECRET` ist Pflicht (mind. 16 Zeichen), sonst startet das Backend nicht. Niemals ins Repository schreiben. User-Secrets gelten nur in der Umgebung `Development`; auf dem Server wird es als Umgebungsvariable gesetzt.
 - Beim ersten Start wird eine Demo-Organisation mit **zufälligen** Initial-PINs angelegt; Code und PINs stehen einmalig in der Konsolenausgabe (`[BOOTSTRAP]`).
 - Neue bzw. zurückgesetzte PINs müssen mindestens 6 Zeichen haben; Admin- und Benutzer-PIN müssen sich unterscheiden.
 - Die Datenbank `backend/data/ats.db` ist nicht Teil des Repositorys (enthält personenbezogene Daten).
