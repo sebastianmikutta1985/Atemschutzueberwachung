@@ -4,6 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Lokales SYSTEM_SECRET liegt in den .NET User-Secrets (%APPDATA%\Microsoft\UserSecrets), nie im Repository. -->
+    <UserSecretsId>3a314f21-f354-4f79-80b9-5c748b132201</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
