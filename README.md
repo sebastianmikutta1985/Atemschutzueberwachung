@@ -11,7 +11,10 @@ Webanwendung zur einfachen Atemschutzüberwachung für die Feuerwehr.
 ## Features
 
 - Einsatz- und Truppverwaltung mit Live-Status
-- Druckmessungen mit Validierung (keine höheren Werte als Start-/Letzte Messung)
+- Druckmessungen mit Validierung (keine höheren Werte als Start-/Letzte Messung, bis 20 pro Person)
+- Truppzustände Anmarsch → Ziel erreicht (mit Druckabfrage, überspringbar) → Rückweg → Trupp zurück; nur vorwärts, Abbruch direkt in den Rückweg möglich
+- Ereignisprotokoll je Trupp (Anlage, Zustände, Druckwerte, Warnungen, Quittierungen, Ende) – nur lesbar, nachgetragene Offline-Eingaben gekennzeichnet; auch im Excel- und PDF-Export
+- Einsatz löschen nur für beendete Einsätze und mit Begründung, die im Audit-Log (Einstellungen) festgehalten wird
 - CSV-Import für Atemschutzgeräteträger
 - Excel-Export (XLSX) pro Einsatz
 - Live-Updates via SignalR
@@ -40,7 +43,7 @@ Webanwendung zur einfachen Atemschutzüberwachung für die Feuerwehr.
 - Die API setzt Sicherheits-Header (u. a. `X-Frame-Options: DENY`, `nosniff`, restriktive CSP, `Cache-Control: no-store`).
 - Das Frontend bringt eine Content-Security-Policy per `<meta>`-Tag mit und lädt nur eigene Ressourcen (Schrift ist lokal eingebunden, kein Google Fonts). Der Webserver, der das Frontend ausliefert, sollte zusätzlich `Content-Security-Policy: frame-ancestors 'none'` und `X-Frame-Options: DENY` setzen, da `frame-ancestors` im `<meta>`-Tag nicht wirkt.
 - **Offline-Verhalten:** Im Produktions-Build hält ein Service Worker die App-Hülle (Seite, Skripte, Schrift) vor; ein Neuladen ohne Netz zeigt die App statt einer Fehlerseite. API-Daten werden bewusst nicht zwischengespeichert. Bei Verbindungsverlust erscheint nach 5 s ein Hinweis; Zeiten und Alarme laufen auf dem Gerät weiter, Eingaben werden erst nach der Wiederverbindung gespeichert. Die Live-Verbindung wird unbegrenzt neu aufgebaut, danach werden die Daten neu geladen.
-- **Offline-Warteschlange:** Druckmessungen, Trupp-Ende und Alarm-Quittierungen werden ohne Verbindung auf dem Gerät gespeichert (`localStorage`, pro Organisation) und automatisch übertragen – mit ihrer Erfassungszeit (Uhr mit dem Server abgeglichen) und einer eigenen ID, sodass Wiederholungen keine Duplikate erzeugen. Der Server prüft die Zeit auf Plausibilität und den Druckverlauf zeitlich. Vom Server abgelehnte Eingaben werden angezeigt, bis sie verworfen werden. Einsatz anlegen/beenden und Trupp anlegen bleiben online-only.
+- **Offline-Warteschlange:** Druckmessungen, Zustandswechsel, Trupp-Ende und Alarm-Quittierungen werden ohne Verbindung auf dem Gerät gespeichert (`localStorage`, pro Organisation) und automatisch übertragen – mit ihrer Erfassungszeit (Uhr mit dem Server abgeglichen) und einer eigenen ID, sodass Wiederholungen keine Duplikate erzeugen. Der Server prüft die Zeit auf Plausibilität und den Druckverlauf zeitlich. Vom Server abgelehnte Eingaben werden angezeigt, bis sie verworfen werden. Einsatz anlegen/beenden und Trupp anlegen bleiben online-only.
 - Für ein Neuladen ohne Netz hält die App den zuletzt geladenen Einsatzstand lokal vor (deutlich als „Stand von …“ markiert); er wird beim Abmelden gelöscht.
 - Der Webserver muss `ngsw-worker.js` und `ngsw.json` ohne Caching ausliefern (`Cache-Control: no-cache`), damit Updates ankommen. Liegt eine neue Version bereit, zeigt die App „Neu laden“ an.
 - Läuft das Backend hinter einem Reverse Proxy auf einem anderen Host, müssen dessen Adressen für `X-Forwarded-For` konfiguriert werden, sonst greifen Login-Sperre und Rate-Limit pro Proxy statt pro Client.

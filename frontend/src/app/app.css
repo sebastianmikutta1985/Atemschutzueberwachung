@@ -792,6 +792,7 @@ button:not(:disabled):active {
 
 .modal__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   justify-content: flex-end;
 }
@@ -1516,4 +1517,115 @@ button.btn-attention {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+textarea {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff6ea;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* Truppzustand: Anmarsch / am Ziel / Rueckweg / zurueck */
+.crew-state {
+  margin-top: 4px;
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border: 1px solid var(--glass-border);
+  color: var(--ink-900);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.crew-state[data-state='arbeit'] {
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.crew-state[data-state='rueckweg'] {
+  border-color: color-mix(in srgb, var(--ok) 70%, transparent);
+  background: color-mix(in srgb, var(--ok) 25%, transparent);
+}
+
+.crew-state[data-state='beendet'] {
+  color: var(--ink-500);
+}
+
+/* Nebenaktionen der Trupp-Karte (Protokoll, Abbruch) */
+.trupp__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 4px;
+}
+
+.trupp--stack .trupp__links {
+  margin-top: auto;
+}
+
+.trupp--stack .trupp__links + .trupp__bottom {
+  margin-top: 6px;
+}
+
+.link-button {
+  background: none;
+  border: 0;
+  padding: 6px 0;
+  min-height: 0;
+  color: var(--ink-700);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: 0.9rem;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+/* Ereignisprotokoll eines Trupps */
+.protocol-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.protocol-list li {
+  display: grid;
+  grid-template-columns: 5.5em 1fr;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink-700);
+  font-size: 0.9rem;
+}
+
+.protocol-list__time {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-500);
+}
+
+.protocol-list li[data-typ='zustand'],
+.protocol-list li[data-typ='beendet'] {
+  font-weight: 700;
+  color: var(--ink-900);
+}
+
+.protocol-list li[data-typ='max'],
+.protocol-list li[data-typ='warn'] {
+  border-left: 3px solid var(--warn);
 }

@@ -123,6 +123,9 @@ export class AlarmOverlayComponent {
     if (item.kind === 'end') {
       return this.i18n.t('outbox.itemEnd', { crew: item.truppName });
     }
+    if (item.kind === 'zustand') {
+      return this.i18n.t('outbox.itemState', { crew: item.truppName, state: this.i18n.t(`crewState.step_${item.zustand}`) });
+    }
     return this.i18n.t('outbox.itemEvent', { crew: item.truppName });
   }
 

@@ -9,7 +9,8 @@ import { AuthStore } from './auth.store';
 import { ClockService } from './clock.service';
 import { parseEpoch } from './crew-status';
 import { ExportService } from './export.service';
-import { DruckInfo, Einsatz, Geraetetraeger, OrgSettings, Trupp, TruppName } from './models';
+import { DruckInfo, Einsatz, Geraetetraeger, OrgSettings, ProtokollEintrag, Trupp, TruppName, TruppProtokoll } from './models';
+import { describeProtokollEintrag } from './protocol-format';
 import { MonitoringService } from './monitoring.service';
 import { RealtimeService } from './realtime.service';
 import { SessionService } from './session.service';
@@ -29,6 +30,8 @@ export class DashboardPage implements OnInit, OnDestroy {
   @ViewChild('druckInput') druckInput?: ElementRef<HTMLInputElement>;
   @ViewChild('dashboardSection') dashboardSection?: ElementRef<HTMLElement>;
   @ViewChild('confirmCancel') confirmCancel?: ElementRef<HTMLButtonElement>;
+  @ViewChild('zielInput') zielInput?: ElementRef<HTMLInputElement>;
+  @ViewChild('deleteReason') deleteReason?: ElementRef<HTMLTextAreaElement>;
   private unsubscribeRealtime?: () => void;
   private unsubscribeStatus?: () => void;
   liveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
@@ -80,7 +83,12 @@ export class DashboardPage implements OnInit, OnDestroy {
     trupps: Trupp[];
     loading: boolean;
   } | null = null;
-  deleteModal: { open: boolean; einsatz: Einsatz } | null = null;
+  deleteModal: { open: boolean; einsatz: Einsatz; grund: string; error: string } | null = null;
+  // "Ziel erreicht": Druck beider Geraetetraeger als Grundlage der Rueckzugsberechnung (ueberspringbar).
+  zielModal: { trupp: Trupp; p1: number | null; p2: number | null; error: string } | null = null;
+  zielSaving = false;
+  protokollModal: { title: string; loading: boolean; error: string; eintraege: ProtokollEintrag[]; pendingCount: number } | null =
+    null;
   // Bestaetigung fuer nicht umkehrbare Aktionen (Einsatz/Trupp beenden).
   confirmModal: { title: string; text: string; confirmLabel: string; action: () => void } | null = null;
 
@@ -178,6 +186,10 @@ export class DashboardPage implements OnInit, OnDestroy {
     }
     if (this.confirmModal) {
       this.closeConfirmModal();
+    } else if (this.protokollModal) {
+      this.closeProtokoll();
+    } else if (this.zielModal) {
+      this.closeZielModal();
     } else if (this.druckModal) {
       this.closeDruckModal();
     } else if (this.detailsModal) {
@@ -365,23 +377,29 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   deleteEinsatz(einsatz: Einsatz): void {
-    this.deleteModal = { open: true, einsatz };
+    this.deleteModal = { open: true, einsatz, grund: '', error: '' };
+    this.focusSoon(() => this.deleteReason);
   }
 
+  // Loeschen entfernt das Einsatzprotokoll: nur mit Begruendung, die im Audit-Log festgehalten wird.
   confirmDeleteEinsatz(): void {
-    if (!this.deleteModal) {
+    const modal = this.deleteModal;
+    if (!modal) {
       return;
     }
-    const einsatz = this.deleteModal.einsatz;
-    this.http.delete(`${this.baseUrl}/einsaetze/${einsatz.id}`).subscribe({
+    const grund = modal.grund.trim();
+    if (grund.length < 5) {
+      modal.error = this.i18n.t('dashboard.deleteReasonTooShort');
+      return;
+    }
+    this.http.post(`${this.baseUrl}/einsaetze/${modal.einsatz.id}/loeschen`, { grund }).subscribe({
       next: () => {
         this.loadLetzteEinsaetze();
         this.monitoring.refresh();
         this.deleteModal = null;
       },
       error: (err) => {
-        this.deleteModal = null;
-        this.monitoring.notify(this.apiError(err, 'dashboard.actionFailed'), 'warn');
+        modal.error = this.apiError(err, 'dashboard.actionFailed');
       }
     });
   }
@@ -476,7 +494,7 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.confirmModal = {
       title: this.i18n.t('dashboard.endCrewConfirmTitle'),
       text: this.i18n.t('dashboard.endCrewConfirmText', { name: trupp.bezeichnung }),
-      confirmLabel: this.i18n.t('dashboard.endCrew'),
+      confirmLabel: this.i18n.t('crewState.step_beendet'),
       action: () => this.doEndTrupp(trupp)
     };
     this.focusSoon(() => this.confirmCancel);
@@ -511,6 +529,138 @@ export class DashboardPage implements OnInit, OnDestroy {
     } else if (result.status === 'queued') {
       this.monitoring.notify(this.i18n.t('outbox.savedOffline'), 'warn');
     }
+  }
+
+  changeZustand(trupp: Trupp, zustand: 'arbeit' | 'rueckweg'): void {
+    if (zustand === 'arbeit') {
+      this.zielModal = { trupp, p1: null, p2: null, error: '' };
+      this.focusSoon(() => this.zielInput);
+      return;
+    }
+    // Zustaende lassen sich nicht zuruecknehmen: kurz bestaetigen.
+    this.confirmModal = {
+      title: this.i18n.t('crewState.retreatConfirmTitle'),
+      text: this.i18n.t('crewState.retreatConfirmText', { name: trupp.bezeichnung }),
+      confirmLabel: this.i18n.t('crewState.step_rueckweg'),
+      action: () => void this.submitZustand(trupp, 'rueckweg')
+    };
+    this.focusSoon(() => this.confirmCancel);
+  }
+
+  closeZielModal(): void {
+    this.zielModal = null;
+  }
+
+  // Hoechster zulaessiger Wert: letzte Messung bzw. Startdruck der Person.
+  maxDruckFor(trupp: Trupp, personId: string): number {
+    const last = personId === trupp.person1Id ? trupp.druckMessungenPerson1 : trupp.druckMessungenPerson2;
+    if (last.length) {
+      return last[0].druckBar;
+    }
+    return personId === trupp.person1Id ? trupp.startdruckPerson1Bar : trupp.startdruckPerson2Bar;
+  }
+
+  async saveZiel(druckNichtGemeldet: boolean): Promise<void> {
+    const modal = this.zielModal;
+    if (!modal || this.zielSaving) {
+      return;
+    }
+    const trupp = modal.trupp;
+    let zielDruck: { id: string; personId: string; personName: string; druckBar: number }[] = [];
+    if (!druckNichtGemeldet) {
+      const values = [
+        { personId: trupp.person1Id, personName: trupp.person1Name, value: Number(modal.p1) },
+        { personId: trupp.person2Id, personName: trupp.person2Name, value: Number(modal.p2) }
+      ];
+      if (values.some((v) => !modal.p1 || !modal.p2 || !Number.isFinite(v.value) || v.value <= 0)) {
+        modal.error = this.i18n.t('crewState.targetPressureMissing');
+        return;
+      }
+      const tooHigh = values.find((v) => v.value > this.maxDruckFor(trupp, v.personId));
+      if (tooHigh) {
+        modal.error = this.i18n.t('crewState.targetPressureTooHigh', {
+          person: tooHigh.personName,
+          value: this.maxDruckFor(trupp, tooHigh.personId)
+        });
+        return;
+      }
+      zielDruck = values.map((v) => ({
+        id: this.monitoring.outbox.newId(),
+        personId: v.personId,
+        personName: v.personName,
+        druckBar: v.value
+      }));
+    }
+    this.zielSaving = true;
+    const error = await this.submitZustand(trupp, 'arbeit', zielDruck, druckNichtGemeldet);
+    this.zielSaving = false;
+    if (error) {
+      // Dialog offen lassen, damit die Werte korrigiert werden koennen.
+      modal.error = error;
+      return;
+    }
+    this.zielModal = null;
+  }
+
+  // Ueber die Warteschlange: der Zustand gilt sofort (auch offline) mit der Zeit des Tippens.
+  // Liefert die Ablehnung des Servers, falls er die Eingabe direkt zurueckweist.
+  private async submitZustand(
+    trupp: Trupp,
+    zustand: 'arbeit' | 'rueckweg',
+    zielDruck: { id: string; personId: string; personName: string; druckBar: number }[] = [],
+    druckNichtGemeldet = false
+  ): Promise<string | null> {
+    const result = await this.monitoring.outbox.submit({
+      id: this.monitoring.outbox.newId(),
+      kind: 'zustand',
+      truppId: trupp.id,
+      truppName: trupp.bezeichnung,
+      zustand,
+      zielDruck,
+      druckNichtGemeldet,
+      zeit: this.monitoring.outbox.nowIso()
+    });
+    if (result.status === 'rejected') {
+      if (zustand === 'rueckweg') {
+        this.monitoring.notify(result.error, 'warn');
+      }
+      return result.error;
+    }
+    if (result.status === 'queued') {
+      this.monitoring.notify(this.i18n.t('outbox.savedOffline'), 'warn');
+    }
+    return null;
+  }
+
+  openProtokoll(trupp: Trupp): void {
+    // Eingaben dieses Geraets, die noch nicht beim Server sind, fehlen im Serverprotokoll: darauf hinweisen.
+    const pendingCount = this.monitoring.outbox.waiting().filter((i) => i.truppId === trupp.id).length;
+    const modal = {
+      title: this.i18n.t('protocol.title', { name: trupp.bezeichnung }),
+      loading: true,
+      error: '',
+      eintraege: [] as ProtokollEintrag[],
+      pendingCount
+    };
+    this.protokollModal = modal;
+    this.http.get<TruppProtokoll>(`${this.baseUrl}/trupps/${trupp.id}/protokoll`).subscribe({
+      next: (p) => {
+        modal.eintraege = p.eintraege;
+        modal.loading = false;
+      },
+      error: (err) => {
+        modal.error = this.apiError(err, 'protocol.loadFailed');
+        modal.loading = false;
+      }
+    });
+  }
+
+  closeProtokoll(): void {
+    this.protokollModal = null;
+  }
+
+  describeEintrag(e: ProtokollEintrag): string {
+    return describeProtokollEintrag(e, this.i18n);
   }
 
   addDruckmessung(trupp: Trupp, personId: string): void {

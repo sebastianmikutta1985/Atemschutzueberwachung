@@ -7,7 +7,7 @@ import { RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
 import { ThemeMode, ThemeStore } from './theme.store';
-import { Geraetetraeger, OrgSettings, TruppName } from './models';
+import { AuditEintrag, Geraetetraeger, OrgSettings, TruppName } from './models';
 import { RealtimeService } from './realtime.service';
 import { SessionService } from './session.service';
 import { TranslationService } from './translation.service';
@@ -23,6 +23,7 @@ export class SettingsPage implements OnInit, OnDestroy {
   geraetetraeger: Geraetetraeger[] = [];
   truppnamen: TruppName[] = [];
   orgSettings: OrgSettings | null = null;
+  auditEntries: AuditEintrag[] = [];
   dragIndex: number | null = null;
   private unsubscribeRealtime?: () => void;
   private unsubscribeStatus?: () => void;
@@ -76,6 +77,7 @@ export class SettingsPage implements OnInit, OnDestroy {
     this.loadGeraetetraeger();
     this.loadTruppnamen();
     this.loadOrgSettings();
+    this.loadAudit();
 
     this.realtime.start();
     this.unsubscribeRealtime = this.realtime.onUpdate((type) => {
@@ -87,6 +89,9 @@ export class SettingsPage implements OnInit, OnDestroy {
       }
       if (type === 'settings') {
         this.loadOrgSettings();
+      }
+      if (type === 'einsatz') {
+        this.loadAudit();
       }
     });
     this.unsubscribeStatus = this.realtime.onStatus((status) => {
@@ -161,6 +166,25 @@ export class SettingsPage implements OnInit, OnDestroy {
     this.http.get<TruppName[]>(`${this.baseUrl}/truppnamen`).subscribe((list) => {
       this.truppnamen = list;
     });
+  }
+
+  loadAudit(): void {
+    this.http.get<AuditEintrag[]>(`${this.baseUrl}/audit`).subscribe((list) => {
+      this.auditEntries = list;
+    });
+  }
+
+  // Details liegen als JSON vor; unbekannte Aktionen werden roh angezeigt.
+  describeAudit(entry: AuditEintrag): string {
+    if (entry.aktion === 'einsatz_geloescht') {
+      try {
+        const d = JSON.parse(entry.details) as { einsatz: string; trupps: number; grund: string };
+        return this.i18n.t('settings.auditDeleted', { name: d.einsatz, crews: d.trupps, reason: d.grund });
+      } catch {
+        // fallthrough
+      }
+    }
+    return `${entry.aktion}: ${entry.details}`;
   }
 
   loadOrgSettings(): void {

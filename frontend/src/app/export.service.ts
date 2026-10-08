@@ -1,9 +1,11 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import jsPDF from 'jspdf';
+import { forkJoin } from 'rxjs';
 import * as XLSX from 'xlsx';
 import { environment } from '../environments/environment';
-import { DruckInfo, Einsatz, Trupp } from './models';
+import { DruckInfo, Einsatz, Trupp, TruppProtokoll } from './models';
+import { describeProtokollEintrag } from './protocol-format';
 import { TranslationService } from './translation.service';
 
 // Einsatzbericht als Excel- oder PDF-Datei (aus dem Dashboard ausgelagert).
@@ -22,10 +24,23 @@ export class ExportService {
       d.getHours()
     )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${this.i18n.t('common.timeSuffix')}`;
   }
+  private formatTime(value: string): string {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    const pad = (v: number) => v.toString().padStart(2, '0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  private load(einsatz: Einsatz) {
+    return forkJoin({
+      list: this.http.get<Trupp[]>(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`),
+      protokoll: this.http.get<TruppProtokoll[]>(`${this.baseUrl}/einsaetze/${einsatz.id}/protokoll`)
+    });
+  }
+
   exportXlsx(einsatz: Einsatz): void {
-    this.http
-      .get<Trupp[]>(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`)
-      .subscribe((list) => {
+    this.load(einsatz)
+      .subscribe(({ list, protokoll }) => {
         const formatMessungen = (values: DruckInfo[]) =>
           values
             .map((m) => `${m.druckBar} bar | ${this.formatDateTime(m.zeit)}`)
@@ -87,9 +102,18 @@ export class ExportService {
 
         const truppSheet = XLSX.utils.aoa_to_sheet(truppRows);
 
+        // Ereignisprotokoll: eine Zeile pro Ereignis, je Trupp zeitlich sortiert.
+        const protokollSheet = XLSX.utils.aoa_to_sheet([
+          [this.i18n.t('protocol.colCrew'), this.i18n.t('protocol.colTime'), this.i18n.t('protocol.colEvent')],
+          ...protokoll.flatMap((p) =>
+            p.eintraege.map((e) => [p.bezeichnung, this.formatDateTime(e.zeit), describeProtokollEintrag(e, this.i18n)])
+          )
+        ]);
+
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, einsatzSheet, this.i18n.t('dashboard.exportSheetIncident'));
         XLSX.utils.book_append_sheet(workbook, truppSheet, this.i18n.t('dashboard.exportSheetCrews'));
+        XLSX.utils.book_append_sheet(workbook, protokollSheet, this.i18n.t('protocol.sheet'));
 
         const safeName = (einsatz.name || 'Einsatz')
           .replace(/[^a-z0-9äöüÄÖÜß_\\-]+/gi, '_');
@@ -103,9 +127,8 @@ export class ExportService {
   }
 
   exportPdf(einsatz: Einsatz): void {
-    this.http
-      .get<Trupp[]>(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`)
-      .subscribe((list) => {
+    this.load(einsatz)
+      .subscribe(({ list, protokoll }) => {
         const doc = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'landscape' });
         const margin = 40;
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -226,6 +249,37 @@ export class ExportService {
           doc.text(wrapped, x, y + 16);
 
           y += rowHeight;
+        }
+
+        // Ereignisprotokoll je Trupp
+        const lineHeight = 13;
+        const ensureSpace = (needed: number) => {
+          if (y + needed > pageHeight - 40) {
+            doc.addPage();
+            drawHeader();
+          }
+        };
+        y += 24;
+        ensureSpace(40);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text(this.i18n.t('protocol.sheet'), margin, y);
+        y += 18;
+        doc.setFontSize(10);
+        for (const p of protokoll) {
+          ensureSpace(lineHeight * 3);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`${p.bezeichnung} – P1: ${p.person1Name}, P2: ${p.person2Name}`, margin, y);
+          y += lineHeight + 2;
+          doc.setFont('helvetica', 'normal');
+          for (const e of p.eintraege) {
+            const text = doc.splitTextToSize(describeProtokollEintrag(e, this.i18n), pageWidth - margin * 2 - 70);
+            ensureSpace(text.length * lineHeight);
+            doc.text(this.formatTime(e.zeit), margin, y);
+            doc.text(text, margin + 70, y);
+            y += text.length * lineHeight;
+          }
+          y += 8;
         }
 
         const alarm = new Date(einsatz.alarmzeit);
