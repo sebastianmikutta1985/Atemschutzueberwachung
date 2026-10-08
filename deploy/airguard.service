@@ -9,8 +9,37 @@ Restart=always
 RestartSec=5
 Environment=ASPNETCORE_URLS=http://127.0.0.1:5114
 Environment=DOTNET_ENVIRONMENT=Production
-# SYSTEM_SECRET liegt dort (nur fuer root lesbar)
+# SYSTEM_SECRET liegt dort (nur fuer root lesbar; systemd liest es vor dem Rechtewechsel)
 EnvironmentFile=/etc/airguard/airguard.env
+
+# Eigener Benutzer ohne Login. Die Programmdateien gehoeren root und sind fuer den Dienst
+# nur lesbar; schreiben darf er nur in data/ (Datenbank) und /var/lib/airguard.
+User=airguard
+Group=airguard
+StateDirectory=airguard
+Environment=HOME=/var/lib/airguard
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+ProtectSystem=strict
+ReadWritePaths=/var/www/airguard/app/data
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+SystemCallArchitectures=native
+UMask=0027
 
 [Install]
 WantedBy=multi-user.target
