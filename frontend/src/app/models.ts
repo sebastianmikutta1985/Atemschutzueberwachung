@@ -7,11 +7,16 @@ export interface Einsatz {
   endzeit?: string | null;
 }
 
+// Ablauf eines Trupps: es geht nur vorwaerts ("beendet" ergibt sich aus der Endzeit).
+export type TruppZustand = 'anmarsch' | 'arbeit' | 'rueckweg' | 'beendet';
+
 export interface DruckInfo {
   id?: string;
   personId?: string;
   druckBar: number;
   zeit: string;
+  // 'ziel' = mit "Ziel erreicht" gemeldet; sonst Druckkontrolle.
+  anlass?: string | null;
   // Offline erfasst, noch nicht beim Server angekommen.
   pending?: boolean;
 }
@@ -38,8 +43,40 @@ export interface Trupp {
   druckMessungenPerson2: DruckInfo[];
   warnAcked?: boolean;
   maxAcked?: boolean;
+  zustand?: TruppZustand;
+  zustandSeit?: string | null;
+  // Zustandswechsel offline erfasst, noch nicht beim Server angekommen.
+  zustandPending?: boolean;
   // Beenden offline erfasst, noch nicht beim Server angekommen.
   endPending?: boolean;
+}
+
+export interface ProtokollEintrag {
+  zeit: string;
+  typ: string;
+  zustand?: TruppZustand | null;
+  person?: string | null;
+  druckBar?: number | null;
+  anlass?: string | null;
+  nachricht?: string | null;
+  nachgetragen: boolean;
+  druckNichtGemeldet?: boolean;
+}
+
+export interface TruppProtokoll {
+  truppId: string;
+  bezeichnung: string;
+  person1Name: string;
+  person2Name: string;
+  eintraege: ProtokollEintrag[];
+}
+
+export interface AuditEintrag {
+  id: string;
+  zeit: string;
+  rolle: string;
+  aktion: string;
+  details: string;
 }
 
 export interface Geraetetraeger {

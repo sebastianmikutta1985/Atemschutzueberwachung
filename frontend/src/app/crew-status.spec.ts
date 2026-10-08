@@ -3,11 +3,13 @@ import {
   elapsedSeconds,
   formatMinSec,
   lowestPressure,
+  nextZustand,
   normalizeTrupp,
   pressureCheckDue,
   remainingSeconds,
   sortTrupps,
-  statusFor
+  statusFor,
+  zustandOf
 } from './crew-status';
 import { Trupp } from './models';
 
@@ -105,5 +107,48 @@ describe('crew-status', () => {
     const late = crew({ id: 'late', startzeit: '2026-09-26T10:30:00Z' });
     const early = crew({ id: 'early', startzeit: '2026-09-26T10:00:00Z' });
     expect(sortTrupps([ended, late, early]).map((t) => t.id)).toEqual(['early', 'late', 'ended']);
+  });
+
+  it('walks the crew states forward and treats crews without a state as approaching', () => {
+    expect(zustandOf(crew())).toBe('anmarsch');
+    expect(nextZustand(crew())).toBe('arbeit');
+    expect(nextZustand(crew({ zustand: 'arbeit' }))).toBe('rueckweg');
+    expect(nextZustand(crew({ zustand: 'rueckweg' }))).toBe('beendet');
+    const ended = crew({ zustand: 'arbeit', endzeit: '2026-09-26T10:20:00Z' });
+    expect(zustandOf(ended)).toBe('beendet');
+    expect(nextZustand(ended)).toBeNull();
+  });
+
+  it('applies a pending "target reached" with its pressures and never moves a crew backwards', () => {
+    const [merged] = applyPending(
+      [crew()],
+      [
+        {
+          id: 'z1',
+          kind: 'zustand',
+          truppId: 't1',
+          truppName: 'AT',
+          zustand: 'arbeit',
+          zeit: '2026-09-26T10:06:00Z',
+          zielDruck: [
+            { id: 'd1', personId: 'p1', personName: 'A', druckBar: 250 },
+            { id: 'd2', personId: 'p2', personName: 'B', druckBar: 240 }
+          ]
+        }
+      ]
+    );
+    expect(zustandOf(merged)).toBe('arbeit');
+    expect(merged.zustandPending).toBe(true);
+    expect(merged.zustandSeit).toBe('2026-09-26T10:06:00Z');
+    expect(merged.druckCountPerson1).toBe(1);
+    expect(merged.druckMessungenPerson2[0]).toEqual(expect.objectContaining({ druckBar: 240, anlass: 'ziel', pending: true }));
+    expect(lowestPressure(merged)).toBe(240);
+
+    const [unchanged] = applyPending(
+      [crew({ zustand: 'rueckweg' })],
+      [{ id: 'z2', kind: 'zustand', truppId: 't1', truppName: 'AT', zustand: 'arbeit', zeit: '2026-09-26T10:06:00Z' }]
+    );
+    expect(zustandOf(unchanged)).toBe('rueckweg');
+    expect(unchanged.zustandPending).toBeUndefined();
   });
 });

@@ -4,12 +4,14 @@ import {
   elapsedSeconds,
   formatMinSec,
   lowestPressure,
+  nextZustand,
   pressureCheckDue,
   pressureCheckFraction,
   remainingSeconds,
-  statusFor
+  statusFor,
+  zustandOf
 } from './crew-status';
-import { Trupp } from './models';
+import { DruckInfo, Trupp, TruppZustand } from './models';
 import { TranslationService } from './translation.service';
 
 @Component({
@@ -21,6 +23,9 @@ import { TranslationService } from './translation.service';
       <div class="trupp__status" [attr.data-status]="status()">{{ statusLabel() | uppercase }}</div>
       <div class="trupp__info">
         <div class="trupp__title">{{ trupp().bezeichnung }}</div>
+        <div class="crew-state" [attr.data-state]="zustand()" role="status">
+          {{ i18n.t('crewState.' + zustand()) }}@if (zustand() !== 'beendet') { · {{ i18n.t('crewState.since', { time: (stateSince() | date: 'HH:mm') ?? '' }) }}}@if (trupp().zustandPending) { · {{ i18n.t('outbox.pendingShort') }}}
+        </div>
         <div class="muted">{{ i18n.t('dashboard.p1') }}: {{ trupp().person1Name }}</div>
         <div class="muted">{{ i18n.t('dashboard.p2') }}: {{ trupp().person2Name }}</div>
         @if (trupp().endPending) {
@@ -48,13 +53,13 @@ import { TranslationService } from './translation.service';
         <div class="trupp__metric">
           <div class="muted">{{ i18n.t('dashboard.startPressureP1Short') }}</div>
           <div class="metric__value">{{ trupp().startdruckPerson1Bar }} bar</div>
-          @if (trupp().druckMessungenPerson1.length) {
+          @if (latest1().length) {
             <div class="muted">
               {{ i18n.t('dashboard.latestMeasurements') }}
               <div class="druck-list">
-                @for (m of trupp().druckMessungenPerson1; track m.zeit) {
+                @for (m of latest1(); track $index) {
                   <div [class.pending]="m.pending">
-                    {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}@if (m.pending) { · {{ i18n.t('outbox.pendingShort') }}}
+                    {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}@if (m.anlass === 'ziel') { · {{ i18n.t('crewState.atTarget') }}}@if (m.pending) { · {{ i18n.t('outbox.pendingShort') }}}
                   </div>
                 }
               </div>
@@ -64,13 +69,13 @@ import { TranslationService } from './translation.service';
         <div class="trupp__metric">
           <div class="muted">{{ i18n.t('dashboard.startPressureP2Short') }}</div>
           <div class="metric__value">{{ trupp().startdruckPerson2Bar }} bar</div>
-          @if (trupp().druckMessungenPerson2.length) {
+          @if (latest2().length) {
             <div class="muted">
               {{ i18n.t('dashboard.latestMeasurements') }}
               <div class="druck-list">
-                @for (m of trupp().druckMessungenPerson2; track m.zeit) {
+                @for (m of latest2(); track $index) {
                   <div [class.pending]="m.pending">
-                    {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}@if (m.pending) { · {{ i18n.t('outbox.pendingShort') }}}
+                    {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}@if (m.anlass === 'ziel') { · {{ i18n.t('crewState.atTarget') }}}@if (m.pending) { · {{ i18n.t('outbox.pendingShort') }}}
                   </div>
                 }
               </div>
@@ -79,13 +84,20 @@ import { TranslationService } from './translation.service';
         </div>
       </div>
     </div>
+    <div class="trupp__links">
+      <button class="link-button" type="button" (click)="protokoll.emit()">{{ i18n.t('protocol.open') }}</button>
+      @if (zustand() === 'anmarsch') {
+        <!-- Abbruch vor Erreichen des Ziels: direkt in den Rueckweg -->
+        <button class="link-button" type="button" (click)="zustandChange.emit('rueckweg')">{{ i18n.t('crewState.abort') }}</button>
+      }
+    </div>
     @if (!trupp().endzeit) {
       <div class="trupp__bottom">
         <button
           class="ghost"
           type="button"
           (click)="pressure.emit(trupp().person1Id)"
-          [disabled]="trupp().druckCountPerson1 >= 3"
+          [disabled]="trupp().druckCountPerson1 >= maxReadings"
           [class.btn-attention]="(pressureStage() ?? 0) > trupp().druckCountPerson1"
         >
           {{ i18n.t('dashboard.pressureP1Button', { count: trupp().druckCountPerson1 }) }}
@@ -94,12 +106,22 @@ import { TranslationService } from './translation.service';
           class="ghost"
           type="button"
           (click)="pressure.emit(trupp().person2Id)"
-          [disabled]="trupp().druckCountPerson2 >= 3"
+          [disabled]="trupp().druckCountPerson2 >= maxReadings"
           [class.btn-attention]="(pressureStage() ?? 0) > trupp().druckCountPerson2"
         >
           {{ i18n.t('dashboard.pressureP2Button', { count: trupp().druckCountPerson2 }) }}
         </button>
-        <button class="primary" type="button" (click)="end.emit()">{{ i18n.t('dashboard.endCrew') }}</button>
+        @switch (next()) {
+          @case ('arbeit') {
+            <button class="primary" type="button" (click)="zustandChange.emit('arbeit')">{{ i18n.t('crewState.step_arbeit') }}</button>
+          }
+          @case ('rueckweg') {
+            <button class="primary" type="button" (click)="zustandChange.emit('rueckweg')">{{ i18n.t('crewState.step_rueckweg') }}</button>
+          }
+          @default {
+            <button class="primary" type="button" (click)="end.emit()">{{ i18n.t('crewState.step_beendet') }}</button>
+          }
+        }
       </div>
     }
   `
@@ -110,11 +132,21 @@ export class TruppCardComponent {
   readonly now = input.required<number>();
   readonly pressure = output<string>();
   readonly end = output<void>();
+  readonly zustandChange = output<'arbeit' | 'rueckweg'>();
+  readonly protokoll = output<void>();
+  // Wie im Backend: Schutz vor Fehleingaben.
+  readonly maxReadings = 20;
 
   readonly status = computed(() => statusFor(this.trupp(), this.now()));
   readonly pressureStage = computed(() => pressureCheckDue(this.trupp(), this.now()));
   readonly lowest = computed(() => lowestPressure(this.trupp()));
   readonly fraction = pressureCheckFraction;
+  readonly zustand = computed<TruppZustand>(() => zustandOf(this.trupp()));
+  readonly next = computed(() => nextZustand(this.trupp()));
+  readonly stateSince = computed(() => this.trupp().zustandSeit ?? this.trupp().startzeit);
+  // Die Karte zeigt die letzten drei Messungen; alle stehen im Protokoll.
+  readonly latest1 = computed<DruckInfo[]>(() => this.trupp().druckMessungenPerson1.slice(0, 3));
+  readonly latest2 = computed<DruckInfo[]>(() => this.trupp().druckMessungenPerson2.slice(0, 3));
 
   readonly timeDisplay = computed(() => {
     const trupp = this.trupp();

@@ -1,4 +1,4 @@
-import { DruckInfo, Trupp } from './models';
+import { DruckInfo, Trupp, TruppZustand } from './models';
 import type { OutboxItem } from './outbox.service';
 
 // Reine Berechnungen rund um einen Trupp – ohne Angular-Abhaengigkeiten, damit sie einzeln testbar sind.
@@ -40,6 +40,27 @@ export function sortTrupps(trupps: Trupp[]): Trupp[] {
     }
     return (a.startEpoch ?? 0) - (b.startEpoch ?? 0);
   });
+}
+
+const ZUSTAND_RANG: Record<TruppZustand, number> = { anmarsch: 0, arbeit: 1, rueckweg: 2, beendet: 3 };
+
+// Trupps aus aelteren Versionen haben keinen Zustand: sie gelten als im Anmarsch.
+export function zustandOf(trupp: Trupp): TruppZustand {
+  return trupp.endzeit ? 'beendet' : (trupp.zustand ?? 'anmarsch');
+}
+
+// Naechster regulaerer Schritt; im Rueckweg ist das die Rueckkehr (= Trupp beenden).
+export function nextZustand(trupp: Trupp): Exclude<TruppZustand, 'anmarsch'> | null {
+  switch (zustandOf(trupp)) {
+    case 'anmarsch':
+      return 'arbeit';
+    case 'arbeit':
+      return 'rueckweg';
+    case 'rueckweg':
+      return 'beendet';
+    default:
+      return null;
+  }
 }
 
 export function elapsedSeconds(trupp: Trupp, nowEpoch: number): number {
@@ -123,6 +144,20 @@ export function applyPending(trupps: Trupp[], pending: OutboxItem[]): Trupp[] {
         } else if (item.personId === trupp.person2Id) {
           trupp.druckMessungenPerson2.push(reading);
           trupp.druckCountPerson2 += 1;
+        }
+      } else if (item.kind === 'zustand' && item.zustand && ZUSTAND_RANG[item.zustand] > ZUSTAND_RANG[zustandOf(trupp)]) {
+        trupp.zustand = item.zustand;
+        trupp.zustandSeit = item.zeit;
+        trupp.zustandPending = true;
+        for (const d of item.zielDruck ?? []) {
+          const reading: DruckInfo = { id: d.id, personId: d.personId, druckBar: d.druckBar, zeit: item.zeit, anlass: 'ziel', pending: true };
+          if (d.personId === trupp.person1Id) {
+            trupp.druckMessungenPerson1.push(reading);
+            trupp.druckCountPerson1 += 1;
+          } else if (d.personId === trupp.person2Id) {
+            trupp.druckMessungenPerson2.push(reading);
+            trupp.druckCountPerson2 += 1;
+          }
         }
       } else if (item.kind === 'end' && !trupp.endzeit) {
         trupp.endzeit = item.zeit;

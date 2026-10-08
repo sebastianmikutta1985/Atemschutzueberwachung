@@ -97,6 +97,7 @@ using (var scope = app.Services.CreateScope())
     await EnsureDruckmessungenTable(db);
     await EnsureAlarmEventsTable(db);
     await EnsureOrganizationColumns(db);
+    await EnsureProtokollSchema(db);
     await EnsureDefaultOrganization(db);
     await MigrateTimestampsToUtc(db, isNewDatabase, builder.Configuration["LEGACY_TIMEZONE"] ?? "Europe/Berlin");
     await MigrateSessionTokensToHash(db);
@@ -707,9 +708,15 @@ orgApi.MapPost("/einsaetze/{id:guid}/beenden", async (Guid id, HttpContext http,
     return Results.Ok(einsatz);
 }).WithOpenApi();
 
-adminApi.MapDelete("/einsaetze/{id:guid}", async (Guid id, HttpContext http, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+// Loeschen entfernt das Einsatzprotokoll: nur fuer beendete Einsaetze, mit Pflichtbegruendung im Audit-Log.
+adminApi.MapPost("/einsaetze/{id:guid}/loeschen", async (Guid id, HttpContext http, EinsatzLoeschen dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
     var auth = http.GetAuth();
+    var grund = Api.Clean(dto.Grund);
+    if (grund.Length < 5 || grund.Length > 500)
+    {
+        return Api.Bad("Bitte einen Grund fuer das Loeschen angeben (5 bis 500 Zeichen).");
+    }
     var einsatz = await db.Einsaetze.FirstOrDefaultAsync(e => e.Id == id && e.OrganizationId == auth.OrgId);
     if (einsatz == null)
     {
@@ -733,6 +740,23 @@ adminApi.MapDelete("/einsaetze/{id:guid}", async (Guid id, HttpContext http, App
         .ToListAsync());
     db.Trupps.RemoveRange(relatedTrupps);
 
+    db.AuditLog.Add(new AuditLogEntry
+    {
+        Id = Guid.NewGuid(),
+        OrganizationId = auth.OrgId,
+        Zeit = DateTime.UtcNow,
+        Rolle = auth.Role,
+        Aktion = "einsatz_geloescht",
+        Details = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            einsatz = einsatz.Name,
+            ort = einsatz.Ort,
+            alarmzeit = einsatz.Alarmzeit,
+            endzeit = einsatz.Endzeit,
+            trupps = relatedTrupps.Count,
+            grund
+        })
+    });
     db.Einsaetze.Remove(einsatz);
     await db.SaveChangesAsync();
     await NotifyOrgAsync(hub, auth.OrgId, "einsatz");
@@ -852,15 +876,14 @@ orgApi.MapGet("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpC
 
     var result = trupps.Select(t =>
     {
+        // Alle Messungen, neueste zuerst (die Karte zeigt die letzten drei, Details und Export alle).
         var p1 = messungen
             .Where(m => m.TruppId == t.Id && m.PersonId == t.Person1Id)
-            .Take(3)
-            .Select(m => new DruckInfo(m.DruckBar, m.Zeit))
+            .Select(m => new DruckInfo(m.DruckBar, m.Zeit, m.Anlass))
             .ToArray();
         var p2 = messungen
             .Where(m => m.TruppId == t.Id && m.PersonId == t.Person2Id)
-            .Take(3)
-            .Select(m => new DruckInfo(m.DruckBar, m.Zeit))
+            .Select(m => new DruckInfo(m.DruckBar, m.Zeit, m.Anlass))
             .ToArray();
         var warnAcked = alarmEvents.Any(e => e.TruppId == t.Id && e.Typ == "warn_ack");
         var maxAcked = alarmEvents.Any(e => e.TruppId == t.Id && e.Typ == "max_ack");
@@ -884,7 +907,9 @@ orgApi.MapGet("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpC
             p1,
             p2,
             warnAcked,
-            maxAcked
+            maxAcked,
+            Api.ZustandOf(t),
+            t.ZustandSeit
         );
     }).ToList();
 
@@ -908,7 +933,8 @@ orgApi.MapPost("/trupps/{id:guid}/beenden", async (Guid id, HttpContext http, Tr
         {
             return Api.Bad(timeError);
         }
-        trupp.Endzeit = endzeit;
+        // Geraeteuhren weichen leicht voneinander ab: das Ende liegt nie vor dem letzten Zustandswechsel.
+        trupp.Endzeit = trupp.ZustandSeit is { } seit && endzeit < seit ? seit : endzeit;
     }
     await db.SaveChangesAsync();
     await NotifyOrgAsync(hub, auth.OrgId, "trupp");
@@ -922,11 +948,6 @@ orgApi.MapPost("/trupps/{id:guid}/druckmessungen", async (Guid id, HttpContext h
     if (trupp == null)
     {
         return Results.NotFound();
-    }
-
-    if (dto.PersonId != trupp.Person1Id && dto.PersonId != trupp.Person2Id)
-    {
-        return Results.BadRequest(new { error = "Person gehoert nicht zu diesem Trupp." });
     }
 
     // Wiederholte Uebertragung aus der Offline-Warteschlange (Antwort ging verloren): nichts doppelt anlegen.
@@ -947,32 +968,10 @@ orgApi.MapPost("/trupps/{id:guid}/druckmessungen", async (Guid id, HttpContext h
     {
         return Api.Bad(timeError);
     }
-    // Eine Messung von vor dem Trupp-Ende darf nachgereicht werden (z. B. offline erfasst).
-    if (trupp.Endzeit != null && zeit > trupp.Endzeit)
+    var druckError = await CheckDruckmessung(db, trupp, dto.PersonId, dto.DruckBar, zeit);
+    if (druckError != null)
     {
-        return Results.BadRequest(new { error = "Trupp ist bereits beendet." });
-    }
-
-    var bisherige = (await db.Druckmessungen
-        .Where(m => m.OrganizationId == auth.OrgId && m.TruppId == id && m.PersonId == dto.PersonId)
-        .ToListAsync())
-        .OrderBy(m => m.Zeit)
-        .ToList();
-    if (bisherige.Count >= 3)
-    {
-        return Results.BadRequest(new { error = "Maximal 3 Druckmessungen pro Person." });
-    }
-
-    // Der Druck kann nur sinken – zeitlich geprueft, damit nachgereichte Messungen richtig eingeordnet werden:
-    // hoechstens die Messung davor (bzw. der Startdruck), mindestens die Messung danach.
-    var vorher = bisherige.LastOrDefault(m => m.Zeit <= zeit);
-    var danach = bisherige.FirstOrDefault(m => m.Zeit > zeit);
-    var maxDruck = vorher?.DruckBar
-        ?? (dto.PersonId == trupp.Person1Id ? trupp.StartdruckPerson1Bar : trupp.StartdruckPerson2Bar);
-    var minDruck = Math.Max(1, danach?.DruckBar ?? 1);
-    if (dto.DruckBar < minDruck || dto.DruckBar > maxDruck)
-    {
-        return Api.Bad($"Druck muss zwischen {minDruck} und {maxDruck} bar liegen.");
+        return Api.Bad(druckError);
     }
 
     var messung = new Druckmessung
@@ -1036,7 +1035,8 @@ orgApi.MapPost("/trupps/{id:guid}/events", async (Guid id, HttpContext http, Ala
         TruppId = id,
         Typ = type,
         Zeit = zeit,
-        Nachricht = nachricht
+        Nachricht = nachricht,
+        ErfasstAm = DateTime.UtcNow
     };
 
     db.AlarmEvents.Add(ev);
@@ -1047,6 +1047,152 @@ orgApi.MapPost("/trupps/{id:guid}/events", async (Guid id, HttpContext http, Ala
         await NotifyOrgAsync(hub, auth.OrgId, "trupp");
     }
     return Results.Ok(ev);
+}).WithOpenApi();
+
+// Zustandswechsel "Ziel erreicht" (arbeit) und "Rueckzug angetreten" (rueckweg); das Ende laeuft ueber /beenden.
+// Mit "Ziel erreicht" gemeldete Druckwerte werden in derselben Transaktion gespeichert.
+orgApi.MapPost("/trupps/{id:guid}/zustand", async (Guid id, HttpContext http, TruppZustandCreate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
+{
+    var auth = http.GetAuth();
+    var trupp = await db.Trupps.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == auth.OrgId);
+    if (trupp == null)
+    {
+        return Results.NotFound();
+    }
+
+    var zustand = Api.Clean(dto.Zustand).ToLowerInvariant();
+    var neuerRang = Array.IndexOf(Api.Zustaende, zustand);
+    if (neuerRang <= 0)
+    {
+        return Api.Bad("Unbekannter Zustand.");
+    }
+
+    // Wiederholte Uebertragung aus der Offline-Warteschlange: nichts doppelt anlegen.
+    if (dto.Id is { } clientId)
+    {
+        var existing = await db.AlarmEvents.FirstOrDefaultAsync(e => e.Id == clientId);
+        if (existing != null)
+        {
+            return existing.OrganizationId == auth.OrgId && existing.TruppId == id && existing.Typ == "zustand"
+                && ProtokollDaten(existing.Daten).Zustand == zustand
+                ? Results.Ok(new { zustand, zeit = existing.Zeit })
+                : Results.Conflict(new { error = "Diese Event-ID ist bereits vergeben." });
+        }
+    }
+
+    // Nur vorwaerts: ein Zustand kann nicht zurueckgenommen werden.
+    if (neuerRang <= Array.IndexOf(Api.Zustaende, trupp.Zustand ?? "anmarsch"))
+    {
+        return Api.Bad("Der Trupp hat diesen Zustand bereits erreicht oder ueberschritten.");
+    }
+
+    var vorigerWechsel = trupp.ZustandSeit ?? trupp.Startzeit;
+    var timeError = Api.CheckClientTime(dto.Zeit, vorigerWechsel, out var zeit);
+    if (timeError != null)
+    {
+        return Api.Bad(timeError);
+    }
+    // Leichte Uhrabweichung zwischen Geraeten: ein Zustandswechsel liegt nie vor dem vorigen.
+    if (zeit < vorigerWechsel)
+    {
+        zeit = vorigerWechsel;
+    }
+    if (trupp.Endzeit != null && zeit > trupp.Endzeit)
+    {
+        return Api.Bad("Trupp ist bereits beendet.");
+    }
+
+    var druck = dto.Druck ?? [];
+    if (druck.Length > 0 && zustand != "arbeit")
+    {
+        return Api.Bad("Druckwerte werden nur mit \"Ziel erreicht\" gemeldet.");
+    }
+    if (druck.Select(d => d.PersonId).Distinct().Count() != druck.Length)
+    {
+        return Api.Bad("Pro Person hoechstens ein Druckwert.");
+    }
+    foreach (var d in druck)
+    {
+        var druckError = await CheckDruckmessung(db, trupp, d.PersonId, d.DruckBar, zeit);
+        if (druckError != null)
+        {
+            return Api.Bad(druckError);
+        }
+    }
+    var druckIds = druck.Where(d => d.Id != null).Select(d => d.Id!.Value).ToArray();
+    if (druckIds.Length > 0 && await db.Druckmessungen.AnyAsync(m => druckIds.Contains(m.Id)))
+    {
+        return Results.Conflict(new { error = "Diese Messungs-ID ist bereits vergeben." });
+    }
+
+    foreach (var d in druck)
+    {
+        db.Druckmessungen.Add(new Druckmessung
+        {
+            Id = d.Id ?? Guid.NewGuid(),
+            OrganizationId = auth.OrgId,
+            TruppId = id,
+            PersonId = d.PersonId,
+            DruckBar = d.DruckBar,
+            Zeit = zeit,
+            Anlass = "ziel"
+        });
+    }
+
+    var daten = new Dictionary<string, object> { ["zustand"] = zustand };
+    if (zustand == "arbeit" && druck.Length == 0 && dto.DruckNichtGemeldet)
+    {
+        daten["druckNichtGemeldet"] = true;
+    }
+    db.AlarmEvents.Add(new AlarmEvent
+    {
+        Id = dto.Id ?? Guid.NewGuid(),
+        OrganizationId = auth.OrgId,
+        TruppId = id,
+        Typ = "zustand",
+        Zeit = zeit,
+        Daten = System.Text.Json.JsonSerializer.Serialize(daten),
+        ErfasstAm = DateTime.UtcNow
+    });
+    trupp.Zustand = zustand;
+    trupp.ZustandSeit = zeit;
+
+    await db.SaveChangesAsync();
+    await NotifyOrgAsync(hub, auth.OrgId, "trupp");
+    return Results.Ok(new { zustand, zeit });
+}).WithOpenApi();
+
+// Ereignisprotokoll: nur lesbar. Es gibt bewusst keine Endpunkte zum Aendern oder Loeschen einzelner Eintraege.
+orgApi.MapGet("/einsaetze/{einsatzId:guid}/protokoll", async (Guid einsatzId, HttpContext http, AppDbContext db) =>
+{
+    var auth = http.GetAuth();
+    var trupps = await db.Trupps
+        .Where(t => t.EinsatzId == einsatzId && t.OrganizationId == auth.OrgId)
+        .ToListAsync();
+    return Results.Ok(await BuildProtokoll(db, auth.OrgId, trupps));
+}).WithOpenApi();
+
+orgApi.MapGet("/trupps/{id:guid}/protokoll", async (Guid id, HttpContext http, AppDbContext db) =>
+{
+    var auth = http.GetAuth();
+    var trupp = await db.Trupps.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == auth.OrgId);
+    if (trupp == null)
+    {
+        return Results.NotFound();
+    }
+    return Results.Ok((await BuildProtokoll(db, auth.OrgId, [trupp]))[0]);
+}).WithOpenApi();
+
+adminApi.MapGet("/audit", async (HttpContext http, AppDbContext db) =>
+{
+    var auth = http.GetAuth();
+    var eintraege = (await db.AuditLog
+        .Where(a => a.OrganizationId == auth.OrgId)
+        .ToListAsync())
+        .OrderByDescending(a => a.Zeit)
+        .Take(50)
+        .ToList();
+    return Results.Ok(eintraege);
 }).WithOpenApi();
 
 app.Run();
@@ -1250,6 +1396,38 @@ static async Task EnsureOrganizationColumns(AppDbContext db)
             );
         }
     }
+}
+
+// Truppzustaende, Anlass von Druckmessungen, Zusatzdaten im Ereignisprotokoll und Audit-Log (alle Spalten optional,
+// damit bestehende Datenbanken ohne Umrechnung weiterlaufen).
+static async Task EnsureProtokollSchema(AppDbContext db)
+{
+    var columns = new (string Table, string Column)[]
+    {
+        ("Trupps", "Zustand"),
+        ("Trupps", "ZustandSeit"),
+        ("Druckmessungen", "Anlass"),
+        ("AlarmEvents", "Daten"),
+        ("AlarmEvents", "ErfasstAm")
+    };
+    foreach (var (table, column) in columns)
+    {
+        if (!await HasColumn(db, table, column))
+        {
+            await db.Database.ExecuteSqlRawAsync($"ALTER TABLE {table} ADD COLUMN {column} TEXT NULL;");
+        }
+    }
+
+    await db.Database.ExecuteSqlRawAsync("""
+        CREATE TABLE IF NOT EXISTS AuditLog (
+            Id TEXT NOT NULL PRIMARY KEY,
+            OrganizationId TEXT NOT NULL,
+            Zeit TEXT NOT NULL,
+            Rolle TEXT NOT NULL,
+            Aktion TEXT NOT NULL,
+            Details TEXT NOT NULL
+        );
+        """);
 }
 
 static async Task<bool> HasColumn(AppDbContext db, string tableName, string columnName)
@@ -1533,6 +1711,101 @@ static async Task EnsureAlarmEventsTable(AppDbContext db)
     await cmd.ExecuteNonQueryAsync();
 }
 
+// Plausibilitaet einer Druckmessung: Person im Trupp, nicht nach dem Trupp-Ende (vorher darf nachgereicht werden,
+// z. B. offline erfasst), hoechstens MaxDruckmessungen pro Person, und der Druck kann nur sinken – zeitlich geprueft,
+// damit nachgereichte Messungen richtig eingeordnet werden: hoechstens die Messung davor (bzw. der Startdruck),
+// mindestens die Messung danach.
+static async Task<string?> CheckDruckmessung(AppDbContext db, Trupp trupp, Guid personId, int druckBar, DateTime zeit)
+{
+    if (personId != trupp.Person1Id && personId != trupp.Person2Id)
+    {
+        return "Person gehoert nicht zu diesem Trupp.";
+    }
+    if (trupp.Endzeit != null && zeit > trupp.Endzeit)
+    {
+        return "Trupp ist bereits beendet.";
+    }
+
+    var bisherige = (await db.Druckmessungen
+        .Where(m => m.OrganizationId == trupp.OrganizationId && m.TruppId == trupp.Id && m.PersonId == personId)
+        .ToListAsync())
+        .OrderBy(m => m.Zeit)
+        .ToList();
+    if (bisherige.Count >= Api.MaxDruckmessungen)
+    {
+        return $"Maximal {Api.MaxDruckmessungen} Druckmessungen pro Person.";
+    }
+
+    var vorher = bisherige.LastOrDefault(m => m.Zeit <= zeit);
+    var danach = bisherige.FirstOrDefault(m => m.Zeit > zeit);
+    var maxDruck = vorher?.DruckBar
+        ?? (personId == trupp.Person1Id ? trupp.StartdruckPerson1Bar : trupp.StartdruckPerson2Bar);
+    var minDruck = Math.Max(1, danach?.DruckBar ?? 1);
+    return druckBar < minDruck || druckBar > maxDruck
+        ? $"Druck muss zwischen {minDruck} und {maxDruck} bar liegen."
+        : null;
+}
+
+// Zeitleiste je Trupp aus Anlage, Zustandswechseln, Druckmessungen, Warnungen/Quittierungen und Ende.
+static async Task<List<TruppProtokoll>> BuildProtokoll(AppDbContext db, Guid orgId, List<Trupp> trupps)
+{
+    var truppIds = trupps.Select(t => t.Id).ToArray();
+    var messungen = await db.Druckmessungen
+        .Where(m => m.OrganizationId == orgId && truppIds.Contains(m.TruppId))
+        .ToListAsync();
+    var events = await db.AlarmEvents
+        .Where(e => e.OrganizationId == orgId && truppIds.Contains(e.TruppId))
+        .ToListAsync();
+
+    // Erst nach mehr als einer Minute beim Server angekommen: im Protokoll als nachgetragen kenntlich.
+    static bool Nachgetragen(DateTime zeit, DateTime? erfasstAm) => erfasstAm != null && erfasstAm - zeit > TimeSpan.FromMinutes(1);
+
+    return trupps.OrderBy(t => t.Startzeit).Select(t =>
+    {
+        var eintraege = new List<ProtokollEintrag>
+        {
+            new(t.Startzeit, "angelegt", null, null, null, null,
+                $"P1 {t.StartdruckPerson1Bar} bar, P2 {t.StartdruckPerson2Bar} bar", false)
+        };
+        eintraege.AddRange(messungen.Where(m => m.TruppId == t.Id).Select(m => new ProtokollEintrag(
+            m.Zeit, "druck", null, m.PersonId == t.Person1Id ? t.Person1Name : t.Person2Name, m.DruckBar, m.Anlass, null, false)));
+        eintraege.AddRange(events.Where(e => e.TruppId == t.Id).Select(e =>
+        {
+            var (zustand, druckNichtGemeldet) = ProtokollDaten(e.Daten);
+            return new ProtokollEintrag(e.Zeit, e.Typ, zustand, null, null, null, e.Nachricht,
+                Nachgetragen(e.Zeit, e.ErfasstAm), druckNichtGemeldet);
+        }));
+        if (t.Endzeit is { } ende)
+        {
+            eintraege.Add(new ProtokollEintrag(ende, "beendet", "beendet", null, null, null, null, false));
+        }
+        // Gleiche Zeit (z. B. Druck mit "Ziel erreicht"): Zustandswechsel vor den Messungen, Ende zuletzt.
+        static int Rang(string typ) => typ switch { "angelegt" => 0, "zustand" => 1, "beendet" => 3, _ => 2 };
+        return new TruppProtokoll(t.Id, t.Bezeichnung, t.Person1Name, t.Person2Name,
+            eintraege.OrderBy(e => e.Zeit).ThenBy(e => Rang(e.Typ)).ToList());
+    }).ToList();
+}
+
+static (string? Zustand, bool DruckNichtGemeldet) ProtokollDaten(string? daten)
+{
+    if (string.IsNullOrEmpty(daten))
+    {
+        return (null, false);
+    }
+    try
+    {
+        using var json = System.Text.Json.JsonDocument.Parse(daten);
+        var root = json.RootElement;
+        var zustand = root.TryGetProperty("zustand", out var z) ? z.GetString() : null;
+        var nichtGemeldet = root.TryGetProperty("druckNichtGemeldet", out var n) && n.ValueKind == System.Text.Json.JsonValueKind.True;
+        return (zustand, nichtGemeldet);
+    }
+    catch (System.Text.Json.JsonException)
+    {
+        return (null, false);
+    }
+}
+
 static async Task NotifyOrgAsync(IHubContext<UpdatesHub> hub, Guid orgId, string type)
 {
     await hub.Clients.Group($"org-{orgId}").SendAsync("update", type);
@@ -1720,6 +1993,13 @@ static class Api
     public const int MinPinLength = 6;
     public const int MaxDruckBar = 400;
     public const int MaxZeitMin = 240;
+    // Schutz vor Fehleingaben; Kontrollen, "Ziel erreicht" und spaeter Rueckzug brauchen mehr als die frueheren 3.
+    public const int MaxDruckmessungen = 20;
+
+    // Truppzustaende in ihrer Reihenfolge. Es geht nur vorwaerts; Ueberspringen ist erlaubt (Abbruch: direkt Rueckweg).
+    public static readonly string[] Zustaende = ["anmarsch", "arbeit", "rueckweg"];
+
+    public static string ZustandOf(Trupp trupp) => trupp.Endzeit != null ? "beendet" : trupp.Zustand ?? "anmarsch";
 
     public static IResult Forbidden() =>
         Results.Json(new { error = "Keine Berechtigung." }, statusCode: StatusCodes.Status403Forbidden);
@@ -1862,6 +2142,7 @@ class AppDbContext : DbContext
     public DbSet<TruppName> Truppnamen => Set<TruppName>();
     public DbSet<Druckmessung> Druckmessungen => Set<Druckmessung>();
     public DbSet<AlarmEvent> AlarmEvents => Set<AlarmEvent>();
+    public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<UserAccount> UserAccounts => Set<UserAccount>();
     public DbSet<Session> Sessions => Set<Session>();
@@ -1906,6 +2187,9 @@ class Trupp
     public int WarnzeitMin { get; set; }
     public int MaxzeitMin { get; set; }
     public DateTime? Endzeit { get; set; }
+    // anmarsch / arbeit / rueckweg; null bei Trupps aus aelteren Versionen (= anmarsch). "beendet" ergibt sich aus Endzeit.
+    public string? Zustand { get; set; }
+    public DateTime? ZustandSeit { get; set; }
 }
 
 class Geraetetraeger
@@ -1939,16 +2223,35 @@ class Druckmessung
     public Guid PersonId { get; set; }
     public int DruckBar { get; set; }
     public DateTime Zeit { get; set; }
+    // null = Druckkontrolle, "ziel" = gemeldet mit "Ziel erreicht" (Grundlage der Rueckzugsberechnung).
+    public string? Anlass { get; set; }
 }
 
+// Ereignisprotokoll eines Trupps (Warnungen, Quittierungen, Zustandswechsel). Wird nur angelegt, nie geaendert.
 class AlarmEvent
 {
     public Guid Id { get; set; }
     public Guid OrganizationId { get; set; }
     public Guid TruppId { get; set; }
     public string Typ { get; set; } = string.Empty;
+    // Erfassungszeit auf dem Geraet (bei Offline-Eingaben frueher als ErfasstAm).
     public DateTime Zeit { get; set; }
     public string? Nachricht { get; set; }
+    // Zusatzdaten als JSON, z. B. {"zustand":"arbeit"}.
+    public string? Daten { get; set; }
+    // Eingang beim Server.
+    public DateTime? ErfasstAm { get; set; }
+}
+
+// Nachweis fuer Eingriffe, die das Einsatzprotokoll entfernen (z. B. Einsatz loeschen).
+class AuditLogEntry
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+    public DateTime Zeit { get; set; }
+    public string Rolle { get; set; } = string.Empty;
+    public string Aktion { get; set; } = string.Empty;
+    public string Details { get; set; } = string.Empty;
 }
 
 class Organization
@@ -2013,6 +2316,9 @@ record TruppNameReorder(Guid[] Ids);
 record DruckmessungCreate(Guid PersonId, int DruckBar, Guid? Id = null, DateTime? Zeit = null);
 record AlarmEventCreate(string? Typ, string? Nachricht, Guid? Id = null, DateTime? Zeit = null);
 record TruppEnd(DateTime? Endzeit);
+record ZustandDruck(Guid PersonId, int DruckBar, Guid? Id = null);
+record TruppZustandCreate(string? Zustand, Guid? Id = null, DateTime? Zeit = null, ZustandDruck[]? Druck = null, bool DruckNichtGemeldet = false);
+record EinsatzLoeschen(string? Grund);
 record LoginRequest(string? OrgaCode, string? Pin);
 record SystemLoginRequest(string? Secret);
 record OrgSettingsDto(int DefaultStartdruckPerson1Bar, int DefaultStartdruckPerson2Bar, int DefaultWarnzeitMin, int DefaultMaxzeitMin);
@@ -2065,8 +2371,21 @@ record TruppDto(
     DruckInfo[] DruckMessungenPerson1,
     DruckInfo[] DruckMessungenPerson2,
     bool WarnAcked,
-    bool MaxAcked
+    bool MaxAcked,
+    string Zustand,
+    DateTime? ZustandSeit
 );
 
-record DruckInfo(int DruckBar, DateTime Zeit);
+record DruckInfo(int DruckBar, DateTime Zeit, string? Anlass = null);
+record ProtokollEintrag(
+    DateTime Zeit,
+    string Typ,
+    string? Zustand,
+    string? Person,
+    int? DruckBar,
+    string? Anlass,
+    string? Nachricht,
+    bool Nachgetragen,
+    bool DruckNichtGemeldet = false);
+record TruppProtokoll(Guid TruppId, string Bezeichnung, string Person1Name, string Person2Name, List<ProtokollEintrag> Eintraege);
 

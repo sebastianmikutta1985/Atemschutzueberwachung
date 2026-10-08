@@ -3,12 +3,14 @@ import { computed, inject, Injectable, signal } from '@angular/core';
 import { firstValueFrom, timeout, TimeoutError } from 'rxjs';
 import { environment } from '../environments/environment';
 import { ClockService } from './clock.service';
+import type { TruppZustand } from './models';
 
-// Offline-Warteschlange fuer Eingaben waehrend der Ueberwachung (Druckmessung, Trupp beenden, Alarm-Events).
+// Offline-Warteschlange fuer Eingaben waehrend der Ueberwachung (Druckmessung, Zustandswechsel, Trupp beenden,
+// Alarm-Events).
 // Jede Eingabe wird zuerst dauerhaft gespeichert und dann gesendet; sie traegt eine eigene ID (Server erkennt
 // Wiederholungen) und ihre Erfassungszeit (Uhr mit dem Server abgeglichen).
 
-export type OutboxKind = 'druck' | 'end' | 'event';
+export type OutboxKind = 'druck' | 'zustand' | 'end' | 'event';
 export type AlarmEventType = 'warn' | 'max' | 'warn_ack' | 'max_ack';
 
 export interface OutboxItem {
@@ -20,6 +22,10 @@ export interface OutboxItem {
   personName?: string;
   druckBar?: number;
   typ?: AlarmEventType;
+  // Zustandswechsel; mit "Ziel erreicht" gemeldete Druckwerte werden zusammen uebertragen.
+  zustand?: Exclude<TruppZustand, 'anmarsch' | 'beendet'>;
+  zielDruck?: { id: string; personId: string; personName: string; druckBar: number }[];
+  druckNichtGemeldet?: boolean;
   // Erfassungszeit (UTC, ISO)
   zeit: string;
   // Vom Server abgelehnt: bleibt sichtbar, bis es verworfen wird.
@@ -169,9 +175,17 @@ export class OutboxService {
     const request =
       item.kind === 'druck'
         ? this.http.post(`${url}/druckmessungen`, { personId: item.personId, druckBar: item.druckBar, id: item.id, zeit: item.zeit })
-        : item.kind === 'end'
-          ? this.http.post(`${url}/beenden`, { endzeit: item.zeit })
-          : this.http.post(`${url}/events`, { typ: item.typ, id: item.id, zeit: item.zeit });
+        : item.kind === 'zustand'
+          ? this.http.post(`${url}/zustand`, {
+              zustand: item.zustand,
+              id: item.id,
+              zeit: item.zeit,
+              druck: (item.zielDruck ?? []).map((d) => ({ personId: d.personId, druckBar: d.druckBar, id: d.id })),
+              druckNichtGemeldet: item.druckNichtGemeldet ?? false
+            })
+          : item.kind === 'end'
+            ? this.http.post(`${url}/beenden`, { endzeit: item.zeit })
+            : this.http.post(`${url}/events`, { typ: item.typ, id: item.id, zeit: item.zeit });
     try {
       await firstValueFrom(request.pipe(timeout(10000)));
       return 'sent';

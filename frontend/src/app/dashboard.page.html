@@ -211,6 +211,8 @@
         [now]="currentEpoch"
         (pressure)="addDruckmessung(trupp, $event)"
         (end)="endTrupp(trupp)"
+        (zustandChange)="changeZustand(trupp, $event)"
+        (protokoll)="openProtokoll(trupp)"
       ></app-trupp-card>
     </div>
   </section>
@@ -321,6 +323,7 @@
             <div class="muted">{{ i18n.t('dashboard.start') }}: {{ t.startzeit | date: 'HH:mm:ss' }}</div>
             <div class="muted" *ngIf="t.endzeit">{{ i18n.t('dashboard.end') }}: {{ t.endzeit | date: 'HH:mm:ss' }}</div>
           </div>
+          <button class="link-button" type="button" (click)="openProtokoll(t)">{{ i18n.t('protocol.open') }}</button>
         </div>
         <div class="details-row__right details-pressures">
           <div>
@@ -356,9 +359,76 @@
   <div class="modal__panel" role="dialog" aria-modal="true">
     <h3>{{ i18n.t('dashboard.deleteOperation') }}</h3>
     <p class="muted">{{ i18n.t('dashboard.deleteOperationConfirm', { name: deleteModal!.einsatz.name }) }}</p>
+    <p class="muted">{{ i18n.t('dashboard.deleteOperationAudit') }}</p>
+    <label>
+      {{ i18n.t('dashboard.deleteReason') }}
+      <textarea #deleteReason name="deleteGrund" rows="3" maxlength="500" [(ngModel)]="deleteModal!.grund"></textarea>
+    </label>
+    <div class="form-error" *ngIf="deleteModal!.error">{{ deleteModal!.error }}</div>
     <div class="modal__actions">
       <button class="ghost" type="button" (click)="closeDeleteModal()">{{ i18n.t('common.cancel') }}</button>
       <button class="danger" type="button" (click)="confirmDeleteEinsatz()">{{ i18n.t('common.delete') }}</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" *ngIf="zielModal">
+  <!-- Kein Schliessen per Klick daneben: ein versehentlicher Tipp wuerde die Eingabe verwerfen. -->
+  <div class="modal__backdrop"></div>
+  <form class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="ziel-title" (ngSubmit)="saveZiel(false)">
+    <h3 id="ziel-title">{{ i18n.t('crewState.targetTitle') }}</h3>
+    <p class="muted">{{ zielModal.trupp.bezeichnung }} – {{ i18n.t('crewState.targetText') }}</p>
+    <label>
+      {{ zielModal.trupp.person1Name }} ({{ i18n.t('dashboard.pressureBar') }})
+      <input
+        #zielInput
+        type="number"
+        name="zielP1"
+        inputmode="numeric"
+        min="1"
+        [max]="maxDruckFor(zielModal.trupp, zielModal.trupp.person1Id)"
+        [(ngModel)]="zielModal.p1"
+      />
+    </label>
+    <label>
+      {{ zielModal.trupp.person2Name }} ({{ i18n.t('dashboard.pressureBar') }})
+      <input
+        type="number"
+        name="zielP2"
+        inputmode="numeric"
+        min="1"
+        [max]="maxDruckFor(zielModal.trupp, zielModal.trupp.person2Id)"
+        [(ngModel)]="zielModal.p2"
+      />
+    </label>
+    <div class="form-error" *ngIf="zielModal.error">{{ zielModal.error }}</div>
+    <div class="modal__actions">
+      <button class="ghost" type="button" (click)="closeZielModal()">{{ i18n.t('common.cancel') }}</button>
+      <button class="ghost" type="button" [disabled]="zielSaving" (click)="saveZiel(true)">
+        {{ i18n.t('crewState.targetSkip') }}
+      </button>
+      <button class="primary" type="submit" [disabled]="zielSaving">{{ i18n.t('common.save') }}</button>
+    </div>
+  </form>
+</div>
+
+<div class="modal" *ngIf="protokollModal">
+  <div class="modal__backdrop" (click)="closeProtokoll()"></div>
+  <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="protokoll-title">
+    <h3 id="protokoll-title">{{ protokollModal.title }}</h3>
+    <div class="pending-note" *ngIf="protokollModal.pendingCount" role="status">
+      {{ i18n.t('protocol.pendingHint', { count: protokollModal.pendingCount }) }}
+    </div>
+    <div class="muted" *ngIf="protokollModal.loading">{{ i18n.t('protocol.loading') }}</div>
+    <div class="form-error" *ngIf="protokollModal.error">{{ protokollModal.error }}</div>
+    <ol class="protocol-list" *ngIf="!protokollModal.loading && !protokollModal.error">
+      <li *ngFor="let e of protokollModal.eintraege" [attr.data-typ]="e.typ">
+        <span class="protocol-list__time">{{ e.zeit | date: 'HH:mm:ss' }}</span>
+        <span>{{ describeEintrag(e) }}</span>
+      </li>
+    </ol>
+    <div class="modal__actions">
+      <button class="primary" type="button" (click)="closeProtokoll()">{{ i18n.t('common.close') }}</button>
     </div>
   </div>
 </div>

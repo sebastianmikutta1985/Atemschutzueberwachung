@@ -192,6 +192,19 @@
       </div>
     </div>
   </section>
+
+  <section class="card settings">
+    <div class="list__head">
+      <h2>{{ i18n.t('settings.auditTitle') }}</h2>
+    </div>
+    <p class="muted" *ngIf="auditEntries.length === 0">{{ i18n.t('settings.auditEmpty') }}</p>
+    <ol class="protocol-list" *ngIf="auditEntries.length > 0">
+      <li *ngFor="let a of auditEntries">
+        <span class="protocol-list__time">{{ a.zeit | date: 'dd.MM.yy HH:mm' }}</span>
+        <span>{{ describeAudit(a) }}</span>
+      </li>
+    </ol>
+  </section>
 </div>
 
 <div class="toast-stack" *ngIf="toasts.length">
