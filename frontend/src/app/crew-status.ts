@@ -163,6 +163,19 @@ export function applyPending(trupps: Trupp[], pending: OutboxItem[]): Trupp[] {
         trupp.endzeit = item.zeit;
         trupp.endEpoch = parseEpoch(item.zeit);
         trupp.endPending = true;
+      } else if (item.kind === 'event' && item.typ === 'mayday') {
+        trupp.maydayAktiv = true;
+        trupp.maydaySeit = item.zeit;
+        trupp.maydayPosition = item.position ?? null;
+        trupp.maydayRestdruck = item.restdruck ?? null;
+        trupp.maydayFunkspruch = item.nachricht ?? null;
+        trupp.maydayPending = !item.sent;
+      } else if (item.kind === 'event' && item.typ === 'mayday_info') {
+        trupp.maydayPosition = item.position ?? trupp.maydayPosition;
+        trupp.maydayRestdruck = item.restdruck ?? trupp.maydayRestdruck;
+        trupp.maydayFunkspruch = item.nachricht ?? trupp.maydayFunkspruch;
+      } else if (item.kind === 'event' && item.typ === 'mayday_ende') {
+        trupp.maydayAktiv = false;
       } else if (item.kind === 'event' && item.typ === 'warn_ack') {
         trupp.warnAcked = true;
       } else if (item.kind === 'event' && item.typ === 'max_ack') {

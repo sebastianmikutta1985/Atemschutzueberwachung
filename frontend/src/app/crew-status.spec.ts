@@ -151,4 +151,25 @@ describe('crew-status', () => {
     expect(zustandOf(unchanged)).toBe('rueckweg');
     expect(unchanged.zustandPending).toBeUndefined();
   });
+
+  it('shows a pending mayday immediately, merges added details and closes it again', () => {
+    const base = { truppId: 't1', truppName: 'AT', kind: 'event' as const };
+    const [open] = applyPending(
+      [crew()],
+      [
+        { ...base, id: 'x1', typ: 'mayday', position: 'Keller', zeit: '2026-09-26T10:10:00Z' },
+        { ...base, id: 'x2', typ: 'mayday_info', restdruck: 90, nachricht: 'Atemnot', zeit: '2026-09-26T10:11:00Z' }
+      ]
+    );
+    expect(open.maydayAktiv).toBe(true);
+    expect(open.maydayPending).toBe(true);
+    expect(open.maydaySeit).toBe('2026-09-26T10:10:00Z');
+    expect([open.maydayPosition, open.maydayRestdruck, open.maydayFunkspruch]).toEqual(['Keller', 90, 'Atemnot']);
+
+    const [closed] = applyPending(
+      [crew({ maydayAktiv: true, maydaySeit: '2026-09-26T10:10:00Z' })],
+      [{ ...base, id: 'x3', typ: 'mayday_ende', nachricht: 'gerettet', zeit: '2026-09-26T10:20:00Z' }]
+    );
+    expect(closed.maydayAktiv).toBe(false);
+  });
 });

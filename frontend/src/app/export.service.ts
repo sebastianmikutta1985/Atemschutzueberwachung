@@ -275,8 +275,18 @@ export class ExportService {
           for (const e of p.eintraege) {
             const text = doc.splitTextToSize(describeProtokollEintrag(e, this.i18n), pageWidth - margin * 2 - 70);
             ensureSpace(text.length * lineHeight);
+            // Mayday-Eintraege rot hervorheben
+            const isMayday = e.typ.startsWith('mayday');
+            if (isMayday) {
+              doc.setTextColor(176, 30, 30);
+              doc.setFont('helvetica', 'bold');
+            }
             doc.text(this.formatTime(e.zeit), margin, y);
             doc.text(text, margin + 70, y);
+            if (isMayday) {
+              doc.setTextColor(33, 33, 33);
+              doc.setFont('helvetica', 'normal');
+            }
             y += text.length * lineHeight;
           }
           y += 8;

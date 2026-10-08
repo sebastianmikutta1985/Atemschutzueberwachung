@@ -29,6 +29,20 @@ export function describeProtokollEintrag(e: ProtokollEintrag, i18n: TranslationS
     case 'beendet':
       text = i18n.t('crewState.step_beendet');
       break;
+    case 'mayday':
+    case 'mayday_info':
+    case 'mayday_ende':
+      text = i18n.t(`protocol.${e.typ}`);
+      if (e.position) {
+        text += ` – ${i18n.t('mayday.position')}: ${e.position}`;
+      }
+      if (e.druckBar !== null && e.druckBar !== undefined) {
+        text += ` – ${i18n.t('mayday.pressure')}: ${e.druckBar} bar`;
+      }
+      if (e.zeitKorrigiert) {
+        text += ` (${i18n.t('protocol.timeCorrected')})`;
+      }
+      break;
     default:
       text = e.typ;
   }

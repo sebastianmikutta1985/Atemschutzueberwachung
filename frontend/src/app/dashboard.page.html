@@ -213,6 +213,9 @@
         (end)="endTrupp(trupp)"
         (zustandChange)="changeZustand(trupp, $event)"
         (protokoll)="openProtokoll(trupp)"
+        (mayday)="monitoring.triggerMayday(trupp)"
+        (maydayInfo)="monitoring.openMaydayDialog(trupp, 'info')"
+        (maydayEnd)="monitoring.openMaydayDialog(trupp, 'ende')"
       ></app-trupp-card>
     </div>
   </section>

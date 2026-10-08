@@ -14,6 +14,7 @@ Webanwendung zur einfachen Atemschutzüberwachung für die Feuerwehr.
 - Druckmessungen mit Validierung (keine höheren Werte als Start-/Letzte Messung, bis 20 pro Person)
 - Truppzustände Anmarsch → Ziel erreicht (mit Druckabfrage, überspringbar) → Rückweg → Trupp zurück; nur vorwärts, Abbruch direkt in den Rückweg möglich
 - Ereignisprotokoll je Trupp (Anlage, Zustände, Druckwerte, Warnungen, Quittierungen, Ende) – nur lesbar, nachgetragene Offline-Eingaben gekennzeichnet; auch im Excel- und PDF-Export
+- Mayday: roter Knopf auf jeder aktiven Trupp-Karte (1 s halten). Alle Geräte der Organisation erhalten sofort einen Vollbild-Alarm mit Dauerton; „Gesehen“ stellt nur den Ton ab, der rote Hinweis bleibt auf jeder Seite, bis jemand „Mayday beendet“ mit Notiz erfasst. Position, Restdruck und Funkspruch lassen sich jederzeit ergänzen. Offline gilt der Alarm sofort auf dem eigenen Gerät und wird vor allen anderen Eingaben übertragen; ein Mayday wird vom Server nie abgewiesen. CrewTrace ersetzt den Funk nicht.
 - Einsatz löschen nur für beendete Einsätze und mit Begründung, die im Audit-Log (Einstellungen) festgehalten wird
 - CSV-Import für Atemschutzgeräteträger
 - Excel-Export (XLSX) pro Einsatz

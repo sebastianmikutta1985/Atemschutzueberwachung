@@ -348,10 +348,12 @@ export class DashboardPage implements OnInit, OnDestroy {
       return;
     }
     const activeCrews = this.trupps.filter((t) => !t.endzeit).length;
+    const openMaydays = this.monitoring.maydays().length;
     this.confirmModal = {
       title: this.i18n.t('dashboard.endOperationConfirmTitle'),
-      text:
-        activeCrews > 0
+      text: openMaydays > 0
+        ? this.i18n.t('mayday.endOperationConfirm', { name: einsatz.name, count: openMaydays })
+        : activeCrews > 0
           ? this.i18n.t('dashboard.endOperationConfirmActiveCrews', { name: einsatz.name, count: activeCrews })
           : this.i18n.t('dashboard.endOperationConfirmText', { name: einsatz.name }),
       confirmLabel: this.i18n.t('dashboard.endOperation'),
@@ -501,7 +503,10 @@ export class DashboardPage implements OnInit, OnDestroy {
   endTrupp(trupp: Trupp): void {
     this.confirmModal = {
       title: this.i18n.t('dashboard.endCrewConfirmTitle'),
-      text: this.i18n.t('dashboard.endCrewConfirmText', { name: trupp.bezeichnung }),
+      // Offener Mayday: ausdruecklich darauf hinweisen; er bleibt offen, bis "Mayday beendet" erfasst ist.
+      text: trupp.maydayAktiv
+        ? this.i18n.t('mayday.endCrewConfirm', { name: trupp.bezeichnung })
+        : this.i18n.t('dashboard.endCrewConfirmText', { name: trupp.bezeichnung }),
       confirmLabel: this.i18n.t('crewState.step_beendet'),
       action: () => this.doEndTrupp(trupp)
     };

@@ -47,6 +47,14 @@ export interface Trupp {
   zustandSeit?: string | null;
   // Zustandswechsel offline erfasst, noch nicht beim Server angekommen.
   zustandPending?: boolean;
+  // Offener Mayday (Notfallmeldung) mit den zuletzt gemeldeten Angaben.
+  maydayAktiv?: boolean;
+  maydaySeit?: string | null;
+  maydayPosition?: string | null;
+  maydayRestdruck?: number | null;
+  maydayFunkspruch?: string | null;
+  // Mayday auf diesem Geraet ausgeloest, noch nicht beim Server: andere Geraete wissen noch nichts.
+  maydayPending?: boolean;
   // Beenden offline erfasst, noch nicht beim Server angekommen.
   endPending?: boolean;
 }
@@ -61,6 +69,8 @@ export interface ProtokollEintrag {
   nachricht?: string | null;
   nachgetragen: boolean;
   druckNichtGemeldet?: boolean;
+  position?: string | null;
+  zeitKorrigiert?: boolean;
 }
 
 export interface TruppProtokoll {
