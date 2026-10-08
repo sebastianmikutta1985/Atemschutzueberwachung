@@ -45,6 +45,27 @@ Webanwendung zur einfachen Atemschutzüberwachung für die Feuerwehr.
 - Der Webserver muss `ngsw-worker.js` und `ngsw.json` ohne Caching ausliefern (`Cache-Control: no-cache`), damit Updates ankommen. Liegt eine neue Version bereit, zeigt die App „Neu laden“ an.
 - Läuft das Backend hinter einem Reverse Proxy auf einem anderen Host, müssen dessen Adressen für `X-Forwarded-For` konfiguriert werden, sonst greifen Login-Sperre und Rate-Limit pro Proxy statt pro Client.
 
+### Server (crew-trace.com)
+
+Ubuntu 22.04 bei Hetzner, .NET 8 und Node 20 direkt installiert, nginx mit Let's-Encrypt-Zertifikat davor.
+
+| Pfad | Inhalt |
+| --- | --- |
+| `/opt/airguard/src` | Git-Klon dieses Repositorys (nur zum Bauen) |
+| `/var/www/airguard/app` | Veröffentlichtes Backend (`dotnet publish`), Dienst `airguard` auf `127.0.0.1:5114` |
+| `/var/www/airguard/app/data/ats.db` | Produktiv-Datenbank – wird beim Deploy nie überschrieben |
+| `/var/www/airguard/web` | Gebautes Frontend, von nginx ausgeliefert |
+| `/etc/airguard/airguard.env` | `SYSTEM_SECRET` (nur für root lesbar) |
+| `/root/backups/<zeitstempel>` | Sicherung vor jedem Deploy (Datenbank + vorherige Version), die letzten 10 bleiben |
+
+Die Vorlagen für Dienst und nginx liegen in [`deploy/`](deploy/). Änderungen daran werden nicht automatisch übernommen, sondern von Hand nach `/etc/systemd/system/` bzw. `/etc/nginx/` kopiert.
+
+**Update einspielen** (baut `main`, sichert, spielt ein, prüft und fällt bei einem Fehler auf die vorherige Version zurück):
+
+```bash
+ssh root@178.104.87.195 /opt/airguard/src/deploy/deploy.sh
+```
+
 ## Standardwerte
 
 Im Einstellungsbereich können Default-Werte für neue Trupps gepflegt werden:

@@ -1,0 +1,16 @@
+[Unit]
+Description=AirGuard API
+After=network.target
+
+[Service]
+WorkingDirectory=/var/www/airguard/app
+ExecStart=/usr/bin/dotnet /var/www/airguard/app/backend.dll
+Restart=always
+RestartSec=5
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5114
+Environment=DOTNET_ENVIRONMENT=Production
+# SYSTEM_SECRET liegt dort (nur fuer root lesbar)
+EnvironmentFile=/etc/airguard/airguard.env
+
+[Install]
+WantedBy=multi-user.target
