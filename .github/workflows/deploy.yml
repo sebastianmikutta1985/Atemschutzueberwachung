@@ -1,10 +1,8 @@
 name: Deploy
 
-# Jeder Merge auf main geht auf crew-trace.com. Manuell erneut starten (z. B. nach einem
-# Abbruch wegen eines laufenden Einsatzes): Actions -> Deploy -> Run workflow.
+# Spielt main auf crew-trace.com ein - nur von Hand: Actions -> Deploy -> Run workflow.
+# Ein Merge auf main allein deployt nicht.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 # Nie zwei Deploys gleichzeitig; ein laufender wird nicht abgebrochen.
