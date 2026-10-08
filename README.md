@@ -63,7 +63,9 @@ Ubuntu 22.04 bei Hetzner, .NET 8 und Node 20 direkt installiert, nginx mit Let's
 
 Die Vorlagen für Dienst und nginx liegen in [`deploy/`](deploy/). Änderungen daran werden nicht automatisch übernommen, sondern von Hand nach `/etc/systemd/system/` bzw. `/etc/nginx/` kopiert.
 
-**Update einspielen** (baut `main`, sichert, spielt ein, prüft und fällt bei einem Fehler auf die vorherige Version zurück):
+**Update einspielen:** Jeder Merge auf `main` wird automatisch über GitHub Actions eingespielt ([`deploy.yml`](.github/workflows/deploy.yml)). Das Skript baut, sichert, spielt ein, prüft und fällt bei einem Fehler auf die vorherige Version zurück. Läuft gerade ein Einsatz, bricht es ab – dann nach Einsatzende unter *Actions → Deploy → Run workflow* erneut starten.
+
+Von Hand (z. B. wenn GitHub nicht erreichbar ist; mit `FORCE=1` davor auch während eines Einsatzes):
 
 ```bash
 ssh root@178.104.87.195 /opt/airguard/src/deploy/deploy.sh
