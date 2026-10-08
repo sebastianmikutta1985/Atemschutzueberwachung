@@ -55,8 +55,8 @@ Ubuntu 22.04 bei Hetzner, .NET 8 und Node 20 direkt installiert, nginx mit Let's
 | Pfad | Inhalt |
 | --- | --- |
 | `/opt/airguard/src` | Git-Klon dieses Repositorys (nur zum Bauen) |
-| `/var/www/airguard/app` | Veröffentlichtes Backend (`dotnet publish`), Dienst `airguard` auf `127.0.0.1:5114` |
-| `/var/www/airguard/app/data/ats.db` | Produktiv-Datenbank – wird beim Deploy nie überschrieben |
+| `/var/www/airguard/app` | Veröffentlichtes Backend (`dotnet publish`), gehört root. Dienst `airguard` läuft als gleichnamiger Benutzer ohne Login auf `127.0.0.1:5114` und darf nur in `data/` schreiben |
+| `/var/www/airguard/app/data/ats.db` | Produktiv-Datenbank (Besitzer `airguard`) – wird beim Deploy nie überschrieben |
 | `/var/www/airguard/web` | Gebautes Frontend, von nginx ausgeliefert |
 | `/etc/airguard/airguard.env` | `SYSTEM_SECRET` (nur für root lesbar) |
 | `/root/backups/<zeitstempel>` | Sicherung vor jedem Deploy (Datenbank + vorherige Version), die letzten 10 bleiben |

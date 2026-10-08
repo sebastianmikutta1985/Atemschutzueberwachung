@@ -17,8 +17,17 @@ WEB=/var/www/airguard/web
 BACKUPS=/root/backups
 KEEP_BACKUPS=10
 SERVICE=airguard
+SERVICE_USER=airguard
 
 log() { echo "==> $*"; }
+
+start_service() {
+  # Der Dienst laeuft als $SERVICE_USER und muss die Datenbank (samt -wal/-shm) schreiben koennen,
+  # auch wenn root sie zwischendurch angefasst hat.
+  chown -R "$SERVICE_USER:$SERVICE_USER" "$APP/data"
+  chmod 750 "$APP/data"
+  systemctl start "$SERVICE"
+}
 
 no_active_incident() {
   [ "${FORCE:-0}" = "1" ] && return 0
@@ -54,7 +63,7 @@ rollback() {
   rsync -a --delete --exclude /data/ "$dir/app/" "$APP/"
   rsync -a --delete "$dir/data/" "$APP/data/"
   rsync -a --delete "$dir/web/" "$WEB/"
-  systemctl start "$SERVICE"
+  start_service
   healthy && log "Vorherige Version laeuft wieder." || echo "Auch die vorherige Version startet nicht - bitte manuell pruefen." >&2
 }
 
@@ -91,7 +100,7 @@ main() {
   log "Spiele neue Version ein"
   rsync -a --delete --exclude /data/ "$BUILD/backend/" "$APP/"
   rsync -a --delete "$SRC/frontend/dist/frontend/browser/" "$WEB/"
-  systemctl start "$SERVICE"
+  start_service
 
   if ! healthy; then
     rollback "$dir"
