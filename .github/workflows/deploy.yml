@@ -1,0 +1,40 @@
+name: Deploy
+
+# Jeder Merge auf main geht auf crew-trace.com. Manuell erneut starten (z. B. nach einem
+# Abbruch wegen eines laufenden Einsatzes): Actions -> Deploy -> Run workflow.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Nie zwei Deploys gleichzeitig; ein laufender wird nicht abgebrochen.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://crew-trace.com
+    timeout-minutes: 20
+    env:
+      DEPLOY_HOST: 178.104.87.195
+      # Host-Key des Servers (oeffentlich), damit sich kein anderer Rechner dazwischenschalten kann.
+      DEPLOY_HOST_KEY: 178.104.87.195 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIUET2Pe2YeVB1dMbCHxWo5FoMYJORuUPaUgaFyOgvqt
+    steps:
+      - name: Auf dem Server einspielen
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
+          # Der Schluessel darf auf dem Server nur deploy/deploy.sh starten (forced command).
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 "root@$DEPLOY_HOST" deploy

@@ -5,6 +5,9 @@
 # Ablauf: bauen (App laeuft weiter) -> Dienst stoppen -> Datenbank und alte Version sichern
 # -> neue Version einspielen -> starten -> pruefen. Schlaegt die Pruefung fehl, wird die
 # alte Version samt Datenbank zurueckgespielt.
+#
+# Laeuft ein Einsatz, bricht das Skript ab (Exit-Code 2), damit kein Update mitten in einen
+# Einsatz faellt. Erzwingen mit FORCE=1.
 set -euo pipefail
 
 SRC=/opt/airguard/src
@@ -16,6 +19,20 @@ KEEP_BACKUPS=10
 SERVICE=airguard
 
 log() { echo "==> $*"; }
+
+no_active_incident() {
+  [ "${FORCE:-0}" = "1" ] && return 0
+  local active
+  active=$(python3 - "$APP/data/ats.db" <<'PY'
+import sqlite3, sys
+db = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
+print(db.execute("select count(*) from Einsaetze where Status = 'aktiv'").fetchone()[0])
+PY
+)
+  [ "$active" = "0" ] && return 0
+  echo "Abbruch: $active laufende(r) Einsatz/Einsaetze. Nach Einsatzende erneut starten (oder FORCE=1)." >&2
+  return 1
+}
 
 healthy() {
   # Geschuetzter Endpunkt: 401 heisst, das Backend laeuft und die Anmeldung greift.
@@ -44,6 +61,8 @@ rollback() {
 main() {
   local branch=${1:-main}
 
+  no_active_incident || exit 2
+
   log "Hole $branch"
   git -C "$SRC" fetch --quiet origin "$branch"
   git -C "$SRC" reset --quiet --hard "origin/$branch"
@@ -55,6 +74,9 @@ main() {
 
   log "Baue Frontend"
   (cd "$SRC/frontend" && NG_CLI_ANALYTICS=false npm ci --no-audit --no-fund && npx ng build)
+
+  # Waehrend des Bauens kann ein Einsatz begonnen haben.
+  no_active_incident || exit 2
 
   local dir
   dir="$BACKUPS/$(date +%Y-%m-%d_%H%M%S)"
