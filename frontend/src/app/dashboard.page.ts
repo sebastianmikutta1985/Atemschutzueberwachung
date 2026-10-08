@@ -116,6 +116,14 @@ export class DashboardPage implements OnInit, OnDestroy {
     return this.monitoring.trupps();
   }
 
+  get activeCrewCount(): number {
+    return this.trupps.filter((t) => !t.endzeit).length;
+  }
+
+  get endedCrewCount(): number {
+    return this.trupps.length - this.activeCrewCount;
+  }
+
   get currentEpoch(): number {
     return this.monitoring.now();
   }

@@ -172,7 +172,7 @@
       <div class="muted">
         {{
           currentEinsatz
-            ? i18n.t('dashboard.crewsActive', { count: trupps.length })
+            ? i18n.t(endedCrewCount ? 'dashboard.crewsActiveEnded' : 'dashboard.crewsActive', { count: activeCrewCount, ended: endedCrewCount })
             : i18n.t('dashboard.waitForOperation')
         }}
       </div>

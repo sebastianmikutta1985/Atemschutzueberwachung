@@ -93,6 +93,9 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       logoutTitle: 'Eingaben noch nicht übertragen',
       logoutText: '{count} Eingabe(n) sind noch nicht beim Server. Sie bleiben auf diesem Gerät gespeichert und werden nach der nächsten Anmeldung übertragen. Trotzdem abmelden?'
     },
+    crewCard: {
+      startShort: 'Start'
+    },
     crewState: {
       anmarsch: 'Anmarsch',
       arbeit: 'Am Ziel',
@@ -164,7 +167,8 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       addCrew: 'Trupp hinzufügen',
       board: '3. Dashboard',
       waitForOperation: 'Warte auf Einsatz',
-      crewsActive: '{count} Trupps aktiv',
+      crewsActive: 'Aktiv: {count}',
+      crewsActiveEnded: 'Aktiv: {count} · zurück: {ended}',
       noCrews: 'Noch keine Trupps erfasst.',
       alarm: 'Alarm',
       end: 'Ende',
@@ -420,6 +424,9 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       logoutTitle: 'Entries not sent yet',
       logoutText: '{count} entry(ies) have not reached the server. They stay on this device and are sent after the next sign-in. Sign out anyway?'
     },
+    crewCard: {
+      startShort: 'Start'
+    },
     crewState: {
       anmarsch: 'Approaching',
       arbeit: 'At target',
@@ -491,7 +498,8 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       addCrew: 'Add crew',
       board: '3. Dashboard',
       waitForOperation: 'Waiting for incident',
-      crewsActive: '{count} active crews',
+      crewsActive: 'Active: {count}',
+      crewsActiveEnded: 'Active: {count} · back: {ended}',
       noCrews: 'No crews registered yet.',
       alarm: 'Alarm',
       end: 'End',

@@ -14,76 +14,69 @@ import {
 import { DruckInfo, Trupp, TruppZustand } from './models';
 import { TranslationService } from './translation.service';
 
+interface CrewMember {
+  id: string;
+  role: 'P1' | 'P2';
+  name: string;
+  start: number;
+  current: number;
+  // Letzte Messungen in zeitlicher Reihenfolge (aelteste zuerst), damit der Druckverlauf lesbar ist.
+  readings: DruckInfo[];
+  count: number;
+  lowest: boolean;
+}
+
+// Aufbau: Kopf (Status, Trupp, Zeit), je Geraetetraeger eine Zeile mit aktuellem Druck und Verlauf, unten Aktionen.
 @Component({
   selector: 'app-trupp-card',
   imports: [DatePipe, UpperCasePipe],
-  host: { class: 'trupp trupp--stack', '[attr.data-status]': 'status()' },
+  host: { class: 'trupp trupp--stack crew-card', '[attr.data-status]': 'status()' },
   template: `
-    <div class="trupp__top">
-      <div class="trupp__status" [attr.data-status]="status()">{{ statusLabel() | uppercase }}</div>
-      <div class="trupp__info">
-        <div class="trupp__title">{{ trupp().bezeichnung }}</div>
-        <div class="crew-state" [attr.data-state]="zustand()" role="status">
-          {{ i18n.t('crewState.' + zustand()) }}@if (zustand() !== 'beendet') { · {{ i18n.t('crewState.since', { time: (stateSince() | date: 'HH:mm') ?? '' }) }}}@if (trupp().zustandPending) { · {{ i18n.t('outbox.pendingShort') }}}
+    <header class="crew-card__head">
+      <div class="crew-card__heading">
+        <span class="trupp__status" [attr.data-status]="status()">{{ statusLabel() | uppercase }}</span>
+        <h3 class="crew-card__title">{{ trupp().bezeichnung }}</h3>
+        <div class="crew-card__sub">
+          <span class="crew-state" [attr.data-state]="zustand()">
+            {{ i18n.t('crewState.' + zustand()) }}@if (zustand() !== 'beendet') { · {{ i18n.t('crewState.since', { time: (stateSince() | date: 'HH:mm') ?? '' }) }}}@if (trupp().zustandPending) { · {{ i18n.t('outbox.pendingShort') }}}
+          </span>
+          <span class="muted">{{ i18n.t('dashboard.start') }} {{ trupp().startzeit | date: 'HH:mm' }}</span>
         </div>
-        <div class="muted">{{ i18n.t('dashboard.p1') }}: {{ trupp().person1Name }}</div>
-        <div class="muted">{{ i18n.t('dashboard.p2') }}: {{ trupp().person2Name }}</div>
-        @if (trupp().endPending) {
-          <div class="pending-note" role="status">{{ i18n.t('outbox.endPending') }}</div>
-        }
-        @if (pressureStage(); as stage) {
-          <div class="pressure-due" role="status">
-            {{ i18n.t('dashboard.pressureCheckDue', { fraction: fraction(stage) }) }}
+      </div>
+      <div class="crew-card__time">
+        <div class="crew-card__time-value">{{ timeDisplay() }}</div>
+        <div class="muted">{{ trupp().endzeit ? i18n.t('dashboard.duration') : i18n.t('dashboard.remainingTime') }}</div>
+      </div>
+    </header>
+
+    @if (trupp().endPending) {
+      <div class="pending-note" role="status">{{ i18n.t('outbox.endPending') }}</div>
+    }
+    @if (pressureStage(); as stage) {
+      <div class="pressure-due" role="status">{{ i18n.t('dashboard.pressureCheckDue', { fraction: fraction(stage) }) }}</div>
+    }
+
+    <div class="crew-card__people">
+      @for (p of members(); track p.id) {
+        <div class="crew-member" [class.crew-member--lowest]="p.lowest">
+          <div class="crew-member__line">
+            <span class="crew-member__role">{{ p.role }}</span>
+            <span class="crew-member__name">{{ p.name }}</span>
+            <span class="crew-member__pressure">{{ p.current }} bar</span>
           </div>
-        }
-      </div>
-      <div class="trupp__metrics">
-        <div class="trupp__metric">
-          <div class="muted">{{ trupp().endzeit ? i18n.t('dashboard.duration') : i18n.t('dashboard.remainingTime') }}</div>
-          <div class="metric__value">{{ timeDisplay() }}</div>
+          <div class="crew-member__history">
+            <span>{{ i18n.t('crewCard.startShort') }} {{ p.start }}</span>
+            @for (m of p.readings; track $index) {
+              <span class="crew-member__reading" [class.pending]="m.pending">
+                → {{ m.druckBar }}
+                <span class="muted">({{ m.zeit | date: 'HH:mm' }}@if (m.anlass === 'ziel') {, {{ i18n.t('crewState.atTarget') }}}@if (m.pending) {, {{ i18n.t('outbox.pendingShort') }}})</span>
+              </span>
+            }
+          </div>
         </div>
-        <div class="trupp__metric">
-          <div class="muted">{{ i18n.t('dashboard.lowestPressure') }}</div>
-          <div class="metric__value">{{ lowest() }} bar</div>
-        </div>
-        <div class="trupp__metric">
-          <div class="muted">{{ i18n.t('dashboard.start') }}</div>
-          <div class="metric__value">{{ trupp().startzeit | date: 'HH:mm:ss' }}</div>
-        </div>
-        <div class="trupp__metric">
-          <div class="muted">{{ i18n.t('dashboard.startPressureP1Short') }}</div>
-          <div class="metric__value">{{ trupp().startdruckPerson1Bar }} bar</div>
-          @if (latest1().length) {
-            <div class="muted">
-              {{ i18n.t('dashboard.latestMeasurements') }}
-              <div class="druck-list">
-                @for (m of latest1(); track $index) {
-                  <div [class.pending]="m.pending">
-                    {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}@if (m.anlass === 'ziel') { · {{ i18n.t('crewState.atTarget') }}}@if (m.pending) { · {{ i18n.t('outbox.pendingShort') }}}
-                  </div>
-                }
-              </div>
-            </div>
-          }
-        </div>
-        <div class="trupp__metric">
-          <div class="muted">{{ i18n.t('dashboard.startPressureP2Short') }}</div>
-          <div class="metric__value">{{ trupp().startdruckPerson2Bar }} bar</div>
-          @if (latest2().length) {
-            <div class="muted">
-              {{ i18n.t('dashboard.latestMeasurements') }}
-              <div class="druck-list">
-                @for (m of latest2(); track $index) {
-                  <div [class.pending]="m.pending">
-                    {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}@if (m.anlass === 'ziel') { · {{ i18n.t('crewState.atTarget') }}}@if (m.pending) { · {{ i18n.t('outbox.pendingShort') }}}
-                  </div>
-                }
-              </div>
-            </div>
-          }
-        </div>
-      </div>
+      }
     </div>
+
     <div class="trupp__links">
       <button class="link-button" type="button" (click)="protokoll.emit()">{{ i18n.t('protocol.open') }}</button>
       @if (zustand() === 'anmarsch') {
@@ -93,24 +86,17 @@ import { TranslationService } from './translation.service';
     </div>
     @if (!trupp().endzeit) {
       <div class="trupp__bottom">
-        <button
-          class="ghost"
-          type="button"
-          (click)="pressure.emit(trupp().person1Id)"
-          [disabled]="trupp().druckCountPerson1 >= maxReadings"
-          [class.btn-attention]="(pressureStage() ?? 0) > trupp().druckCountPerson1"
-        >
-          {{ i18n.t('dashboard.pressureP1Button', { count: trupp().druckCountPerson1 }) }}
-        </button>
-        <button
-          class="ghost"
-          type="button"
-          (click)="pressure.emit(trupp().person2Id)"
-          [disabled]="trupp().druckCountPerson2 >= maxReadings"
-          [class.btn-attention]="(pressureStage() ?? 0) > trupp().druckCountPerson2"
-        >
-          {{ i18n.t('dashboard.pressureP2Button', { count: trupp().druckCountPerson2 }) }}
-        </button>
+        @for (p of members(); track p.id) {
+          <button
+            class="ghost"
+            type="button"
+            (click)="pressure.emit(p.id)"
+            [disabled]="p.count >= maxReadings"
+            [class.btn-attention]="(pressureStage() ?? 0) > p.count"
+          >
+            {{ i18n.t(p.role === 'P1' ? 'dashboard.pressureP1Button' : 'dashboard.pressureP2Button', { count: p.count }) }}
+          </button>
+        }
         @switch (next()) {
           @case ('arbeit') {
             <button class="primary" type="button" (click)="zustandChange.emit('arbeit')">{{ i18n.t('crewState.step_arbeit') }}</button>
@@ -139,14 +125,27 @@ export class TruppCardComponent {
 
   readonly status = computed(() => statusFor(this.trupp(), this.now()));
   readonly pressureStage = computed(() => pressureCheckDue(this.trupp(), this.now()));
-  readonly lowest = computed(() => lowestPressure(this.trupp()));
   readonly fraction = pressureCheckFraction;
   readonly zustand = computed<TruppZustand>(() => zustandOf(this.trupp()));
   readonly next = computed(() => nextZustand(this.trupp()));
   readonly stateSince = computed(() => this.trupp().zustandSeit ?? this.trupp().startzeit);
-  // Die Karte zeigt die letzten drei Messungen; alle stehen im Protokoll.
-  readonly latest1 = computed<DruckInfo[]>(() => this.trupp().druckMessungenPerson1.slice(0, 3));
-  readonly latest2 = computed<DruckInfo[]>(() => this.trupp().druckMessungenPerson2.slice(0, 3));
+
+  // Der Trupp richtet sich nach dem Geraet mit dem niedrigsten Druck: diese Person wird hervorgehoben.
+  readonly members = computed<CrewMember[]>(() => {
+    const t = this.trupp();
+    const lowest = lowestPressure(t);
+    const member = (id: string, role: 'P1' | 'P2', name: string, start: number, newestFirst: DruckInfo[], count: number) => {
+      const current = newestFirst[0]?.druckBar ?? start;
+      return { id, role, name, start, current, readings: newestFirst.slice(0, 3).reverse(), count, lowest: current === lowest };
+    };
+    const p1 = member(t.person1Id, 'P1', t.person1Name, t.startdruckPerson1Bar, t.druckMessungenPerson1, t.druckCountPerson1);
+    const p2 = member(t.person2Id, 'P2', t.person2Name, t.startdruckPerson2Bar, t.druckMessungenPerson2, t.druckCountPerson2);
+    // Bei gleichem Druck niemanden hervorheben.
+    if (p1.current === p2.current) {
+      p1.lowest = p2.lowest = false;
+    }
+    return [p1, p2];
+  });
 
   readonly timeDisplay = computed(() => {
     const trupp = this.trupp();
