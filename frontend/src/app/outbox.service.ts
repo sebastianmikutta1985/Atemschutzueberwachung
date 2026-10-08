@@ -11,7 +11,7 @@ import type { TruppZustand } from './models';
 // Wiederholungen) und ihre Erfassungszeit (Uhr mit dem Server abgeglichen).
 
 export type OutboxKind = 'druck' | 'zustand' | 'end' | 'event';
-export type AlarmEventType = 'warn' | 'max' | 'warn_ack' | 'max_ack';
+export type AlarmEventType = 'warn' | 'max' | 'warn_ack' | 'max_ack' | 'mayday' | 'mayday_info' | 'mayday_ende';
 
 export interface OutboxItem {
   id: string;
@@ -26,6 +26,10 @@ export interface OutboxItem {
   zustand?: Exclude<TruppZustand, 'anmarsch' | 'beendet'>;
   zielDruck?: { id: string; personId: string; personName: string; druckBar: number }[];
   druckNichtGemeldet?: boolean;
+  // Mayday: Angaben (alle optional) bzw. Notiz zum Ende.
+  position?: string;
+  restdruck?: number;
+  nachricht?: string;
   // Erfassungszeit (UTC, ISO)
   zeit: string;
   // Vom Server abgelehnt: bleibt sichtbar, bis es verworfen wird.
@@ -85,19 +89,25 @@ export class OutboxService {
 
   // Speichert die Eingabe und sendet sie sofort, wenn nichts anderes wartet. Stehen aeltere Eingaben aus,
   // wird sie hinten angestellt, damit die Reihenfolge erhalten bleibt.
+  // Ein Mayday wartet auf nichts: er steht vorn in der Warteschlange und wird sofort gesendet, auch wenn gerade
+  // andere Eingaben uebertragen werden (doppeltes Senden ist unschaedlich, der Server erkennt die ID).
   async submit(item: OutboxItem): Promise<SubmitResult> {
+    const urgent = item.typ === 'mayday';
     const queueWasEmpty = this.waiting().length === 0;
-    this.update((list) => [...list, item]);
-    if (!queueWasEmpty || this.flushing) {
+    this.update((list) => (urgent ? [item, ...list] : [...list, item]));
+    if (!urgent && (!queueWasEmpty || this.flushing)) {
       this.flush();
       return { status: 'queued' };
     }
+    const takesLock = !this.flushing;
     this.flushing = true;
     let outcome: SendOutcome;
     try {
       outcome = await this.send(item);
     } finally {
-      this.flushing = false;
+      if (takesLock) {
+        this.flushing = false;
+      }
     }
     if (outcome === 'sent') {
       this.markSent(item.id);
@@ -185,7 +195,15 @@ export class OutboxService {
             })
           : item.kind === 'end'
             ? this.http.post(`${url}/beenden`, { endzeit: item.zeit })
-            : this.http.post(`${url}/events`, { typ: item.typ, id: item.id, zeit: item.zeit });
+            : this.http.post(`${url}/events`, {
+                typ: item.typ,
+                id: item.id,
+                zeit: item.zeit,
+                // Nur bei Mayday-Eintraegen gesetzt; undefined faellt beim Senden weg.
+                nachricht: item.nachricht,
+                position: item.position,
+                restdruck: item.restdruck
+              });
     try {
       await firstValueFrom(request.pipe(timeout(10000)));
       return 'sent';

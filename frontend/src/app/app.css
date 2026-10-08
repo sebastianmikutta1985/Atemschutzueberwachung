@@ -1782,3 +1782,172 @@ textarea:focus {
 .crew-card .trupp__bottom button.primary {
   grid-column: 1 / -1;
 }
+
+/* ---------- Mayday ---------- */
+
+/* Offene Maydays: oben auf jeder Seite, im Fluss (schiebt den Inhalt nach unten) und beim Scrollen sichtbar */
+.mayday-banner {
+  position: sticky;
+  top: 0;
+  z-index: 59;
+  display: grid;
+  gap: 1px;
+  background: #7f1414;
+  box-shadow: 0 10px 28px -12px rgba(0, 0, 0, 0.8);
+}
+
+.mayday-banner__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 16px;
+  background: var(--danger);
+  color: #fff;
+  animation: maydayFlash 1.2s ease-in-out infinite;
+}
+
+.mayday-banner__text {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.mayday-banner__text strong {
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+}
+
+.mayday-banner__offline,
+.crew-mayday__offline {
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #fff;
+  color: #8f1717;
+}
+
+.mayday-banner__actions,
+.crew-mayday__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mayday-banner__actions .ghost,
+.crew-mayday__actions .ghost {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.18);
+  padding: 8px 12px;
+}
+
+@keyframes maydayFlash {
+  0%,
+  100% {
+    background: var(--danger);
+  }
+  50% {
+    background: #a51f1f;
+  }
+}
+
+/* Vollbild-Alarm */
+.modal--mayday .modal__backdrop {
+  background: rgba(120, 10, 10, 0.55);
+}
+
+.modal__panel--mayday {
+  min-width: min(560px, 92vw);
+  padding: 32px 28px;
+  border: 3px solid var(--danger);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--danger) 40%, transparent), 0 20px 46px -30px rgba(0, 0, 0, 0.7);
+  text-align: center;
+}
+
+.modal__panel--mayday .modal__actions {
+  justify-content: center;
+}
+
+.modal__panel--mayday .alarm-crew {
+  font-size: 2rem;
+}
+
+.mayday-title {
+  font-size: clamp(2.4rem, 8vw, 3.6rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: var(--danger);
+}
+
+/* Karte mit offenem Mayday */
+.crew-card[data-mayday='aktiv'] {
+  border: 2px solid var(--danger);
+  animation: pulseDanger 1s ease-in-out infinite;
+}
+
+.crew-mayday {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--danger);
+  color: #fff;
+}
+
+.crew-mayday__text {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  align-items: baseline;
+}
+
+.crew-mayday__text strong {
+  letter-spacing: 0.06em;
+}
+
+/* Mayday ausloesen: eine Sekunde halten, der Balken zeigt den Fortschritt */
+.mayday-hold {
+  position: relative;
+  overflow: hidden;
+  margin-left: auto;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 2px solid var(--danger);
+  background: rgba(194, 58, 58, 0.12);
+  color: #ffb4b4;
+  font-weight: 800;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.mayday-hold__fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: var(--danger);
+}
+
+.mayday-hold--active .mayday-hold__fill {
+  width: 100%;
+  transition: width 1s linear;
+}
+
+.mayday-hold__label {
+  position: relative;
+}
+
+.mayday-hold--active {
+  color: #fff;
+}
+
+.crew-card .trupp__links {
+  align-items: center;
+}

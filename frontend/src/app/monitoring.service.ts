@@ -27,6 +27,24 @@ export interface AlarmState {
   ackReady: boolean;
 }
 
+export interface MaydayDialog {
+  truppId: string;
+  truppName: string;
+  // info = Angaben ergaenzen (alle optional), ende = Mayday beenden (Notiz Pflicht)
+  mode: 'info' | 'ende';
+  position: string;
+  restdruck: number | null;
+  funkspruch: string;
+  note: string;
+  error: string;
+  saving: boolean;
+}
+
+// Ein Mayday ist eindeutig ueber Trupp und Ausloesezeit (ein Trupp kann mehrmals Mayday melden).
+export function maydayKey(trupp: Trupp): string {
+  return `${trupp.id}:${Date.parse(trupp.maydaySeit ?? '')}`;
+}
+
 export interface Toast {
   id: number;
   text: string;
@@ -59,6 +77,13 @@ export class MonitoringService {
   readonly running = signal(false);
   // Verbindung zum Server seit mindestens 5 s weg (kein Netz oder Live-Verbindung getrennt).
   readonly connectionLost = signal(false);
+  // Offene Maydays (auch bei bereits zurueckgemeldeten Trupps, bis "Mayday beendet" erfasst ist).
+  readonly maydays = computed(() => this.trupps().filter((t) => t.maydayAktiv));
+  // Auf diesem Geraet mit "Gesehen" bestaetigt: Ton aus, Vollbild-Alarm weg; der rote Hinweis bleibt.
+  private readonly maydaySeen = signal<ReadonlySet<string>>(new Set());
+  readonly unseenMayday = computed(() => this.maydays().find((t) => !this.maydaySeen().has(maydayKey(t))) ?? null);
+  readonly maydayDialog = signal<MaydayDialog | null>(null);
+  private lastMaydayTone = 0;
   // Gesetzt, wenn statt Serverdaten der lokale Schnappschuss angezeigt wird (Neuladen ohne Netz): Zeitpunkt des Stands.
   readonly snapshotFrom = signal<string | null>(null);
   private snapshotKey: string | null = null;
@@ -115,7 +140,7 @@ export class MonitoringService {
     });
     window.addEventListener('online', this.onOnline);
     this.unsubscribeRealtime = this.realtime.onUpdate((type) => {
-      if (type === 'einsatz' || type === 'trupp' || type === 'druck') {
+      if (type === 'einsatz' || type === 'trupp' || type === 'druck' || type === 'mayday') {
         this.refresh();
       }
     });
@@ -129,6 +154,7 @@ export class MonitoringService {
         this.audioLocked.set(!this.audioCtx || this.audioCtx.state !== 'running');
         this.updateConnectionState();
         this.checkThresholds();
+        this.soundMayday();
       });
     }, 1000);
     this.refresh();
@@ -167,6 +193,8 @@ export class MonitoringService {
     this.lastWarnAlert = {};
     this.lastMaxAlert = {};
     this.remindedPressureChecks.clear();
+    this.maydaySeen.set(new Set());
+    this.maydayDialog.set(null);
   }
 
   refresh(): void {
@@ -276,6 +304,104 @@ export class MonitoringService {
           this.notify(result.error, 'warn');
         }
       });
+  }
+
+  // Mayday ausloesen: sofort lokal sichtbar (auch offline), vor allen anderen Eingaben uebertragen.
+  // Auf dem ausloesenden Geraet gilt er als gesehen; stattdessen oeffnen sich die (optionalen) Angaben.
+  triggerMayday(trupp: Trupp): void {
+    const zeit = this.outbox.nowIso();
+    this.maydaySeen.update((seen) => new Set(seen).add(`${trupp.id}:${Date.parse(zeit)}`));
+    this.outbox
+      .submit({ id: this.outbox.newId(), kind: 'event', truppId: trupp.id, truppName: trupp.bezeichnung, typ: 'mayday', zeit })
+      .then((result) => {
+        if (result.status === 'rejected') {
+          this.notify(result.error, 'max');
+        }
+      });
+    this.vibrate([400, 150, 400]);
+    this.openMaydayDialog(trupp, 'info');
+  }
+
+  markMaydaySeen(trupp: Trupp): void {
+    this.maydaySeen.update((seen) => new Set(seen).add(maydayKey(trupp)));
+  }
+
+  // Eigener Mayday noch nicht beim Server: andere Geraete sind nicht informiert.
+  maydayNotSent(truppId: string): boolean {
+    return this.outbox.waiting().some((i) => i.truppId === truppId && i.typ === 'mayday');
+  }
+
+  openMaydayDialog(trupp: Trupp, mode: 'info' | 'ende'): void {
+    this.maydayDialog.set({
+      truppId: trupp.id,
+      truppName: trupp.bezeichnung,
+      mode,
+      position: trupp.maydayPosition ?? '',
+      restdruck: trupp.maydayRestdruck ?? null,
+      funkspruch: trupp.maydayFunkspruch ?? '',
+      note: '',
+      error: '',
+      saving: false
+    });
+  }
+
+  closeMaydayDialog(): void {
+    this.maydayDialog.set(null);
+  }
+
+  async saveMaydayDialog(): Promise<void> {
+    const dialog = this.maydayDialog();
+    if (!dialog || dialog.saving) {
+      return;
+    }
+    const base = { id: this.outbox.newId(), kind: 'event' as const, truppId: dialog.truppId, truppName: dialog.truppName, zeit: this.outbox.nowIso() };
+    let item;
+    if (dialog.mode === 'ende') {
+      const note = dialog.note.trim();
+      if (note.length < 3) {
+        this.maydayDialog.set({ ...dialog, error: this.i18n.t('mayday.endNoteRequired') });
+        return;
+      }
+      item = { ...base, typ: 'mayday_ende' as const, nachricht: note };
+    } else {
+      const restdruck = dialog.restdruck === null || (dialog.restdruck as unknown) === '' ? undefined : Number(dialog.restdruck);
+      if (restdruck !== undefined && (!Number.isFinite(restdruck) || restdruck < 0 || restdruck > 400)) {
+        this.maydayDialog.set({ ...dialog, error: this.i18n.t('mayday.pressureInvalid') });
+        return;
+      }
+      const position = dialog.position.trim() || undefined;
+      const nachricht = dialog.funkspruch.trim() || undefined;
+      if (position === undefined && restdruck === undefined && nachricht === undefined) {
+        // Nichts eingetragen: Angaben sind optional.
+        this.maydayDialog.set(null);
+        return;
+      }
+      item = { ...base, typ: 'mayday_info' as const, position, restdruck, nachricht };
+    }
+    this.maydayDialog.set({ ...dialog, saving: true, error: '' });
+    const result = await this.outbox.submit(item);
+    if (result.status === 'rejected') {
+      this.maydayDialog.set({ ...dialog, saving: false, error: result.error });
+      return;
+    }
+    this.maydayDialog.set(null);
+    if (result.status === 'queued') {
+      this.notify(this.i18n.t('outbox.savedOffline'), 'warn');
+    }
+  }
+
+  // Dauerton, solange ein Mayday auf diesem Geraet nicht als gesehen bestaetigt ist.
+  private soundMayday(): void {
+    if (!this.unseenMayday()) {
+      return;
+    }
+    const now = Date.now();
+    if (now - this.lastMaydayTone < 2000) {
+      return;
+    }
+    this.lastMaydayTone = now;
+    this.playBeep(4, true);
+    this.vibrate([300, 100, 300, 100, 300]);
   }
 
   // Ein gemeinsamer AudioContext, freigeschaltet bei der ersten Beruehrung/Taste. Neue Contexts ohne

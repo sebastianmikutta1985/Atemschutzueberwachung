@@ -138,4 +138,34 @@ describe('OutboxService', () => {
     ackReq.flush({});
     await ack;
   });
+
+  it('puts a mayday ahead of waiting entries and sends its details', async () => {
+    const first = outbox.submit(reading('m1'));
+    http.expectOne('/api/trupps/t1/druckmessungen').error(new ProgressEvent('error'), { status: 0 });
+    await first;
+    outbox.submit(reading('m2', 240));
+    const mayday = outbox.submit({
+      id: 'x1',
+      kind: 'event',
+      truppId: 't1',
+      truppName: 'AT',
+      typ: 'mayday',
+      position: '2. OG',
+      restdruck: 120,
+      zeit: '2026-09-26T10:22:00.000Z'
+    });
+    expect(outbox.waiting().map((i) => i.id)).toEqual(['x1', 'm1', 'm2']);
+
+    // Waehrend m1 noch uebertragen wird, geht der Mayday sofort hinaus.
+    const req = http.expectOne('/api/trupps/t1/events');
+    expect(req.request.body).toEqual({ typ: 'mayday', id: 'x1', zeit: '2026-09-26T10:22:00.000Z', position: '2. OG', restdruck: 120 });
+    req.flush({});
+    expect(await mayday).toEqual({ status: 'sent' });
+
+    http.expectOne('/api/trupps/t1/druckmessungen').flush({});
+    await settle();
+    http.expectOne('/api/trupps/t1/druckmessungen').flush({});
+    await settle();
+    expect(outbox.waiting().length).toBe(0);
+  });
 });

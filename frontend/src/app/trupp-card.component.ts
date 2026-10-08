@@ -1,5 +1,5 @@
 import { DatePipe, UpperCasePipe } from '@angular/common';
-import { Component, computed, inject, input, output } from '@angular/core';
+import { Component, computed, inject, input, OnDestroy, output, signal } from '@angular/core';
 import {
   elapsedSeconds,
   formatMinSec,
@@ -30,7 +30,11 @@ interface CrewMember {
 @Component({
   selector: 'app-trupp-card',
   imports: [DatePipe, UpperCasePipe],
-  host: { class: 'trupp trupp--stack crew-card', '[attr.data-status]': 'status()' },
+  host: {
+    class: 'trupp trupp--stack crew-card',
+    '[attr.data-status]': 'status()',
+    '[attr.data-mayday]': "trupp().maydayAktiv ? 'aktiv' : null"
+  },
   template: `
     <header class="crew-card__head">
       <div class="crew-card__heading">
@@ -48,6 +52,31 @@ interface CrewMember {
         <div class="muted">{{ trupp().endzeit ? i18n.t('dashboard.duration') : i18n.t('dashboard.remainingTime') }}</div>
       </div>
     </header>
+
+    @if (trupp().maydayAktiv) {
+      <div class="crew-mayday" role="alert">
+        <div class="crew-mayday__text">
+          <strong>MAYDAY</strong>
+          <span>{{ i18n.t('mayday.since', { time: (trupp().maydaySeit | date: 'HH:mm:ss') ?? '' }) }}</span>
+          @if (trupp().maydayPosition) {
+            <span>{{ i18n.t('mayday.position') }}: {{ trupp().maydayPosition }}</span>
+          }
+          @if (trupp().maydayRestdruck !== null && trupp().maydayRestdruck !== undefined) {
+            <span>{{ i18n.t('mayday.pressure') }}: {{ trupp().maydayRestdruck }} bar</span>
+          }
+          @if (trupp().maydayFunkspruch) {
+            <span>„{{ trupp().maydayFunkspruch }}“</span>
+          }
+        </div>
+        @if (trupp().maydayPending) {
+          <div class="crew-mayday__offline">{{ i18n.t('mayday.notSent') }}</div>
+        }
+        <div class="crew-mayday__actions">
+          <button class="ghost" type="button" (click)="maydayInfo.emit()">{{ i18n.t('mayday.addInfo') }}</button>
+          <button class="ghost" type="button" (click)="maydayEnd.emit()">{{ i18n.t('mayday.end') }}</button>
+        </div>
+      </div>
+    }
 
     @if (trupp().endPending) {
       <div class="pending-note" role="status">{{ i18n.t('outbox.endPending') }}</div>
@@ -83,6 +112,27 @@ interface CrewMember {
         <!-- Abbruch vor Erreichen des Ziels: direkt in den Rueckweg -->
         <button class="link-button" type="button" (click)="zustandChange.emit('rueckweg')">{{ i18n.t('crewState.abort') }}</button>
       }
+      @if (!trupp().endzeit && !trupp().maydayAktiv) {
+        <!-- Eine Sekunde halten statt Rueckfrage: im Notfall schnell, aber nicht durch einen versehentlichen Tipp -->
+        <button
+          class="mayday-hold"
+          type="button"
+          [class.mayday-hold--active]="holding()"
+          [attr.aria-label]="i18n.t('mayday.holdAria')"
+          (pointerdown)="startHold()"
+          (pointerup)="cancelHold()"
+          (pointerleave)="cancelHold()"
+          (pointercancel)="cancelHold()"
+          (keydown.space)="$event.preventDefault(); startHold()"
+          (keyup.space)="cancelHold()"
+          (keydown.enter)="$event.preventDefault(); startHold()"
+          (keyup.enter)="cancelHold()"
+          (contextmenu)="$event.preventDefault()"
+        >
+          <span class="mayday-hold__fill" aria-hidden="true"></span>
+          <span class="mayday-hold__label">{{ i18n.t('mayday.hold') }}</span>
+        </button>
+      }
     </div>
     @if (!trupp().endzeit) {
       <div class="trupp__bottom">
@@ -112,7 +162,7 @@ interface CrewMember {
     }
   `
 })
-export class TruppCardComponent {
+export class TruppCardComponent implements OnDestroy {
   readonly i18n = inject(TranslationService);
   readonly trupp = input.required<Trupp>();
   readonly now = input.required<number>();
@@ -120,6 +170,13 @@ export class TruppCardComponent {
   readonly end = output<void>();
   readonly zustandChange = output<'arbeit' | 'rueckweg'>();
   readonly protokoll = output<void>();
+  readonly mayday = output<void>();
+  readonly maydayInfo = output<void>();
+  readonly maydayEnd = output<void>();
+  // Mayday-Knopf wird gerade gehalten (Fortschrittsbalken laeuft).
+  readonly holding = signal(false);
+  private holdTimer?: number;
+  static readonly maydayHoldMs = 1000;
   // Wie im Backend: Schutz vor Fehleingaben.
   readonly maxReadings = 20;
 
@@ -146,6 +203,28 @@ export class TruppCardComponent {
     }
     return [p1, p2];
   });
+
+  startHold(): void {
+    if (this.holdTimer !== undefined) {
+      return;
+    }
+    this.holding.set(true);
+    this.holdTimer = window.setTimeout(() => {
+      this.holdTimer = undefined;
+      this.holding.set(false);
+      this.mayday.emit();
+    }, TruppCardComponent.maydayHoldMs);
+  }
+
+  cancelHold(): void {
+    window.clearTimeout(this.holdTimer);
+    this.holdTimer = undefined;
+    this.holding.set(false);
+  }
+
+  ngOnDestroy(): void {
+    this.cancelHold();
+  }
 
   readonly timeDisplay = computed(() => {
     const trupp = this.trupp();

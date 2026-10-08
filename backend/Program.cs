@@ -885,6 +885,7 @@ orgApi.MapGet("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpC
             .Where(m => m.TruppId == t.Id && m.PersonId == t.Person2Id)
             .Select(m => new DruckInfo(m.DruckBar, m.Zeit, m.Anlass))
             .ToArray();
+        var mayday = MaydayOf(alarmEvents.Where(e => e.TruppId == t.Id));
         var warnAcked = alarmEvents.Any(e => e.TruppId == t.Id && e.Typ == "warn_ack");
         var maxAcked = alarmEvents.Any(e => e.TruppId == t.Id && e.Typ == "max_ack");
 
@@ -909,7 +910,12 @@ orgApi.MapGet("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpC
             warnAcked,
             maxAcked,
             Api.ZustandOf(t),
-            t.ZustandSeit
+            t.ZustandSeit,
+            mayday.Aktiv,
+            mayday.Seit,
+            mayday.Position,
+            mayday.Restdruck,
+            mayday.Funkspruch
         );
     }).ToList();
 
@@ -1000,14 +1006,38 @@ orgApi.MapPost("/trupps/{id:guid}/events", async (Guid id, HttpContext http, Ala
     }
 
     var type = (dto.Typ ?? string.Empty).Trim().ToLowerInvariant();
-    if (type is not ("warn" or "max" or "warn_ack" or "max_ack"))
+    if (type is not ("warn" or "max" or "warn_ack" or "max_ack" or "mayday" or "mayday_info" or "mayday_ende"))
     {
         return Results.BadRequest(new { error = "Unbekannter Event-Typ." });
     }
+    var isMayday = type == "mayday";
     var nachricht = string.IsNullOrWhiteSpace(dto.Nachricht) ? null : Api.Clean(dto.Nachricht);
+    // Ein Mayday wird nie abgewiesen: zu lange Angaben werden gekuerzt statt abgelehnt.
     if (nachricht?.Length > 500)
     {
-        return Api.Bad("Nachricht darf hoechstens 500 Zeichen lang sein.");
+        if (!isMayday)
+        {
+            return Api.Bad("Nachricht darf hoechstens 500 Zeichen lang sein.");
+        }
+        nachricht = nachricht[..500];
+    }
+    var position = string.IsNullOrWhiteSpace(dto.Position) ? null : Api.Clean(dto.Position);
+    if (position?.Length > 200)
+    {
+        if (!isMayday)
+        {
+            return Api.Bad("Position darf hoechstens 200 Zeichen lang sein.");
+        }
+        position = position[..200];
+    }
+    var restdruck = dto.Restdruck is >= 0 and <= Api.MaxDruckBar ? dto.Restdruck : null;
+    if (dto.Restdruck != null && restdruck == null && !isMayday)
+    {
+        return Api.Bad($"Restdruck muss zwischen 0 und {Api.MaxDruckBar} bar liegen.");
+    }
+    if (type == "mayday_ende" && (nachricht == null || nachricht.Length < 3))
+    {
+        return Api.Bad("Bitte eine Notiz zum Ende des Maydays angeben (mindestens 3 Zeichen).");
     }
 
     // Wiederholte Uebertragung aus der Offline-Warteschlange: nichts doppelt anlegen.
@@ -1022,10 +1052,42 @@ orgApi.MapPost("/trupps/{id:guid}/events", async (Guid id, HttpContext http, Ala
         }
     }
 
+    var daten = new Dictionary<string, object>();
     var timeError = Api.CheckClientTime(dto.Zeit, trupp.Startzeit, out var zeit);
     if (timeError != null)
     {
-        return Api.Bad(timeError);
+        if (!isMayday)
+        {
+            return Api.Bad(timeError);
+        }
+        // Unplausible Geraetezeit: Mayday trotzdem annehmen, mit Serverzeit und Vermerk im Protokoll.
+        zeit = DateTime.UtcNow;
+        daten["zeitKorrigiert"] = true;
+    }
+
+    if (type is "mayday_info" or "mayday_ende")
+    {
+        var truppEvents = await db.AlarmEvents
+            .Where(e => e.OrganizationId == auth.OrgId && e.TruppId == id && e.Typ.StartsWith("mayday"))
+            .ToListAsync();
+        var mayday = MaydayOf(truppEvents);
+        if (type == "mayday_ende" && !mayday.Aktiv)
+        {
+            return Api.Bad("Fuer diesen Trupp ist kein Mayday offen.");
+        }
+        if (type == "mayday_info" && mayday.Seit == null)
+        {
+            return Api.Bad("Fuer diesen Trupp wurde kein Mayday ausgeloest.");
+        }
+    }
+
+    if (position != null)
+    {
+        daten["position"] = position;
+    }
+    if (restdruck != null)
+    {
+        daten["restdruck"] = restdruck.Value;
     }
 
     var ev = new AlarmEvent
@@ -1036,12 +1098,18 @@ orgApi.MapPost("/trupps/{id:guid}/events", async (Guid id, HttpContext http, Ala
         Typ = type,
         Zeit = zeit,
         Nachricht = nachricht,
+        Daten = daten.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(daten) : null,
         ErfasstAm = DateTime.UtcNow
     };
 
     db.AlarmEvents.Add(ev);
     await db.SaveChangesAsync();
-    if (type.EndsWith("_ack"))
+    if (type.StartsWith("mayday"))
+    {
+        // Eigener Typ, damit alle Geraete sofort neu laden und alarmieren.
+        await NotifyOrgAsync(hub, auth.OrgId, "mayday");
+    }
+    else if (type.EndsWith("_ack"))
     {
         // Quittierung auf allen Geraeten der Organisation sichtbar machen.
         await NotifyOrgAsync(hub, auth.OrgId, "trupp");
@@ -1771,9 +1839,9 @@ static async Task<List<TruppProtokoll>> BuildProtokoll(AppDbContext db, Guid org
             m.Zeit, "druck", null, m.PersonId == t.Person1Id ? t.Person1Name : t.Person2Name, m.DruckBar, m.Anlass, null, false)));
         eintraege.AddRange(events.Where(e => e.TruppId == t.Id).Select(e =>
         {
-            var (zustand, druckNichtGemeldet) = ProtokollDaten(e.Daten);
-            return new ProtokollEintrag(e.Zeit, e.Typ, zustand, null, null, null, e.Nachricht,
-                Nachgetragen(e.Zeit, e.ErfasstAm), druckNichtGemeldet);
+            var d = ProtokollDaten(e.Daten);
+            return new ProtokollEintrag(e.Zeit, e.Typ, d.Zustand, null, d.Restdruck, null, e.Nachricht,
+                Nachgetragen(e.Zeit, e.ErfasstAm), d.DruckNichtGemeldet, d.Position, d.ZeitKorrigiert);
         }));
         if (t.Endzeit is { } ende)
         {
@@ -1786,24 +1854,53 @@ static async Task<List<TruppProtokoll>> BuildProtokoll(AppDbContext db, Guid org
     }).ToList();
 }
 
-static (string? Zustand, bool DruckNichtGemeldet) ProtokollDaten(string? daten)
+static EventDaten ProtokollDaten(string? daten)
 {
     if (string.IsNullOrEmpty(daten))
     {
-        return (null, false);
+        return new EventDaten();
     }
     try
     {
         using var json = System.Text.Json.JsonDocument.Parse(daten);
         var root = json.RootElement;
-        var zustand = root.TryGetProperty("zustand", out var z) ? z.GetString() : null;
-        var nichtGemeldet = root.TryGetProperty("druckNichtGemeldet", out var n) && n.ValueKind == System.Text.Json.JsonValueKind.True;
-        return (zustand, nichtGemeldet);
+        static bool IsTrue(System.Text.Json.JsonElement root, string name) =>
+            root.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.True;
+        return new EventDaten(
+            root.TryGetProperty("zustand", out var z) ? z.GetString() : null,
+            IsTrue(root, "druckNichtGemeldet"),
+            root.TryGetProperty("position", out var p) ? p.GetString() : null,
+            root.TryGetProperty("restdruck", out var r) && r.TryGetInt32(out var bar) ? bar : null,
+            IsTrue(root, "zeitKorrigiert"));
     }
     catch (System.Text.Json.JsonException)
     {
-        return (null, false);
+        return new EventDaten();
     }
+}
+
+// Offener Mayday eines Trupps aus seinen Ereignissen: "mayday" oeffnet (neue Angaben), "mayday_info" ergaenzt,
+// "mayday_ende" schliesst. Ein spaeterer Mayday desselben Trupps beginnt von vorn.
+static MaydayStatus MaydayOf(IEnumerable<AlarmEvent> events)
+{
+    var status = new MaydayStatus(false, null, null, null, null);
+    foreach (var e in events.Where(e => e.Typ.StartsWith("mayday")).OrderBy(e => e.Zeit))
+    {
+        var d = ProtokollDaten(e.Daten);
+        status = e.Typ switch
+        {
+            "mayday" => new MaydayStatus(true, e.Zeit, d.Position, d.Restdruck, e.Nachricht),
+            "mayday_info" => status with
+            {
+                Position = d.Position ?? status.Position,
+                Restdruck = d.Restdruck ?? status.Restdruck,
+                Funkspruch = e.Nachricht ?? status.Funkspruch
+            },
+            "mayday_ende" => status with { Aktiv = false },
+            _ => status
+        };
+    }
+    return status;
 }
 
 static async Task NotifyOrgAsync(IHubContext<UpdatesHub> hub, Guid orgId, string type)
@@ -2314,7 +2411,13 @@ record TruppNameUpdate(string? Name, bool Aktiv, int OrderIndex);
 record TruppNameReorder(Guid[] Ids);
 // Id und Zeit sind optional: gesetzt von der Offline-Warteschlange des Frontends (idempotent, Erfassungszeit).
 record DruckmessungCreate(Guid PersonId, int DruckBar, Guid? Id = null, DateTime? Zeit = null);
-record AlarmEventCreate(string? Typ, string? Nachricht, Guid? Id = null, DateTime? Zeit = null);
+record AlarmEventCreate(
+    string? Typ,
+    string? Nachricht,
+    Guid? Id = null,
+    DateTime? Zeit = null,
+    string? Position = null,
+    int? Restdruck = null);
 record TruppEnd(DateTime? Endzeit);
 record ZustandDruck(Guid PersonId, int DruckBar, Guid? Id = null);
 record TruppZustandCreate(string? Zustand, Guid? Id = null, DateTime? Zeit = null, ZustandDruck[]? Druck = null, bool DruckNichtGemeldet = false);
@@ -2373,7 +2476,12 @@ record TruppDto(
     bool WarnAcked,
     bool MaxAcked,
     string Zustand,
-    DateTime? ZustandSeit
+    DateTime? ZustandSeit,
+    bool MaydayAktiv,
+    DateTime? MaydaySeit,
+    string? MaydayPosition,
+    int? MaydayRestdruck,
+    string? MaydayFunkspruch
 );
 
 record DruckInfo(int DruckBar, DateTime Zeit, string? Anlass = null);
@@ -2386,6 +2494,15 @@ record ProtokollEintrag(
     string? Anlass,
     string? Nachricht,
     bool Nachgetragen,
-    bool DruckNichtGemeldet = false);
+    bool DruckNichtGemeldet = false,
+    string? Position = null,
+    bool ZeitKorrigiert = false);
+record EventDaten(
+    string? Zustand = null,
+    bool DruckNichtGemeldet = false,
+    string? Position = null,
+    int? Restdruck = null,
+    bool ZeitKorrigiert = false);
+record MaydayStatus(bool Aktiv, DateTime? Seit, string? Position, int? Restdruck, string? Funkspruch);
 record TruppProtokoll(Guid TruppId, string Bezeichnung, string Person1Name, string Person2Name, List<ProtokollEintrag> Eintraege);
 
