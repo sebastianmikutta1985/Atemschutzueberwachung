@@ -552,7 +552,8 @@ button:not(:disabled):active {
 }
 
 .list__body--grid {
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  /* auto-fill: wenige Trupps werden nicht auf die ganze Breite gezogen */
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   gap: 22px;
 }
 
@@ -1628,4 +1629,156 @@ textarea:focus {
 .protocol-list li[data-typ='max'],
 .protocol-list li[data-typ='warn'] {
   border-left: 3px solid var(--warn);
+}
+
+/* Trupp-Karte: Kopf mit Status, Trupp und Zeit; je Geraetetraeger eine Zeile mit Druckverlauf */
+.crew-card {
+  gap: 12px;
+}
+
+.crew-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.crew-card__heading {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  justify-items: start;
+}
+
+.crew-card__heading .trupp__status {
+  padding: 4px 10px;
+  font-size: 0.7rem;
+}
+
+.crew-card__title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--ink-900);
+  overflow-wrap: anywhere;
+}
+
+.crew-card__sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 0.85rem;
+}
+
+.crew-card__sub .crew-state {
+  margin-top: 0;
+}
+
+.crew-card__time {
+  text-align: right;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+}
+
+.crew-card__time-value {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-900);
+}
+
+.crew-card[data-status='gelb'] .crew-card__time-value {
+  color: var(--warn);
+}
+
+.crew-card[data-status='rot'] .crew-card__time-value {
+  color: var(--danger);
+}
+
+.crew-card__people {
+  display: grid;
+  gap: 8px;
+}
+
+.crew-member {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid transparent;
+}
+
+/* Geraet mit dem niedrigsten Druck: danach richtet sich der Trupp */
+.crew-member--lowest {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.crew-member__line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.crew-member__role {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-500);
+}
+
+.crew-member__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-700);
+}
+
+.crew-member__pressure {
+  font-size: 1.15rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-900);
+  white-space: nowrap;
+}
+
+.crew-member__history {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-size: 0.8rem;
+  color: var(--ink-500);
+  font-variant-numeric: tabular-nums;
+}
+
+.crew-member__reading.pending {
+  font-style: italic;
+  color: var(--warn);
+}
+
+/* Beendete Trupps treten zurueck, bleiben aber lesbar */
+.crew-card[data-status='beendet'] {
+  background: rgba(40, 28, 24, 0.35);
+}
+
+.crew-card[data-status='beendet'] .crew-card__time-value,
+.crew-card[data-status='beendet'] .crew-member__pressure {
+  color: var(--ink-600);
+}
+
+.crew-card .trupp__links {
+  margin-top: auto;
+}
+
+/* Druck-Knoepfe nebeneinander, naechster Schritt darunter ueber die volle Breite */
+.crew-card .trupp__bottom {
+  grid-template-columns: 1fr 1fr;
+}
+
+.crew-card .trupp__bottom button.primary {
+  grid-column: 1 / -1;
 }
