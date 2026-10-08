@@ -8,6 +8,7 @@ import {
   pressureCheckDue,
   pressureCheckFraction,
   remainingSeconds,
+  retreatInfo,
   statusFor,
   zustandOf
 } from './crew-status';
@@ -24,6 +25,9 @@ interface CrewMember {
   readings: DruckInfo[];
   count: number;
   lowest: boolean;
+  // Rueckzugsdruck dieser Person (nur am Ziel) und ob er erreicht ist
+  retreatBar: number | null;
+  retreatReached: boolean;
 }
 
 // Aufbau: Kopf (Status, Trupp, Zeit), je Geraetetraeger eine Zeile mit aktuellem Druck und Verlauf, unten Aktionen.
@@ -45,6 +49,14 @@ interface CrewMember {
             {{ i18n.t('crewState.' + zustand()) }}@if (zustand() !== 'beendet') { · {{ i18n.t('crewState.since', { time: (stateSince() | date: 'HH:mm') ?? '' }) }}}@if (trupp().zustandPending) { · {{ i18n.t('outbox.pendingShort') }}}
           </span>
           <span class="muted">{{ i18n.t('dashboard.start') }} {{ trupp().startzeit | date: 'HH:mm' }}</span>
+          @if (retreat(); as r) {
+            @if (r.etaEpoch && !r.estimatedReached) {
+              <span class="muted">{{ i18n.t('retreat.eta', { time: (r.etaEpoch | date: 'HH:mm') ?? '' }) }}</span>
+            }
+            @if (r.missing) {
+              <span class="muted">{{ i18n.t('retreat.missing') }}</span>
+            }
+          }
         </div>
       </div>
       <div class="crew-card__time">
@@ -81,6 +93,11 @@ interface CrewMember {
     @if (trupp().endPending) {
       <div class="pending-note" role="status">{{ i18n.t('outbox.endPending') }}</div>
     }
+    @if (retreat()?.reached) {
+      <div class="retreat-due retreat-due--reached" role="alert">{{ i18n.t('retreat.reached') }}</div>
+    } @else if (retreat()?.estimatedReached) {
+      <div class="retreat-due" role="status">{{ i18n.t('retreat.estimated') }}</div>
+    }
     @if (pressureStage(); as stage) {
       <div class="pressure-due" role="status">{{ i18n.t('dashboard.pressureCheckDue', { fraction: fraction(stage) }) }}</div>
     }
@@ -99,6 +116,11 @@ interface CrewMember {
               <span class="crew-member__reading" [class.pending]="m.pending">
                 → {{ m.druckBar }}
                 <span class="muted">({{ m.zeit | date: 'HH:mm' }}@if (m.anlass === 'ziel') {, {{ i18n.t('crewState.atTarget') }}}@if (m.pending) {, {{ i18n.t('outbox.pendingShort') }}})</span>
+              </span>
+            }
+            @if (p.retreatBar !== null) {
+              <span class="crew-member__retreat" [class.crew-member__retreat--reached]="p.retreatReached">
+                {{ i18n.t('retreat.at', { value: p.retreatBar }) }}
               </span>
             }
           </div>
@@ -152,7 +174,14 @@ interface CrewMember {
             <button class="primary" type="button" (click)="zustandChange.emit('arbeit')">{{ i18n.t('crewState.step_arbeit') }}</button>
           }
           @case ('rueckweg') {
-            <button class="primary" type="button" (click)="zustandChange.emit('rueckweg')">{{ i18n.t('crewState.step_rueckweg') }}</button>
+            <button
+              class="primary"
+              type="button"
+              [class.btn-attention]="retreat()?.reached || retreat()?.estimatedReached"
+              (click)="zustandChange.emit('rueckweg')"
+            >
+              {{ i18n.t('crewState.step_rueckweg') }}
+            </button>
           }
           @default {
             <button class="primary" type="button" (click)="end.emit()">{{ i18n.t('crewState.step_beendet') }}</button>
@@ -186,14 +215,28 @@ export class TruppCardComponent implements OnDestroy {
   readonly zustand = computed<TruppZustand>(() => zustandOf(this.trupp()));
   readonly next = computed(() => nextZustand(this.trupp()));
   readonly stateSince = computed(() => this.trupp().zustandSeit ?? this.trupp().startzeit);
+  readonly retreat = computed(() => retreatInfo(this.trupp(), this.now()));
 
   // Der Trupp richtet sich nach dem Geraet mit dem niedrigsten Druck: diese Person wird hervorgehoben.
   readonly members = computed<CrewMember[]>(() => {
     const t = this.trupp();
     const lowest = lowestPressure(t);
+    const retreat = this.retreat();
     const member = (id: string, role: 'P1' | 'P2', name: string, start: number, newestFirst: DruckInfo[], count: number) => {
       const current = newestFirst[0]?.druckBar ?? start;
-      return { id, role, name, start, current, readings: newestFirst.slice(0, 3).reverse(), count, lowest: current === lowest };
+      const r = retreat?.members.find((m) => m.personId === id);
+      return {
+        id,
+        role,
+        name,
+        start,
+        current,
+        readings: newestFirst.slice(0, 3).reverse(),
+        count,
+        lowest: current === lowest,
+        retreatBar: r?.rueckzugBar ?? null,
+        retreatReached: r?.reached ?? false
+      };
     };
     const p1 = member(t.person1Id, 'P1', t.person1Name, t.startdruckPerson1Bar, t.druckMessungenPerson1, t.druckCountPerson1);
     const p2 = member(t.person2Id, 'P2', t.person2Name, t.startdruckPerson2Bar, t.druckMessungenPerson2, t.druckCountPerson2);

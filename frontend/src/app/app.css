@@ -1760,6 +1760,42 @@ textarea:focus {
   color: var(--warn);
 }
 
+/* Rueckzugsdruck der Person, rechts in der Verlaufszeile */
+.crew-member__retreat {
+  margin-left: auto;
+  font-weight: 600;
+  color: var(--ink-600);
+  white-space: nowrap;
+}
+
+.crew-member__retreat--reached {
+  color: var(--danger);
+  font-weight: 800;
+}
+
+/* Rueckzugsdruck erreicht (rot) bzw. laut Prognose erreicht (gelb, Druck abfragen) */
+.retreat-due {
+  margin-top: 6px;
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1c130f;
+  background: var(--warn);
+}
+
+.retreat-due--reached {
+  color: #fff;
+  background: var(--danger);
+}
+
+.alarm-detail {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
 /* Beendete Trupps treten zurueck, bleiben aber lesbar */
 .crew-card[data-status='beendet'] {
   background: rgba(40, 28, 24, 0.35);

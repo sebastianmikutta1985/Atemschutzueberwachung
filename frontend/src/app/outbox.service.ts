@@ -11,7 +11,16 @@ import type { TruppZustand } from './models';
 // Wiederholungen) und ihre Erfassungszeit (Uhr mit dem Server abgeglichen).
 
 export type OutboxKind = 'druck' | 'zustand' | 'end' | 'event';
-export type AlarmEventType = 'warn' | 'max' | 'warn_ack' | 'max_ack' | 'mayday' | 'mayday_info' | 'mayday_ende';
+export type AlarmEventType =
+  | 'warn'
+  | 'max'
+  | 'warn_ack'
+  | 'max_ack'
+  | 'rueckzug'
+  | 'rueckzug_ack'
+  | 'mayday'
+  | 'mayday_info'
+  | 'mayday_ende';
 
 export interface OutboxItem {
   id: string;

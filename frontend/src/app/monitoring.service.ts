@@ -9,19 +9,23 @@ import {
   normalizeTrupp,
   pressureCheckDue,
   pressureCheckFraction,
-  sortTrupps
+  retreatInfo,
+  sortTrupps,
+  zustandOf
 } from './crew-status';
 import { Einsatz, Trupp } from './models';
 import { OutboxService } from './outbox.service';
 import { RealtimeService } from './realtime.service';
 import { TranslationService } from './translation.service';
 
-export type AlarmType = 'warn' | 'max';
+export type AlarmType = 'warn' | 'max' | 'rueckzug';
 export type ToastType = 'warn' | 'max';
 
 export interface AlarmState {
   trupp: Trupp;
   type: AlarmType;
+  // Rueckzug: wer den Rueckzugsdruck erreicht hat, mit Wert und Grenze.
+  detail?: string;
   // Bestaetigen erst nach kurzer Verzoegerung, damit ein Tipp, der fuer einen anderen Dialog gedacht war,
   // den gerade erscheinenden Alarm nicht versehentlich bestaetigt.
   ackReady: boolean;
@@ -99,7 +103,10 @@ export class MonitoringService {
   private notifiedMax = new Set<string>();
   private lastWarnAlert: Record<string, number> = {};
   private lastMaxAlert: Record<string, number> = {};
+  private lastRetreatAlert: Record<string, number> = {};
+  private notifiedRetreat = new Set<string>();
   private remindedPressureChecks = new Set<string>();
+  private remindedRetreatEstimates = new Set<string>();
   private audioCtx: AudioContext | null = null;
   private wakeLock: WakeLockSentinel | null = null;
 
@@ -192,7 +199,10 @@ export class MonitoringService {
     this.notifiedMax.clear();
     this.lastWarnAlert = {};
     this.lastMaxAlert = {};
+    this.lastRetreatAlert = {};
+    this.notifiedRetreat.clear();
     this.remindedPressureChecks.clear();
+    this.remindedRetreatEstimates.clear();
     this.maydaySeen.set(new Set());
     this.maydayDialog.set(null);
   }
@@ -296,12 +306,38 @@ export class MonitoringService {
         kind: 'event',
         truppId: trupp.id,
         truppName: trupp.bezeichnung,
-        typ: type === 'warn' ? 'warn_ack' : 'max_ack',
+        typ: `${type}_ack`,
         zeit: this.outbox.nowIso()
       })
       .then((result) => {
         if (result.status === 'rejected') {
           this.notify(result.error, 'warn');
+        }
+      });
+  }
+
+  // Aus dem Rueckzug-Alarm heraus den Rueckweg erfassen (die Rueckfrage ist der Alarm selbst). Eine Quittierung
+  // braucht es nicht: auf dem Rueckweg gibt es keinen Rueckzug-Alarm mehr; wird der Wechsel abgelehnt, kommt er wieder.
+  retreatFromAlarm(): void {
+    const alarm = this.alarm();
+    if (alarm?.type !== 'rueckzug' || !alarm.ackReady) {
+      return;
+    }
+    this.alarm.set(null);
+    this.outbox
+      .submit({
+        id: this.outbox.newId(),
+        kind: 'zustand',
+        truppId: alarm.trupp.id,
+        truppName: alarm.trupp.bezeichnung,
+        zustand: 'rueckweg',
+        zeit: this.outbox.nowIso()
+      })
+      .then((result) => {
+        if (result.status === 'rejected') {
+          this.notify(result.error, 'warn');
+        } else if (result.status === 'queued') {
+          this.notify(this.i18n.t('outbox.savedOffline'), 'warn');
         }
       });
   }
@@ -430,11 +466,20 @@ export class MonitoringService {
 
   private checkThresholds(): void {
     const now = this.now();
+    // Rueckzug-Alarm erledigt, wenn der Trupp inzwischen (z. B. auf einem anderen Geraet) den Rueckweg angetreten hat.
+    const open = this.alarm();
+    if (open?.type === 'rueckzug') {
+      const current = this.trupps().find((t) => t.id === open.trupp.id);
+      if (!current || zustandOf(current) !== 'arbeit' || current.rueckzugAcked) {
+        this.alarm.set(null);
+      }
+    }
     for (const trupp of this.trupps()) {
       if (trupp.endzeit) {
         continue;
       }
       this.remindPressureCheck(trupp, now);
+      this.checkRetreat(trupp, now);
       const elapsedMin = Math.floor(elapsedSeconds(trupp, now) / 60);
       if (elapsedMin >= trupp.maxzeitMin && !trupp.maxAcked) {
         if (this.shouldAlert(this.lastMaxAlert, trupp.id, now, 15000)) {
@@ -452,6 +497,54 @@ export class MonitoringService {
           this.logEvent(trupp, 'warn');
           this.openAlarm(trupp, 'warn');
         }
+      }
+    }
+  }
+
+  // Gemeldeter Druck hat den Rueckzugsdruck erreicht: Alarm wie bei der Maximalzeit, bis quittiert oder Rueckweg erfasst.
+  // Nur laut Prognose erreicht: einmalige Erinnerung, den Druck abzufragen (keine Messung = keine Gewissheit).
+  private checkRetreat(trupp: Trupp, now: number): void {
+    const info = retreatInfo(trupp, now);
+    if (!info) {
+      return;
+    }
+    const reached = info.reached;
+    if (reached) {
+      if (trupp.rueckzugAcked || !this.shouldAlert(this.lastRetreatAlert, trupp.id, now, 15000)) {
+        return;
+      }
+      const person = reached.personId === trupp.person1Id ? trupp.person1Name : trupp.person2Name;
+      this.notify(this.i18n.t('retreat.alarmCrew', { name: trupp.bezeichnung }), 'max');
+      this.playBeep(4, true);
+      this.vibrate([250, 120, 250, 120, 250]);
+      if (!this.notifiedRetreat.has(trupp.id)) {
+        this.notifiedRetreat.add(trupp.id);
+        this.outbox.submit({
+          id: this.outbox.newId(),
+          kind: 'event',
+          truppId: trupp.id,
+          truppName: trupp.bezeichnung,
+          typ: 'rueckzug',
+          restdruck: reached.rueckzugBar,
+          nachricht: `${person}: ${reached.current} bar`,
+          zeit: this.outbox.nowIso()
+        });
+      }
+      this.openAlarm(
+        trupp,
+        'rueckzug',
+        this.i18n.t('retreat.alarmText', { person, value: reached.current, limit: reached.rueckzugBar })
+      );
+      return;
+    }
+    if (info.estimatedReached) {
+      // Erneut erinnern, sobald eine neue Messung eine neue Prognose ergibt.
+      const key = `${trupp.id}:${trupp.druckCountPerson1 + trupp.druckCountPerson2}`;
+      if (!this.remindedRetreatEstimates.has(key)) {
+        this.remindedRetreatEstimates.add(key);
+        this.notify(this.i18n.t('retreat.estimatedCrew', { name: trupp.bezeichnung }), 'warn');
+        this.playBeep(2);
+        this.vibrate([180, 120, 180]);
       }
     }
   }
@@ -476,11 +569,11 @@ export class MonitoringService {
     this.playBeep(1);
   }
 
-  private openAlarm(trupp: Trupp, type: AlarmType): void {
+  private openAlarm(trupp: Trupp, type: AlarmType, detail?: string): void {
     if (this.alarm()) {
       return;
     }
-    this.alarm.set({ trupp, type, ackReady: false });
+    this.alarm.set({ trupp, type, detail, ackReady: false });
     window.setTimeout(() => {
       const current = this.alarm();
       if (current && current.trupp.id === trupp.id && current.type === type) {

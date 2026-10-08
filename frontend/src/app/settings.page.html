@@ -176,6 +176,11 @@
           {{ i18n.t('dashboard.maxTime') }}
           <input type="number" min="0" [(ngModel)]="orgSettingsForm.defaultMaxzeitMin" />
         </label>
+        <label>
+          {{ i18n.t('retreat.reserve') }}
+          <input type="number" min="0" max="100" [(ngModel)]="orgSettingsForm.defaultRueckzugReserveBar" />
+          <span class="muted">{{ i18n.t('retreat.reserveHint') }}</span>
+        </label>
         <button class="primary" type="button" (click)="saveOrgSettings()">{{ i18n.t('common.save') }}</button>
         <div class="muted" *ngIf="orgSettingsMessage">{{ orgSettingsMessage }}</div>
       </div>
@@ -187,6 +192,7 @@
             <div class="muted">{{ i18n.t('settings.startPressureP2', { value: orgSettingsForm.defaultStartdruckPerson2Bar }) }}</div>
             <div class="muted">{{ i18n.t('settings.warnTimeValue', { value: orgSettingsForm.defaultWarnzeitMin }) }}</div>
             <div class="muted">{{ i18n.t('settings.maxTimeValue', { value: orgSettingsForm.defaultMaxzeitMin }) }}</div>
+            <div class="muted">{{ i18n.t('retreat.reserveValue', { value: orgSettingsForm.defaultRueckzugReserveBar }) }}</div>
           </div>
         </div>
       </div>

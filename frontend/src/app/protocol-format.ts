@@ -26,6 +26,12 @@ export function describeProtokollEintrag(e: ProtokollEintrag, i18n: TranslationS
     case 'max_ack':
       text = i18n.t(`protocol.${e.typ}`);
       break;
+    case 'rueckzug':
+      text = i18n.t('protocol.rueckzug', { value: e.druckBar ?? '' });
+      break;
+    case 'rueckzug_ack':
+      text = i18n.t('protocol.rueckzug_ack');
+      break;
     case 'beendet':
       text = i18n.t('crewState.step_beendet');
       break;

@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { Component, effect, ElementRef, inject, signal, ViewChild } from '@angular/core';
 import { SwUpdate } from '@angular/service-worker';
 import { filter } from 'rxjs';
-import { maydayKey, MonitoringService } from './monitoring.service';
+import { AlarmType, maydayKey, MonitoringService } from './monitoring.service';
 import { OutboxItem } from './outbox.service';
 import { TranslationService } from './translation.service';
 
@@ -157,7 +157,7 @@ import { TranslationService } from './translation.service';
       </div>
     }
 
-    <!-- Warn-/Maximalzeit-Alarm erst, wenn kein ungesehener Mayday ansteht -->
+    <!-- Warn-/Maximalzeit- und Rueckzug-Alarm erst, wenn kein ungesehener Mayday ansteht -->
     @if (!monitoring.unseenMayday() && monitoring.alarm(); as alarm) {
       <div class="modal">
         <div class="modal__backdrop"></div>
@@ -165,18 +165,30 @@ import { TranslationService } from './translation.service';
           #alarmPanel
           tabindex="-1"
           class="modal__panel"
-          [class.modal__panel--max]="alarm.type === 'max'"
+          [class.modal__panel--max]="alarm.type !== 'warn'"
           role="alertdialog"
           aria-modal="true"
           aria-labelledby="alarm-title"
         >
-          <h3 id="alarm-title">{{ alarm.type === 'max' ? i18n.t('dashboard.maxReached') : i18n.t('dashboard.warnReached') }}</h3>
+          <h3 id="alarm-title">{{ alarmTitle(alarm.type) }}</h3>
           <p class="alarm-crew">{{ alarm.trupp.bezeichnung }}</p>
+          @if (alarm.detail) {
+            <p class="alarm-detail">{{ alarm.detail }}</p>
+          }
           <p class="muted">{{ i18n.t('dashboard.alarmAckHint') }}</p>
           <div class="modal__actions">
-            <button class="primary" type="button" [disabled]="!alarm.ackReady" (click)="monitoring.acknowledgeAlarm()">
-              {{ i18n.t('dashboard.acknowledge') }}
-            </button>
+            @if (alarm.type === 'rueckzug') {
+              <button class="ghost" type="button" [disabled]="!alarm.ackReady" (click)="monitoring.acknowledgeAlarm()">
+                {{ i18n.t('dashboard.acknowledge') }}
+              </button>
+              <button class="primary" type="button" [disabled]="!alarm.ackReady" (click)="monitoring.retreatFromAlarm()">
+                {{ i18n.t('crewState.step_rueckweg') }}
+              </button>
+            } @else {
+              <button class="primary" type="button" [disabled]="!alarm.ackReady" (click)="monitoring.acknowledgeAlarm()">
+                {{ i18n.t('dashboard.acknowledge') }}
+              </button>
+            }
           </div>
         </div>
       </div>
@@ -223,6 +235,17 @@ export class AlarmOverlayComponent {
       }
       this.lastMaydayKey = key;
     });
+  }
+
+  alarmTitle(type: AlarmType): string {
+    switch (type) {
+      case 'max':
+        return this.i18n.t('dashboard.maxReached');
+      case 'rueckzug':
+        return this.i18n.t('retreat.alarmTitle');
+      default:
+        return this.i18n.t('dashboard.warnReached');
+    }
   }
 
   describe(item: OutboxItem): string {

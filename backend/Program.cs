@@ -165,7 +165,8 @@ orgApi.MapGet("/settings", async (HttpContext http, AppDbContext db) =>
         org.DefaultStartdruckPerson1Bar,
         org.DefaultStartdruckPerson2Bar,
         org.DefaultWarnzeitMin,
-        org.DefaultMaxzeitMin
+        org.DefaultMaxzeitMin,
+        org.DefaultRueckzugReserveBar
     ));
 }).WithOpenApi();
 
@@ -175,7 +176,8 @@ adminApi.MapPut("/settings", async (HttpContext http, OrgSettingsUpdate dto, App
     var settingsError =
         Api.CheckDruck(dto.DefaultStartdruckPerson1Bar, "Startdruck Person 1")
         ?? Api.CheckDruck(dto.DefaultStartdruckPerson2Bar, "Startdruck Person 2")
-        ?? Api.CheckZeiten(dto.DefaultWarnzeitMin, dto.DefaultMaxzeitMin);
+        ?? Api.CheckZeiten(dto.DefaultWarnzeitMin, dto.DefaultMaxzeitMin)
+        ?? (dto.DefaultRueckzugReserveBar is { } reserve ? Api.CheckReserve(reserve) : null);
     if (settingsError != null)
     {
         return Api.Bad(settingsError);
@@ -189,13 +191,16 @@ adminApi.MapPut("/settings", async (HttpContext http, OrgSettingsUpdate dto, App
     org.DefaultStartdruckPerson2Bar = dto.DefaultStartdruckPerson2Bar;
     org.DefaultWarnzeitMin = dto.DefaultWarnzeitMin;
     org.DefaultMaxzeitMin = dto.DefaultMaxzeitMin;
+    // Fehlt bei aelteren App-Versionen: dann bleibt der bisherige Wert.
+    org.DefaultRueckzugReserveBar = dto.DefaultRueckzugReserveBar ?? org.DefaultRueckzugReserveBar;
     await db.SaveChangesAsync();
     await NotifyOrgAsync(hub, auth.OrgId, "settings");
     return Results.Ok(new OrgSettingsDto(
         org.DefaultStartdruckPerson1Bar,
         org.DefaultStartdruckPerson2Bar,
         org.DefaultWarnzeitMin,
-        org.DefaultMaxzeitMin
+        org.DefaultMaxzeitMin,
+        org.DefaultRueckzugReserveBar
     ));
 }).WithOpenApi();
 
@@ -842,7 +847,8 @@ orgApi.MapPost("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Http
         StartdruckPerson2Bar = startP2,
         Startzeit = Api.ToUtc(dto.Startzeit) ?? DateTime.UtcNow,
         WarnzeitMin = warnMin,
-        MaxzeitMin = maxMin
+        MaxzeitMin = maxMin,
+        RueckzugReserveBar = orgDefaults?.DefaultRueckzugReserveBar ?? Api.DefaultRueckzugReserveBar
     };
 
     db.Trupps.Add(trupp);
@@ -888,6 +894,7 @@ orgApi.MapGet("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpC
         var mayday = MaydayOf(alarmEvents.Where(e => e.TruppId == t.Id));
         var warnAcked = alarmEvents.Any(e => e.TruppId == t.Id && e.Typ == "warn_ack");
         var maxAcked = alarmEvents.Any(e => e.TruppId == t.Id && e.Typ == "max_ack");
+        var rueckzugAcked = alarmEvents.Any(e => e.TruppId == t.Id && e.Typ == "rueckzug_ack");
 
         return new TruppDto(
             t.Id,
@@ -915,7 +922,9 @@ orgApi.MapGet("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpC
             mayday.Seit,
             mayday.Position,
             mayday.Restdruck,
-            mayday.Funkspruch
+            mayday.Funkspruch,
+            t.RueckzugReserveBar,
+            rueckzugAcked
         );
     }).ToList();
 
@@ -1006,7 +1015,7 @@ orgApi.MapPost("/trupps/{id:guid}/events", async (Guid id, HttpContext http, Ala
     }
 
     var type = (dto.Typ ?? string.Empty).Trim().ToLowerInvariant();
-    if (type is not ("warn" or "max" or "warn_ack" or "max_ack" or "mayday" or "mayday_info" or "mayday_ende"))
+    if (type is not ("warn" or "max" or "warn_ack" or "max_ack" or "rueckzug" or "rueckzug_ack" or "mayday" or "mayday_info" or "mayday_ende"))
     {
         return Results.BadRequest(new { error = "Unbekannter Event-Typ." });
     }
@@ -1375,7 +1384,8 @@ static async Task EnsureOrganizationDefaults(AppDbContext db)
         ("DefaultStartdruckPerson1Bar", "INTEGER NOT NULL DEFAULT 300"),
         ("DefaultStartdruckPerson2Bar", "INTEGER NOT NULL DEFAULT 300"),
         ("DefaultWarnzeitMin", "INTEGER NOT NULL DEFAULT 25"),
-        ("DefaultMaxzeitMin", "INTEGER NOT NULL DEFAULT 30")
+        ("DefaultMaxzeitMin", "INTEGER NOT NULL DEFAULT 30"),
+        ("DefaultRueckzugReserveBar", "INTEGER NOT NULL DEFAULT 10")
     };
 
     foreach (var (name, ddl) in defaults)
@@ -1484,6 +1494,11 @@ static async Task EnsureProtokollSchema(AppDbContext db)
         {
             await db.Database.ExecuteSqlRawAsync($"ALTER TABLE {table} ADD COLUMN {column} TEXT NULL;");
         }
+    }
+    // Bestehende Trupps erhalten die Standardreserve.
+    if (!await HasColumn(db, "Trupps", "RueckzugReserveBar"))
+    {
+        await db.Database.ExecuteSqlRawAsync("ALTER TABLE Trupps ADD COLUMN RueckzugReserveBar INTEGER NOT NULL DEFAULT 10;");
     }
 
     await db.Database.ExecuteSqlRawAsync("""
@@ -2090,6 +2105,8 @@ static class Api
     public const int MinPinLength = 6;
     public const int MaxDruckBar = 400;
     public const int MaxZeitMin = 240;
+    public const int DefaultRueckzugReserveBar = 10;
+    public const int MaxRueckzugReserveBar = 100;
     // Schutz vor Fehleingaben; Kontrollen, "Ziel erreicht" und spaeter Rueckzug brauchen mehr als die frueheren 3.
     public const int MaxDruckmessungen = 20;
 
@@ -2124,6 +2141,9 @@ static class Api
 
     public static string? CheckDruck(int druckBar, string field) =>
         druckBar is < 1 or > MaxDruckBar ? $"{field} muss zwischen 1 und {MaxDruckBar} bar liegen." : null;
+
+    public static string? CheckReserve(int reserveBar) =>
+        reserveBar is < 0 or > MaxRueckzugReserveBar ? $"Reserve muss zwischen 0 und {MaxRueckzugReserveBar} bar liegen." : null;
 
     public static string? CheckZeiten(int warnzeitMin, int maxzeitMin)
     {
@@ -2287,6 +2307,8 @@ class Trupp
     // anmarsch / arbeit / rueckweg; null bei Trupps aus aelteren Versionen (= anmarsch). "beendet" ergibt sich aus Endzeit.
     public string? Zustand { get; set; }
     public DateTime? ZustandSeit { get; set; }
+    // Reserve fuer die Rueckzugsberechnung (2 x Verbrauch auf dem Hinweg + Reserve), beim Anlegen festgehalten.
+    public int RueckzugReserveBar { get; set; } = Api.DefaultRueckzugReserveBar;
 }
 
 class Geraetetraeger
@@ -2362,6 +2384,7 @@ class Organization
     public int DefaultStartdruckPerson2Bar { get; set; } = 300;
     public int DefaultWarnzeitMin { get; set; } = 25;
     public int DefaultMaxzeitMin { get; set; } = 30;
+    public int DefaultRueckzugReserveBar { get; set; } = Api.DefaultRueckzugReserveBar;
 }
 
 class UserAccount
@@ -2424,8 +2447,8 @@ record TruppZustandCreate(string? Zustand, Guid? Id = null, DateTime? Zeit = nul
 record EinsatzLoeschen(string? Grund);
 record LoginRequest(string? OrgaCode, string? Pin);
 record SystemLoginRequest(string? Secret);
-record OrgSettingsDto(int DefaultStartdruckPerson1Bar, int DefaultStartdruckPerson2Bar, int DefaultWarnzeitMin, int DefaultMaxzeitMin);
-record OrgSettingsUpdate(int DefaultStartdruckPerson1Bar, int DefaultStartdruckPerson2Bar, int DefaultWarnzeitMin, int DefaultMaxzeitMin);
+record OrgSettingsDto(int DefaultStartdruckPerson1Bar, int DefaultStartdruckPerson2Bar, int DefaultWarnzeitMin, int DefaultMaxzeitMin, int DefaultRueckzugReserveBar);
+record OrgSettingsUpdate(int DefaultStartdruckPerson1Bar, int DefaultStartdruckPerson2Bar, int DefaultWarnzeitMin, int DefaultMaxzeitMin, int? DefaultRueckzugReserveBar = null);
 record OrgCreate(string? Name, string? AdminPin, string? UserPin, string? Status);
 record OrgUpdate(string? Name, string? AdminPin, string? UserPin, string? Status);
 record AuthContext(Guid OrgId, string Role, string OrgName, string OrgCode);
@@ -2481,7 +2504,9 @@ record TruppDto(
     DateTime? MaydaySeit,
     string? MaydayPosition,
     int? MaydayRestdruck,
-    string? MaydayFunkspruch
+    string? MaydayFunkspruch,
+    int RueckzugReserveBar,
+    bool RueckzugAcked
 );
 
 record DruckInfo(int DruckBar, DateTime Zeit, string? Anlass = null);

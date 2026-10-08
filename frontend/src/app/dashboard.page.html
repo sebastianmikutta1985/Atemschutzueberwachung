@@ -392,6 +392,9 @@
         [max]="maxDruckFor(zielModal.trupp, zielModal.trupp.person1Id)"
         [(ngModel)]="zielModal.p1"
       />
+      <span class="muted" *ngIf="zielRetreat(zielModal.trupp, zielModal.trupp.startdruckPerson1Bar, zielModal.p1) as value">
+        {{ i18n.t('retreat.targetPreview', { value: value }) }}
+      </span>
     </label>
     <label>
       {{ zielModal.trupp.person2Name }} ({{ i18n.t('dashboard.pressureBar') }})
@@ -403,6 +406,9 @@
         [max]="maxDruckFor(zielModal.trupp, zielModal.trupp.person2Id)"
         [(ngModel)]="zielModal.p2"
       />
+      <span class="muted" *ngIf="zielRetreat(zielModal.trupp, zielModal.trupp.startdruckPerson2Bar, zielModal.p2) as value">
+        {{ i18n.t('retreat.targetPreview', { value: value }) }}
+      </span>
     </label>
     <div class="form-error" *ngIf="zielModal.error">{{ zielModal.error }}</div>
     <div class="modal__actions">
