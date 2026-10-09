@@ -50,7 +50,7 @@ let nextId = 0;
   imports: [DatePipe, ButtonComponent, CountdownComponent, DruckAnzeigeComponent, IconComponent, StatusBadgeComponent, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
-    class: 'karte crew-card',
+    class: 'karte',
     role: 'group',
     '[attr.aria-labelledby]': 'titleId',
     '[attr.data-status]': 'status()'

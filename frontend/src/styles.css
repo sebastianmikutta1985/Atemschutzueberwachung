@@ -169,26 +169,6 @@
   --status-neutral-on: #0b0f14;
 }
 
-/* ---------- Uebergang: alte Variablennamen zeigen auf die neuen Tokens (entfaellt in Etappe e) ---------- */
-:root {
-  --card: var(--surface);
-  --accent: var(--primary);
-  --ok: var(--status-ok-solid);
-  --warn: var(--status-warn-solid);
-  --danger: var(--status-crit-solid);
-  --ink-900: var(--text);
-  --ink-850: var(--text);
-  --ink-700: var(--text);
-  --ink-650: var(--text-muted);
-  --ink-600: var(--text-muted);
-  --ink-560: var(--text-muted);
-  --ink-500: var(--text-muted);
-  --ink-400: var(--status-neutral-solid);
-  --ink-200: var(--border);
-  --glass-border: var(--border);
-  --panel-edge: var(--border);
-}
-
 /* =========================================================================
    Reset / Basis
    ========================================================================= */
@@ -362,33 +342,6 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.primary {
-  color: var(--primary-contrast);
-  background: var(--primary);
-  border-color: var(--primary);
-}
-
-.primary:not(:disabled):hover {
-  background: var(--primary-hover);
-  border-color: var(--primary-hover);
-}
-
-.ghost {
-  color: var(--text);
-  background: transparent;
-  border-color: var(--border-strong);
-}
-
-.ghost:not(:disabled):hover {
-  background: var(--surface-raised);
-}
-
-.danger {
-  color: var(--status-crit-on);
-  background: var(--status-crit-solid);
-  border-color: var(--status-crit-solid);
-}
-
 /* ---------- Fokus: immer sichtbar bei Tastaturbedienung ---------- */
 
 :focus {
@@ -457,62 +410,4 @@ textarea:focus {
 
 .form-error:empty {
   display: none;
-}
-
-/* ---------- Theme-Schalter (wird in Etappe c ins Kopfleisten-Menue verlegt) ---------- */
-
-.theme-toggle {
-  display: inline-flex;
-  flex-direction: row;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: var(--touch-min);
-  color: var(--text);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  cursor: pointer;
-}
-
-.theme-toggle input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.theme-toggle__track {
-  width: 3rem;
-  height: 1.75rem;
-  border-radius: var(--radius-pill);
-  background: var(--surface-sunken);
-  border: var(--border-w) solid var(--border-strong);
-  display: inline-flex;
-  align-items: center;
-  padding: 2px;
-}
-
-.theme-toggle__thumb {
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: 50%;
-  background: var(--text-muted);
-  transition: transform var(--dur-base) var(--ease);
-}
-
-.theme-toggle input:checked + .theme-toggle__track {
-  background: var(--primary);
-  border-color: var(--primary);
-}
-
-.theme-toggle input:checked + .theme-toggle__track .theme-toggle__thumb {
-  background: var(--primary-contrast);
-  transform: translateX(1.25rem);
-}
-
-.theme-toggle input:focus-visible + .theme-toggle__track {
-  outline: var(--focus-ring) solid var(--focus);
-  outline-offset: var(--focus-offset);
-}
-
-.theme-toggle__label {
-  white-space: nowrap;
 }

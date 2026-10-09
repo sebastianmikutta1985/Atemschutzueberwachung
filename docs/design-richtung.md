@@ -172,3 +172,22 @@ Statusanzeige (nur Darstellung, Fachlogik unverändert):
 | BEENDET | Trupp zurück |
 
 Funkausfall ist vorbereitet (Tokens), wird aber erst angezeigt, wenn es dafür Daten gibt. Die Reihenfolge der Trupps bleibt nach Startzeit, damit Karten nicht unter dem Finger springen.
+
+## Komponentenstruktur (Stand Redesign-Etappe e)
+
+Presentational (nur Inputs/Outputs, OnPush; einzige Abhängigkeit ist die Übersetzungs-Pipe `t`):
+
+| Baustein | Zweck |
+|---|---|
+| `ui/icon` | Eigene Inline-SVG-Icons, keine Bibliothek, keine Assets |
+| `ui/button` (`button[appButton]`, `button[appIconButton]`) | 48 px Mindesthöhe, `size="lg"` = 64 px, Varianten primary/secondary/ghost/danger/warn |
+| `ui/status-badge` | Status als Farbe + Icon + Text |
+| `ui/countdown` | Restzeit/Dauer, tabellarische Ziffern, vom gemeinsamen Takt gespeist |
+| `ui/druck-anzeige` | Druck als Zahl + Balken mit Rückzugsmarke (`role="meter"`) |
+| `ui/dialog` | Gerüst aller Dialoge: Titel, Fokusfalle, Esc, Fokus zurück, Alarm-Modus |
+| `ui/banner` | Hinweise (Mayday, Verbindung, Warteschlange, Update, Ton) |
+| `ui/connection-indicator` | Live / Verbindet / Offline mit Stand |
+| `ui/page`, `ui/panel`, `ui/lang-switch` | Rahmen und Bausteine der Nebenseiten |
+| `crew/trupp-karte` | Trupp-Karte aus den Bausteinen oben |
+
+Container: Dashboard, Alarm-Einblendung, Einstellungen, Login, Hersteller-Portal, Rechtliches. Alle mit Signals für den UI-Zustand und OnPush. Globale Regeln stehen nur noch in `styles.css` (Tokens, Basis, Fokus, reduzierte Bewegung, wenige Utilities); `app.css` ist entfallen.

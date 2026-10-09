@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, HostListener, OnDestroy, OnInit, signal, ViewEncapsulation } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, OnDestroy, OnInit, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { AlarmOverlayComponent } from './alarm-overlay.component';
@@ -15,9 +15,7 @@ import { TranslatePipe } from './ui/translate.pipe';
   selector: 'app-root',
   imports: [RouterOutlet, AlarmOverlayComponent, ButtonComponent, DialogComponent, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  templateUrl: './app.html',
-  styleUrl: './app.css',
-  encapsulation: ViewEncapsulation.None
+  templateUrl: './app.html'
 })
 export class App implements OnInit {
   private readonly idleTimeoutMs = 2 * 60 * 60 * 1000;
