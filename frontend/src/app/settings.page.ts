@@ -46,7 +46,8 @@ export class SettingsPage implements OnInit, OnDestroy {
     defaultStartdruckPerson1Bar: 300,
     defaultStartdruckPerson2Bar: 300,
     defaultWarnzeitMin: 25,
-    defaultMaxzeitMin: 30
+    defaultMaxzeitMin: 30,
+    defaultRueckzugReserveBar: 10
   };
   orgSettingsMessage = '';
   importMessage = '';
@@ -194,6 +195,7 @@ export class SettingsPage implements OnInit, OnDestroy {
       this.orgSettingsForm.defaultStartdruckPerson2Bar = settings.defaultStartdruckPerson2Bar;
       this.orgSettingsForm.defaultWarnzeitMin = settings.defaultWarnzeitMin;
       this.orgSettingsForm.defaultMaxzeitMin = settings.defaultMaxzeitMin;
+      this.orgSettingsForm.defaultRueckzugReserveBar = settings.defaultRueckzugReserveBar;
     });
   }
 
@@ -203,7 +205,8 @@ export class SettingsPage implements OnInit, OnDestroy {
       defaultStartdruckPerson1Bar: this.orgSettingsForm.defaultStartdruckPerson1Bar,
       defaultStartdruckPerson2Bar: this.orgSettingsForm.defaultStartdruckPerson2Bar,
       defaultWarnzeitMin: this.orgSettingsForm.defaultWarnzeitMin,
-      defaultMaxzeitMin: this.orgSettingsForm.defaultMaxzeitMin
+      defaultMaxzeitMin: this.orgSettingsForm.defaultMaxzeitMin,
+      defaultRueckzugReserveBar: this.orgSettingsForm.defaultRueckzugReserveBar
     };
     this.http.put<OrgSettings>(`${this.baseUrl}/settings`, payload).subscribe({
       next: (settings) => {
@@ -212,6 +215,7 @@ export class SettingsPage implements OnInit, OnDestroy {
         this.orgSettingsForm.defaultStartdruckPerson2Bar = settings.defaultStartdruckPerson2Bar;
         this.orgSettingsForm.defaultWarnzeitMin = settings.defaultWarnzeitMin;
         this.orgSettingsForm.defaultMaxzeitMin = settings.defaultMaxzeitMin;
+        this.orgSettingsForm.defaultRueckzugReserveBar = settings.defaultRueckzugReserveBar;
         this.orgSettingsMessage = this.i18n.t('settings.saved');
       },
       error: (err) => {

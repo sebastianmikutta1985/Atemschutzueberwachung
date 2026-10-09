@@ -7,7 +7,7 @@ import { RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
 import { ClockService } from './clock.service';
-import { parseEpoch } from './crew-status';
+import { DEFAULT_RESERVE_BAR, parseEpoch } from './crew-status';
 import { ExportService } from './export.service';
 import { DruckInfo, Einsatz, Geraetetraeger, OrgSettings, ProtokollEintrag, Trupp, TruppName, TruppProtokoll } from './models';
 import { describeProtokollEintrag } from './protocol-format';
@@ -571,6 +571,15 @@ export class DashboardPage implements OnInit, OnDestroy {
       return last[0].druckBar;
     }
     return personId === trupp.person1Id ? trupp.startdruckPerson1Bar : trupp.startdruckPerson2Bar;
+  }
+
+  // Vorschau im Dialog "Ziel erreicht": Rueckzugsdruck fuer den eingetippten Wert.
+  zielRetreat(trupp: Trupp, startBar: number, value: number | null): number | null {
+    const bar = Number(value);
+    if (!value || !Number.isFinite(bar) || bar <= 0 || bar > startBar) {
+      return null;
+    }
+    return 2 * (startBar - bar) + (trupp.rueckzugReserveBar ?? DEFAULT_RESERVE_BAR);
   }
 
   async saveZiel(druckNichtGemeldet: boolean): Promise<void> {

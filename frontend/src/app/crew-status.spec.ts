@@ -7,6 +7,7 @@ import {
   normalizeTrupp,
   pressureCheckDue,
   remainingSeconds,
+  retreatInfo,
   sortTrupps,
   statusFor,
   zustandOf
@@ -171,5 +172,85 @@ describe('crew-status', () => {
       [{ ...base, id: 'x3', typ: 'mayday_ende', nachricht: 'gerettet', zeit: '2026-09-26T10:20:00Z' }]
     );
     expect(closed.maydayAktiv).toBe(false);
+  });
+
+  describe('retreat pressure', () => {
+    const at = (m: number) => new Date(start + m * min).toISOString();
+    const working = (overrides: Partial<Trupp> = {}) =>
+      crew({
+        zustand: 'arbeit',
+        zustandSeit: at(8),
+        druckMessungenPerson1: [{ druckBar: 260, zeit: at(8), anlass: 'ziel' }],
+        druckMessungenPerson2: [{ druckBar: 250, zeit: at(8), anlass: 'ziel' }],
+        ...overrides
+      });
+
+    it('needs twice the outbound consumption plus the reserve and predicts when it is reached', () => {
+      const info = retreatInfo(working(), start + 9 * min)!;
+      // P1: 300 -> 260 = 40 bar, 2 x 40 + 10 = 90; P2: 280 -> 250 = 30 bar, 2 x 30 + 10 = 70
+      expect(info.members.map((m) => [m.verbrauchBar, m.rueckzugBar])).toEqual([[40, 90], [30, 70]]);
+      expect(info.reached).toBeNull();
+      // Hinweg: P1 5 bar/min, (260 - 90) / 5 = 34 min nach dem Ziel; P2 spaeter
+      expect(info.etaEpoch).toBe(start + 42 * min);
+      expect(info.estimatedReached).toBe(false);
+      expect(retreatInfo(working(), start + 42 * min)!.estimatedReached).toBe(true);
+      expect(retreatInfo(working({ rueckzugReserveBar: 20 }), start)!.members[0].rueckzugBar).toBe(100);
+    });
+
+    it('uses the consumption since reaching the target once a later reading exists', () => {
+      const info = retreatInfo(
+        working({
+          druckMessungenPerson1: [
+            { druckBar: 200, zeit: at(18) },
+            { druckBar: 260, zeit: at(8), anlass: 'ziel' }
+          ]
+        }),
+        start + 18 * min
+      )!;
+      // 6 bar/min seit dem Ziel: (200 - 90) / 6 = 18 min 20 s nach der letzten Messung
+      expect(info.etaEpoch).toBe(start + 36 * min + 20_000);
+    });
+
+    it('reports the crew member who reached the retreat pressure', () => {
+      const info = retreatInfo(
+        working({
+          druckMessungenPerson2: [
+            { druckBar: 70, zeit: at(30) },
+            { druckBar: 250, zeit: at(8), anlass: 'ziel' }
+          ]
+        }),
+        start + 30 * min
+      )!;
+      expect(info.reached?.personId).toBe('p2');
+      expect(info.etaEpoch).toBeNull();
+      // Bereits am Ziel zu viel verbraucht: sofort zurueck
+      expect(retreatInfo(working({ druckMessungenPerson1: [{ druckBar: 200, zeit: at(8), anlass: 'ziel' }] }), start)!.reached?.personId).toBe('p1');
+    });
+
+    it('falls back to the first reading at the target and flags crews without one', () => {
+      const skipped = working({
+        druckMessungenPerson1: [
+          { druckBar: 240, zeit: at(15) },
+          { druckBar: 250, zeit: at(12) },
+          { druckBar: 280, zeit: at(5) }
+        ],
+        druckMessungenPerson2: []
+      });
+      const info = retreatInfo(skipped, start + 15 * min)!;
+      expect(info.missing).toBe(true);
+      expect(info.members).toHaveLength(1);
+      expect(info.members[0].zielBar).toBe(250);
+    });
+
+    it('only applies while the crew is working at the target', () => {
+      expect(retreatInfo(crew(), start)).toBeNull();
+      expect(retreatInfo(working({ zustand: 'rueckweg' }), start)).toBeNull();
+      expect(retreatInfo(working({ endzeit: at(40) }), start)).toBeNull();
+    });
+
+    it('marks the retreat alarm as acknowledged while the acknowledgement is pending', () => {
+      const [t] = applyPending([working()], [{ id: 'a1', kind: 'event', truppId: 't1', truppName: 'AT', typ: 'rueckzug_ack', zeit: at(30) }]);
+      expect(t.rueckzugAcked).toBe(true);
+    });
   });
 });

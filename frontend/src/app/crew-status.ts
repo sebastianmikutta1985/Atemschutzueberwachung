@@ -119,6 +119,91 @@ export function lowestPressure(trupp: Trupp): number {
   return Math.min(p1, p2);
 }
 
+// Rueckzugsdruck: der Rueckweg braucht so viel Luft wie der Hinweg; zur Sicherheit wird der doppelte Verbrauch
+// angesetzt, dazu eine Reserve. Faellt ein Geraet auf diesen Wert, muss der Trupp den Rueckzug antreten.
+export const DEFAULT_RESERVE_BAR = 10;
+
+export interface RetreatMember {
+  personId: string;
+  // Druck am Ziel (Grundlage der Berechnung) und Verbrauch auf dem Hinweg
+  zielBar: number;
+  verbrauchBar: number;
+  rueckzugBar: number;
+  current: number;
+  reached: boolean;
+  // Voraussichtlicher Zeitpunkt, an dem der Rueckzugsdruck erreicht wird; null = bereits erreicht oder keine Prognose.
+  etaEpoch: number | null;
+}
+
+export interface RetreatInfo {
+  reserveBar: number;
+  members: RetreatMember[];
+  // Fuer mindestens eine Person fehlt der Druck am Ziel: keine vollstaendige Berechnung.
+  missing: boolean;
+  // Gemeldeter Druck hat den Rueckzugsdruck erreicht (Person mit dem knappsten Wert).
+  reached: RetreatMember | null;
+  etaEpoch: number | null;
+  // Laut Prognose erreicht, aber noch nicht durch eine Messung bestaetigt: Druck abfragen.
+  estimatedReached: boolean;
+}
+
+const MIN_RATE_SPAN_MS = 60_000;
+
+// Nur im Zustand "arbeit" sinnvoll: vorher fehlt der Druck am Ziel, danach ist der Trupp schon auf dem Rueckweg.
+export function retreatInfo(trupp: Trupp, nowEpoch: number): RetreatInfo | null {
+  if (zustandOf(trupp) !== 'arbeit') {
+    return null;
+  }
+  const reserveBar = trupp.rueckzugReserveBar ?? DEFAULT_RESERVE_BAR;
+  const arbeitSeit = parseEpoch(trupp.zustandSeit) ?? 0;
+  const startEpoch = trupp.startEpoch ?? parseEpoch(trupp.startzeit) ?? 0;
+  const member = (personId: string, start: number, newestFirst: DruckInfo[]): RetreatMember | null => {
+    // Druck mit "Ziel erreicht"; wurde er nicht gemeldet, zaehlt die erste Messung am Ziel (eher zu frueh als zu spaet).
+    const basis =
+      newestFirst.find((r) => r.anlass === 'ziel') ??
+      [...newestFirst].reverse().find((r) => (parseEpoch(r.zeit) ?? 0) >= arbeitSeit);
+    if (!basis) {
+      return null;
+    }
+    const latest = newestFirst[0];
+    const verbrauchBar = Math.max(start - basis.druckBar, 0);
+    const rueckzugBar = 2 * verbrauchBar + reserveBar;
+    const reached = latest.druckBar <= rueckzugBar;
+    let etaEpoch: number | null = null;
+    if (!reached) {
+      const tBasis = parseEpoch(basis.zeit) ?? 0;
+      const tLatest = parseEpoch(latest.zeit) ?? 0;
+      // Verbrauch pro ms: bevorzugt seit Erreichen des Ziels (Arbeit verbraucht meist mehr), sonst der des Hinwegs.
+      const rates = [
+        tLatest - tBasis >= MIN_RATE_SPAN_MS ? (basis.druckBar - latest.druckBar) / (tLatest - tBasis) : 0,
+        tBasis - startEpoch >= MIN_RATE_SPAN_MS ? verbrauchBar / (tBasis - startEpoch) : 0
+      ];
+      const rate = rates.find((r) => r > 0);
+      if (rate) {
+        etaEpoch = Math.round(tLatest + (latest.druckBar - rueckzugBar) / rate);
+      }
+    }
+    return { personId, zielBar: basis.druckBar, verbrauchBar, rueckzugBar, current: latest.druckBar, reached, etaEpoch };
+  };
+  const all = [
+    member(trupp.person1Id, trupp.startdruckPerson1Bar, trupp.druckMessungenPerson1),
+    member(trupp.person2Id, trupp.startdruckPerson2Bar, trupp.druckMessungenPerson2)
+  ];
+  const members = all.filter((m): m is RetreatMember => m !== null);
+  const reached =
+    members.filter((m) => m.reached).sort((a, b) => a.current - a.rueckzugBar - (b.current - b.rueckzugBar))[0] ?? null;
+  const etas = members.map((m) => m.etaEpoch).filter((e): e is number => e !== null);
+  const etaEpoch = reached || !etas.length ? null : Math.min(...etas);
+  return {
+    reserveBar,
+    members,
+    missing: members.length < all.length,
+    reached,
+    etaEpoch,
+    estimatedReached: etaEpoch !== null && nowEpoch >= etaEpoch
+  };
+}
+
 // Blendet noch nicht uebertragene Eingaben der Offline-Warteschlange in die Serverdaten ein: sie erscheinen sofort
 // auf dem Geraet und zaehlen fuer Druckabfrage, niedrigsten Druck und Alarme mit.
 export function applyPending(trupps: Trupp[], pending: OutboxItem[]): Trupp[] {
@@ -180,6 +265,8 @@ export function applyPending(trupps: Trupp[], pending: OutboxItem[]): Trupp[] {
         trupp.warnAcked = true;
       } else if (item.kind === 'event' && item.typ === 'max_ack') {
         trupp.maxAcked = true;
+      } else if (item.kind === 'event' && item.typ === 'rueckzug_ack') {
+        trupp.rueckzugAcked = true;
       }
     }
     // Neueste Messung zuerst, wie vom Server geliefert.

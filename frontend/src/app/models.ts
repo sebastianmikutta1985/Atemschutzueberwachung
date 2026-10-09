@@ -43,6 +43,10 @@ export interface Trupp {
   druckMessungenPerson2: DruckInfo[];
   warnAcked?: boolean;
   maxAcked?: boolean;
+  // Reserve der Rueckzugsberechnung (beim Anlegen aus den Voreinstellungen uebernommen).
+  rueckzugReserveBar?: number;
+  // Alarm "Rueckzugsdruck erreicht" quittiert.
+  rueckzugAcked?: boolean;
   zustand?: TruppZustand;
   zustandSeit?: string | null;
   // Zustandswechsel offline erfasst, noch nicht beim Server angekommen.
@@ -109,4 +113,5 @@ export interface OrgSettings {
   defaultStartdruckPerson2Bar: number;
   defaultWarnzeitMin: number;
   defaultMaxzeitMin: number;
+  defaultRueckzugReserveBar: number;
 }

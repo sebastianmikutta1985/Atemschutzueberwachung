@@ -117,6 +117,21 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       endCrewConfirm: 'Für {name} ist noch ein Mayday offen. Trupp trotzdem als zurück melden? Der Mayday bleibt offen, bis „Mayday beendet“ erfasst ist.',
       endOperationConfirm: 'Im Einsatz „{name}“ ist noch {count} Mayday offen. Einsatz trotzdem beenden?'
     },
+    retreat: {
+      at: 'Rückzug bei {value} bar',
+      eta: 'Rückzug ca. {time}',
+      missing: 'Rückzugsdruck: Druck am Ziel fehlt',
+      reached: 'Rückzugsdruck erreicht – Rückzug antreten!',
+      estimated: 'Rückzugsdruck voraussichtlich erreicht – Druck abfragen',
+      alarmTitle: 'Rückzug antreten',
+      alarmText: '{person}: {value} bar – Rückzugsdruck {limit} bar erreicht.',
+      alarmCrew: 'Rückzugsdruck erreicht: {name}',
+      estimatedCrew: 'Rückzugsdruck voraussichtlich erreicht – Druck abfragen: {name}',
+      targetPreview: 'Rückzug bei {value} bar',
+      reserve: 'Rückzugsreserve (bar)',
+      reserveValue: 'Rückzugsreserve: {value} bar',
+      reserveHint: 'Rückzugsdruck = 2 × Verbrauch auf dem Hinweg + Reserve. Gilt für neu angelegte Trupps.'
+    },
     crewCard: {
       startShort: 'Start'
     },
@@ -153,6 +168,8 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       max: 'Maximalzeit erreicht',
       warn_ack: 'Warnung quittiert',
       max_ack: 'Maximalzeit-Alarm quittiert',
+      rueckzug: 'Rückzugsdruck {value} bar erreicht – Rückzug antreten',
+      rueckzug_ack: 'Rückzug-Alarm quittiert',
       lateEntry: 'nachgetragen',
       mayday: 'MAYDAY',
       mayday_info: 'Mayday-Angaben ergänzt',
@@ -476,6 +493,21 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       endCrewConfirm: 'A mayday for {name} is still open. Report the crew back anyway? The mayday stays open until it is resolved.',
       endOperationConfirm: 'Incident “{name}” still has {count} open mayday. End the incident anyway?'
     },
+    retreat: {
+      at: 'Retreat at {value} bar',
+      eta: 'Retreat approx. {time}',
+      missing: 'Retreat pressure: pressure at target missing',
+      reached: 'Retreat pressure reached – start retreat!',
+      estimated: 'Retreat pressure probably reached – check pressure',
+      alarmTitle: 'Start retreat',
+      alarmText: '{person}: {value} bar – retreat pressure {limit} bar reached.',
+      alarmCrew: 'Retreat pressure reached: {name}',
+      estimatedCrew: 'Retreat pressure probably reached – check pressure: {name}',
+      targetPreview: 'Retreat at {value} bar',
+      reserve: 'Retreat reserve (bar)',
+      reserveValue: 'Retreat reserve: {value} bar',
+      reserveHint: 'Retreat pressure = 2 × consumption on the way in + reserve. Applies to newly created crews.'
+    },
     crewCard: {
       startShort: 'Start'
     },
@@ -512,6 +544,8 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       max: 'Maximum time reached',
       warn_ack: 'Warning acknowledged',
       max_ack: 'Maximum time alarm acknowledged',
+      rueckzug: 'Retreat pressure {value} bar reached – start retreat',
+      rueckzug_ack: 'Retreat alarm acknowledged',
       lateEntry: 'recorded later',
       mayday: 'MAYDAY',
       mayday_info: 'Mayday details added',
