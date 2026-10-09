@@ -525,7 +525,7 @@
   right: 20px;
   display: grid;
   gap: 10px;
-  z-index: 60;
+  z-index: var(--z-toast);
 }
 
 .toast {
@@ -616,7 +616,7 @@
   inset: 0;
   display: grid;
   place-items: center;
-  z-index: 50;
+  z-index: var(--z-dialog);
 }
 
 .modal__backdrop {
@@ -1278,7 +1278,7 @@ button.btn-attention {
   left: 16px;
   right: 16px;
   bottom: 16px;
-  z-index: 55;
+  z-index: var(--z-banner);
   margin: 0;
   background: var(--status-warn-bg);
   box-shadow: var(--shadow-2);
@@ -1290,7 +1290,7 @@ button.btn-attention {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 58;
+  z-index: var(--z-banner);
   padding: 10px 16px;
   text-align: center;
   font-weight: 700;
@@ -1303,7 +1303,7 @@ button.btn-attention {
   position: fixed;
   left: 16px;
   bottom: 16px;
-  z-index: 54;
+  z-index: var(--z-banner);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1331,7 +1331,7 @@ button.btn-attention {
   position: fixed;
   right: 16px;
   bottom: 96px;
-  z-index: 56;
+  z-index: var(--z-banner);
   padding: 10px 14px;
   border-radius: 14px;
   font-weight: 600;
@@ -1343,7 +1343,7 @@ button.btn-attention {
   position: fixed;
   right: 16px;
   bottom: 150px;
-  z-index: 56;
+  z-index: var(--z-banner);
   display: grid;
   gap: 8px;
   max-width: min(420px, calc(100vw - 32px));
@@ -1648,7 +1648,7 @@ button.btn-attention {
 .mayday-banner {
   position: sticky;
   top: 0;
-  z-index: 59;
+  z-index: var(--z-banner);
   display: grid;
   gap: 1px;
   background: var(--status-crit-strong);
@@ -1715,6 +1715,10 @@ button.btn-attention {
 }
 
 /* Vollbild-Alarm */
+.modal--mayday {
+  z-index: var(--z-alarm);
+}
+
 .modal--mayday .modal__backdrop {
   background: var(--backdrop-alarm);
 }

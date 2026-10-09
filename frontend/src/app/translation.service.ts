@@ -120,6 +120,7 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
     retreat: {
       at: 'Rückzug bei {value} bar',
       eta: 'Rückzug ca. {time}',
+      etaShort: 'Rückzug ca.',
       missing: 'Rückzugsdruck: Druck am Ziel fehlt',
       reached: 'Rückzugsdruck erreicht – Rückzug antreten!',
       estimated: 'Rückzugsdruck voraussichtlich erreicht – Druck abfragen',
@@ -152,7 +153,11 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       duration: 'Dauer',
       newCrew: 'Trupp anlegen',
       lightMode: 'Helles Design',
-      darkMode: 'Dunkles Design'
+      darkMode: 'Dunkles Design',
+      noOperationTitle: 'Kein Einsatz aktiv',
+      noOperationText: 'Starten Sie einen Einsatz, um Trupps anzulegen und zu überwachen.',
+      crews: 'Trupps',
+      alarmAt: 'Alarm {time}'
     },
     crewCard: {
       startShort: 'Start'
@@ -518,6 +523,7 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
     retreat: {
       at: 'Retreat at {value} bar',
       eta: 'Retreat approx. {time}',
+      etaShort: 'Retreat approx.',
       missing: 'Retreat pressure: pressure at target missing',
       reached: 'Retreat pressure reached – start retreat!',
       estimated: 'Retreat pressure probably reached – check pressure',
@@ -550,7 +556,11 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       duration: 'Duration',
       newCrew: 'Add crew',
       lightMode: 'Light theme',
-      darkMode: 'Dark theme'
+      darkMode: 'Dark theme',
+      noOperationTitle: 'No active incident',
+      noOperationText: 'Start an incident to add and monitor crews.',
+      crews: 'Crews',
+      alarmAt: 'Alarm {time}'
     },
     crewCard: {
       startShort: 'Start'

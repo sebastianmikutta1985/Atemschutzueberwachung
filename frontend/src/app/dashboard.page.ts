@@ -16,19 +16,35 @@ import { RealtimeService } from './realtime.service';
 import { SessionService } from './session.service';
 import { ThemeMode, ThemeStore } from './theme.store';
 import { TranslationService } from './translation.service';
-import { TruppCardComponent } from './trupp-card.component';
+import { TruppKarteComponent } from './crew/trupp-karte.component';
+import { ButtonComponent, IconButtonComponent } from './ui/button.component';
+import { ConnectionIndicatorComponent } from './ui/connection-indicator.component';
+import { DialogComponent } from './ui/dialog.component';
+import { IconComponent } from './ui/icon.component';
+import { TranslatePipe } from './ui/translate.pipe';
 
 // Einsatz- und Trupp-Erfassung. Ueberwachung, Alarme und Ton liegen im MonitoringService,
-// die Anzeige einzelner Trupps in TruppCardComponent, Exporte im ExportService.
+// die Anzeige einzelner Trupps in TruppKarteComponent, Exporte im ExportService.
 @Component({
   selector: 'app-dashboard-page',
-  imports: [CommonModule, FormsModule, RouterLink, TruppCardComponent],
-  templateUrl: './dashboard.page.html'
+  imports: [
+    CommonModule,
+    FormsModule,
+    RouterLink,
+    TruppKarteComponent,
+    ButtonComponent,
+    IconButtonComponent,
+    ConnectionIndicatorComponent,
+    DialogComponent,
+    IconComponent,
+    TranslatePipe
+  ],
+  templateUrl: './dashboard.page.html',
+  styleUrl: './dashboard.page.css'
 })
 export class DashboardPage implements OnInit, OnDestroy {
   private readonly baseUrl = environment.apiBaseUrl;
   @ViewChild('druckInput') druckInput?: ElementRef<HTMLInputElement>;
-  @ViewChild('dashboardSection') dashboardSection?: ElementRef<HTMLElement>;
   @ViewChild('confirmCancel') confirmCancel?: ElementRef<HTMLButtonElement>;
   @ViewChild('zielInput') zielInput?: ElementRef<HTMLInputElement>;
   @ViewChild('deleteReason') deleteReason?: ElementRef<HTMLTextAreaElement>;
@@ -36,7 +52,8 @@ export class DashboardPage implements OnInit, OnDestroy {
   private unsubscribeStatus?: () => void;
   liveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
   themeMode: ThemeMode = 'light';
-  mobileMetaOpen = false;
+  menuOpen = false;
+  truppDialogOpen = false;
 
   geraetetraeger: Geraetetraeger[] = [];
   truppnamen: TruppName[] = [];
@@ -182,8 +199,17 @@ export class DashboardPage implements OnInit, OnDestroy {
     ThemeStore.apply(this.themeMode);
   }
 
-  toggleMobileMeta(): void {
-    this.mobileMetaOpen = !this.mobileMetaOpen;
+  openTruppDialog(): void {
+    // Unveraenderte Vorbelegung mitziehen, damit nach laengerer Zeit nicht eine alte Startzeit im Feld steht.
+    if (this.truppForm.startzeit === this.lastAutoStartzeit) {
+      this.setAutoStartzeitNow();
+    }
+    this.truppError = '';
+    this.truppDialogOpen = true;
+  }
+
+  closeTruppDialog(): void {
+    this.truppDialogOpen = false;
   }
 
   // Escape schliesst Dialoge – ausser dem Alarm, der ausdruecklich bestaetigt werden muss.
@@ -192,7 +218,9 @@ export class DashboardPage implements OnInit, OnDestroy {
     if (this.monitoring.alarm()) {
       return;
     }
-    if (this.confirmModal) {
+    if (this.menuOpen) {
+      this.menuOpen = false;
+    } else if (this.confirmModal) {
       this.closeConfirmModal();
     } else if (this.protokollModal) {
       this.closeProtokoll();
@@ -488,16 +516,12 @@ export class DashboardPage implements OnInit, OnDestroy {
         this.truppForm.person2Id = '';
         this.setAutoStartzeitNow();
         this.monitoring.loadTrupps();
-        this.scrollToDashboard();
+        this.truppDialogOpen = false;
       },
       error: (err) => {
         this.truppError = this.apiError(err, 'dashboard.actionFailed');
       }
     });
-  }
-
-  private scrollToDashboard(): void {
-    this.dashboardSection?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   endTrupp(trupp: Trupp): void {
