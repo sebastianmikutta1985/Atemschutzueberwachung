@@ -1,6 +1,16 @@
-import { CommonModule } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, effect, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  effect,
+  ElementRef,
+  HostListener,
+  OnDestroy,
+  OnInit,
+  signal,
+  ViewChild
+} from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -18,17 +28,62 @@ import { ThemeMode, ThemeStore } from './theme.store';
 import { TranslationService } from './translation.service';
 import { TruppKarteComponent } from './crew/trupp-karte.component';
 import { ButtonComponent, IconButtonComponent } from './ui/button.component';
-import { ConnectionIndicatorComponent } from './ui/connection-indicator.component';
+import { ConnectionIndicatorComponent, LiveStatus } from './ui/connection-indicator.component';
 import { DialogComponent } from './ui/dialog.component';
 import { IconComponent } from './ui/icon.component';
 import { TranslatePipe } from './ui/translate.pipe';
 
+interface DruckModal {
+  trupp: Trupp;
+  personId: string;
+  personName: string;
+  value: number | null;
+  last: DruckInfo[];
+}
+
+interface DetailsModal {
+  einsatz: Einsatz;
+  trupps: Trupp[];
+  loading: boolean;
+}
+
+interface DeleteModal {
+  einsatz: Einsatz;
+  grund: string;
+  error: string;
+}
+
+// "Ziel erreicht": Druck beider Geraetetraeger als Grundlage der Rueckzugsberechnung (ueberspringbar).
+interface ZielModal {
+  trupp: Trupp;
+  p1: number | null;
+  p2: number | null;
+  error: string;
+}
+
+interface ProtokollModal {
+  title: string;
+  loading: boolean;
+  error: string;
+  eintraege: ProtokollEintrag[];
+  pendingCount: number;
+}
+
+// Bestaetigung fuer nicht umkehrbare Aktionen (Einsatz/Trupp beenden, Rueckweg, Abmelden mit offenen Eingaben).
+interface ConfirmModal {
+  title: string;
+  text: string;
+  confirmLabel: string;
+  action: () => void;
+}
+
 // Einsatz- und Trupp-Erfassung. Ueberwachung, Alarme und Ton liegen im MonitoringService,
 // die Anzeige einzelner Trupps in TruppKarteComponent, Exporte im ExportService.
+// UI-Zustand liegt in Signals (OnPush); Formularobjekte bleiben veraenderlich fuer ngModel.
 @Component({
   selector: 'app-dashboard-page',
   imports: [
-    CommonModule,
+    DatePipe,
     FormsModule,
     RouterLink,
     TruppKarteComponent,
@@ -39,25 +94,27 @@ import { TranslatePipe } from './ui/translate.pipe';
     IconComponent,
     TranslatePipe
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dashboard.page.html',
   styleUrl: './dashboard.page.css'
 })
 export class DashboardPage implements OnInit, OnDestroy {
   private readonly baseUrl = environment.apiBaseUrl;
   @ViewChild('druckInput') druckInput?: ElementRef<HTMLInputElement>;
-  @ViewChild('confirmCancel') confirmCancel?: ElementRef<HTMLButtonElement>;
+  // read: ElementRef, weil auf dem Button die ButtonComponent sitzt.
+  @ViewChild('confirmCancel', { read: ElementRef }) confirmCancel?: ElementRef<HTMLButtonElement>;
   @ViewChild('zielInput') zielInput?: ElementRef<HTMLInputElement>;
   @ViewChild('deleteReason') deleteReason?: ElementRef<HTMLTextAreaElement>;
   private unsubscribeRealtime?: () => void;
   private unsubscribeStatus?: () => void;
-  liveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
-  themeMode: ThemeMode = 'light';
-  menuOpen = false;
-  truppDialogOpen = false;
+  readonly liveStatus = signal<LiveStatus>('disconnected');
+  readonly themeMode = signal<ThemeMode>('light');
+  readonly menuOpen = signal(false);
+  readonly truppDialogOpen = signal(false);
 
-  geraetetraeger: Geraetetraeger[] = [];
-  truppnamen: TruppName[] = [];
-  letzteEinsaetze: Einsatz[] = [];
+  readonly geraetetraeger = signal<Geraetetraeger[]>([]);
+  readonly truppnamen = signal<TruppName[]>([]);
+  readonly letzteEinsaetze = signal<Einsatz[]>([]);
   private defaultsApplied = false;
 
   einsatzForm = {
@@ -79,35 +136,20 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   private lastAutoStartzeit = '';
   private lastAutoAlarmzeit = '';
-  errorMessage = '';
-  truppError = '';
+  readonly errorMessage = signal('');
+  readonly truppError = signal('');
 
-  druckModal: {
-    open: boolean;
-    trupp: Trupp;
-    personId: string;
-    personName: string;
-    value: number | null;
-    last: DruckInfo[];
-  } | null = null;
-  druckModalError = '';
+  readonly druckModal = signal<DruckModal | null>(null);
+  readonly druckModalError = signal('');
   // Verhindert eine doppelte Messung durch erneutes Tippen, waehrend die erste noch uebertragen wird.
-  druckSaving = false;
+  readonly druckSaving = signal(false);
 
-  detailsModal: {
-    open: boolean;
-    einsatz: Einsatz;
-    trupps: Trupp[];
-    loading: boolean;
-  } | null = null;
-  deleteModal: { open: boolean; einsatz: Einsatz; grund: string; error: string } | null = null;
-  // "Ziel erreicht": Druck beider Geraetetraeger als Grundlage der Rueckzugsberechnung (ueberspringbar).
-  zielModal: { trupp: Trupp; p1: number | null; p2: number | null; error: string } | null = null;
-  zielSaving = false;
-  protokollModal: { title: string; loading: boolean; error: string; eintraege: ProtokollEintrag[]; pendingCount: number } | null =
-    null;
-  // Bestaetigung fuer nicht umkehrbare Aktionen (Einsatz/Trupp beenden).
-  confirmModal: { title: string; text: string; confirmLabel: string; action: () => void } | null = null;
+  readonly detailsModal = signal<DetailsModal | null>(null);
+  readonly deleteModal = signal<DeleteModal | null>(null);
+  readonly zielModal = signal<ZielModal | null>(null);
+  readonly zielSaving = signal(false);
+  readonly protokollModal = signal<ProtokollModal | null>(null);
+  readonly confirmModal = signal<ConfirmModal | null>(null);
 
   constructor(
     private http: HttpClient,
@@ -145,11 +187,6 @@ export class DashboardPage implements OnInit, OnDestroy {
     return this.monitoring.now();
   }
 
-  // Karten beim Neuladen wiederverwenden statt neu aufzubauen.
-  trackTrupp(_index: number, trupp: Trupp): string {
-    return trupp.id;
-  }
-
   ngOnInit(): void {
     this.loadTheme();
     this.updatePageTitle();
@@ -168,10 +205,10 @@ export class DashboardPage implements OnInit, OnDestroy {
       }
     });
     this.unsubscribeStatus = this.realtime.onStatus((status) => {
-      if (status === 'disconnected' && this.liveStatus !== 'disconnected') {
+      if (status === 'disconnected' && this.liveStatus() !== 'disconnected') {
         this.monitoring.notify(this.i18n.t('dashboard.liveOffline'), 'warn');
       }
-      this.liveStatus = status;
+      this.liveStatus.set(status);
     });
   }
 
@@ -188,15 +225,15 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   private loadTheme(): void {
     const themeKey = AuthStore.themeKey();
-    this.themeMode = ThemeStore.load(themeKey);
-    ThemeStore.apply(this.themeMode);
+    this.themeMode.set(ThemeStore.load(themeKey));
+    ThemeStore.apply(this.themeMode());
   }
 
   toggleTheme(): void {
     const themeKey = AuthStore.themeKey();
-    this.themeMode = this.themeMode === 'dark' ? 'light' : 'dark';
-    ThemeStore.save(this.themeMode, themeKey);
-    ThemeStore.apply(this.themeMode);
+    this.themeMode.set(this.themeMode() === 'dark' ? 'light' : 'dark');
+    ThemeStore.save(this.themeMode(), themeKey);
+    ThemeStore.apply(this.themeMode());
   }
 
   openTruppDialog(): void {
@@ -204,34 +241,37 @@ export class DashboardPage implements OnInit, OnDestroy {
     if (this.truppForm.startzeit === this.lastAutoStartzeit) {
       this.setAutoStartzeitNow();
     }
-    this.truppError = '';
-    this.truppDialogOpen = true;
+    this.truppError.set('');
+    this.truppDialogOpen.set(true);
   }
 
   closeTruppDialog(): void {
-    this.truppDialogOpen = false;
+    this.truppDialogOpen.set(false);
   }
 
-  // Escape schliesst Dialoge – ausser dem Alarm, der ausdruecklich bestaetigt werden muss.
+  // Escape schliesst das Menue und Dialoge – ausser dem Alarm, der ausdruecklich bestaetigt werden muss.
+  // (Hat ein Dialog den Fokus, schliesst er sich selbst ueber das Dialog-Geruest.)
   @HostListener('document:keydown.escape')
   onEscape(): void {
     if (this.monitoring.alarm()) {
       return;
     }
-    if (this.menuOpen) {
-      this.menuOpen = false;
-    } else if (this.confirmModal) {
+    if (this.menuOpen()) {
+      this.menuOpen.set(false);
+    } else if (this.confirmModal()) {
       this.closeConfirmModal();
-    } else if (this.protokollModal) {
+    } else if (this.protokollModal()) {
       this.closeProtokoll();
-    } else if (this.zielModal) {
+    } else if (this.zielModal()) {
       this.closeZielModal();
-    } else if (this.druckModal) {
+    } else if (this.druckModal()) {
       this.closeDruckModal();
-    } else if (this.detailsModal) {
+    } else if (this.detailsModal()) {
       this.closeEinsatzDetails();
-    } else if (this.deleteModal) {
+    } else if (this.deleteModal()) {
       this.closeDeleteModal();
+    } else if (this.truppDialogOpen()) {
+      this.closeTruppDialog();
     }
   }
 
@@ -253,7 +293,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   get availablePerson1(): Geraetetraeger[] {
-    return this.geraetetraeger.filter(
+    return this.geraetetraeger().filter(
       (t) =>
         t.aktiv !== false &&
         t.id !== this.truppForm.person2Id &&
@@ -262,7 +302,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   get availablePerson2(): Geraetetraeger[] {
-    return this.geraetetraeger.filter(
+    return this.geraetetraeger().filter(
       (t) =>
         t.aktiv !== false &&
         t.id !== this.truppForm.person1Id &&
@@ -271,7 +311,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   get activeTruppnamen(): TruppName[] {
-    return this.truppnamen.filter((t) => t.aktiv !== false);
+    return this.truppnamen().filter((t) => t.aktiv !== false);
   }
 
   // Hinweis, wenn die Geraeteuhr um mindestens eine Minute abweicht; die Anzeige ist bereits korrigiert.
@@ -299,12 +339,12 @@ export class DashboardPage implements OnInit, OnDestroy {
       return;
     }
     // Nicht uebertragene Eingaben bleiben auf diesem Geraet und werden nach der naechsten Anmeldung gesendet.
-    this.confirmModal = {
+    this.confirmModal.set({
       title: this.i18n.t('outbox.logoutTitle'),
       text: this.i18n.t('outbox.logoutText', { count: waiting }),
       confirmLabel: this.i18n.t('common.logout'),
       action: () => this.session.logout()
-    };
+    });
     this.focusSoon(() => this.confirmCancel);
   }
 
@@ -315,19 +355,19 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   loadLetzteEinsaetze(): void {
     this.http.get<Einsatz[]>(`${this.baseUrl}/einsaetze/letzte?limit=8`).subscribe((list) => {
-      this.letzteEinsaetze = list.filter((e) => e.status !== 'aktiv');
+      this.letzteEinsaetze.set(list.filter((e) => e.status !== 'aktiv'));
     });
   }
 
   loadGeraetetraeger(): void {
     this.http.get<Geraetetraeger[]>(`${this.baseUrl}/geraetetraeger`).subscribe((list) => {
-      this.geraetetraeger = list;
+      this.geraetetraeger.set(list);
     });
   }
 
   loadTruppnamen(): void {
     this.http.get<TruppName[]>(`${this.baseUrl}/truppnamen`).subscribe((list) => {
-      this.truppnamen = list;
+      this.truppnamen.set(list);
     });
   }
 
@@ -344,7 +384,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   createEinsatz(): void {
-    this.errorMessage = '';
+    this.errorMessage.set('');
     const name = this.einsatzForm.name.trim();
     const ort = this.einsatzForm.ort.trim();
     if (!name || !ort) {
@@ -365,7 +405,7 @@ export class DashboardPage implements OnInit, OnDestroy {
         this.loadLetzteEinsaetze();
       },
       error: (err) => {
-        this.errorMessage = this.apiError(err, 'dashboard.operationStartError');
+        this.errorMessage.set(this.apiError(err, 'dashboard.operationStartError'));
       }
     });
   }
@@ -377,7 +417,7 @@ export class DashboardPage implements OnInit, OnDestroy {
     }
     const activeCrews = this.trupps.filter((t) => !t.endzeit).length;
     const openMaydays = this.monitoring.maydays().length;
-    this.confirmModal = {
+    this.confirmModal.set({
       title: this.i18n.t('dashboard.endOperationConfirmTitle'),
       text: openMaydays > 0
         ? this.i18n.t('mayday.endOperationConfirm', { name: einsatz.name, count: openMaydays })
@@ -386,7 +426,7 @@ export class DashboardPage implements OnInit, OnDestroy {
           : this.i18n.t('dashboard.endOperationConfirmText', { name: einsatz.name }),
       confirmLabel: this.i18n.t('dashboard.endOperation'),
       action: () => this.doEndEinsatz(einsatz)
-    };
+    });
     this.focusSoon(() => this.confirmCancel);
   }
 
@@ -415,53 +455,53 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   deleteEinsatz(einsatz: Einsatz): void {
-    this.deleteModal = { open: true, einsatz, grund: '', error: '' };
+    this.deleteModal.set({ einsatz, grund: '', error: '' });
     this.focusSoon(() => this.deleteReason);
   }
 
   // Loeschen entfernt das Einsatzprotokoll: nur mit Begruendung, die im Audit-Log festgehalten wird.
   confirmDeleteEinsatz(): void {
-    const modal = this.deleteModal;
+    const modal = this.deleteModal();
     if (!modal) {
       return;
     }
     const grund = modal.grund.trim();
     if (grund.length < 5) {
-      modal.error = this.i18n.t('dashboard.deleteReasonTooShort');
+      this.deleteModal.set({ ...modal, error: this.i18n.t('dashboard.deleteReasonTooShort') });
       return;
     }
     this.http.post(`${this.baseUrl}/einsaetze/${modal.einsatz.id}/loeschen`, { grund }).subscribe({
       next: () => {
         this.loadLetzteEinsaetze();
         this.monitoring.refresh();
-        this.deleteModal = null;
+        this.deleteModal.set(null);
       },
       error: (err) => {
-        modal.error = this.apiError(err, 'dashboard.actionFailed');
+        const current = this.deleteModal();
+        if (current) {
+          this.deleteModal.set({ ...current, error: this.apiError(err, 'dashboard.actionFailed') });
+        }
       }
     });
   }
 
   closeDeleteModal(): void {
-    this.deleteModal = null;
+    this.deleteModal.set(null);
   }
 
   openEinsatzDetails(einsatz: Einsatz): void {
-    this.detailsModal = {
-      open: true,
-      einsatz,
-      trupps: [],
-      loading: true
-    };
+    this.detailsModal.set({ einsatz, trupps: [], loading: true });
 
     this.http
       .get<Trupp[]>(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`)
       .subscribe((list) => {
-        if (this.detailsModal && this.detailsModal.einsatz.id === einsatz.id) {
-          this.detailsModal.trupps = [...list].sort(
-            (a, b) => (parseEpoch(a.startzeit) ?? 0) - (parseEpoch(b.startzeit) ?? 0)
-          );
-          this.detailsModal.loading = false;
+        const current = this.detailsModal();
+        if (current && current.einsatz.id === einsatz.id) {
+          this.detailsModal.set({
+            ...current,
+            trupps: [...list].sort((a, b) => (parseEpoch(a.startzeit) ?? 0) - (parseEpoch(b.startzeit) ?? 0)),
+            loading: false
+          });
         }
       });
   }
@@ -475,7 +515,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   closeEinsatzDetails(): void {
-    this.detailsModal = null;
+    this.detailsModal.set(null);
   }
 
   addTrupp(): void {
@@ -508,7 +548,7 @@ export class DashboardPage implements OnInit, OnDestroy {
       return;
     }
 
-    this.truppError = '';
+    this.truppError.set('');
     this.http.post<Trupp>(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`, payload).subscribe({
       next: () => {
         this.truppForm.truppNameId = '';
@@ -516,16 +556,16 @@ export class DashboardPage implements OnInit, OnDestroy {
         this.truppForm.person2Id = '';
         this.setAutoStartzeitNow();
         this.monitoring.loadTrupps();
-        this.truppDialogOpen = false;
+        this.truppDialogOpen.set(false);
       },
       error: (err) => {
-        this.truppError = this.apiError(err, 'dashboard.actionFailed');
+        this.truppError.set(this.apiError(err, 'dashboard.actionFailed'));
       }
     });
   }
 
   endTrupp(trupp: Trupp): void {
-    this.confirmModal = {
+    this.confirmModal.set({
       title: this.i18n.t('dashboard.endCrewConfirmTitle'),
       // Offener Mayday: ausdruecklich darauf hinweisen; er bleibt offen, bis "Mayday beendet" erfasst ist.
       text: trupp.maydayAktiv
@@ -533,7 +573,7 @@ export class DashboardPage implements OnInit, OnDestroy {
         : this.i18n.t('dashboard.endCrewConfirmText', { name: trupp.bezeichnung }),
       confirmLabel: this.i18n.t('crewState.step_beendet'),
       action: () => this.doEndTrupp(trupp)
-    };
+    });
     this.focusSoon(() => this.confirmCancel);
   }
 
@@ -543,13 +583,13 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   confirmAction(): void {
-    const action = this.confirmModal?.action;
-    this.confirmModal = null;
+    const action = this.confirmModal()?.action;
+    this.confirmModal.set(null);
     action?.();
   }
 
   closeConfirmModal(): void {
-    this.confirmModal = null;
+    this.confirmModal.set(null);
   }
 
   // Ueber die Warteschlange: das Ende gilt sofort (auch offline) mit der Zeit des Tippens.
@@ -570,22 +610,22 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   changeZustand(trupp: Trupp, zustand: 'arbeit' | 'rueckweg'): void {
     if (zustand === 'arbeit') {
-      this.zielModal = { trupp, p1: null, p2: null, error: '' };
+      this.zielModal.set({ trupp, p1: null, p2: null, error: '' });
       this.focusSoon(() => this.zielInput);
       return;
     }
     // Zustaende lassen sich nicht zuruecknehmen: kurz bestaetigen.
-    this.confirmModal = {
+    this.confirmModal.set({
       title: this.i18n.t('crewState.retreatConfirmTitle'),
       text: this.i18n.t('crewState.retreatConfirmText', { name: trupp.bezeichnung }),
       confirmLabel: this.i18n.t('crewState.step_rueckweg'),
       action: () => void this.submitZustand(trupp, 'rueckweg')
-    };
+    });
     this.focusSoon(() => this.confirmCancel);
   }
 
   closeZielModal(): void {
-    this.zielModal = null;
+    this.zielModal.set(null);
   }
 
   // Hoechster zulaessiger Wert: letzte Messung bzw. Startdruck der Person.
@@ -606,9 +646,16 @@ export class DashboardPage implements OnInit, OnDestroy {
     return 2 * (startBar - bar) + (trupp.rueckzugReserveBar ?? DEFAULT_RESERVE_BAR);
   }
 
+  private setZielError(error: string): void {
+    const modal = this.zielModal();
+    if (modal) {
+      this.zielModal.set({ ...modal, error });
+    }
+  }
+
   async saveZiel(druckNichtGemeldet: boolean): Promise<void> {
-    const modal = this.zielModal;
-    if (!modal || this.zielSaving) {
+    const modal = this.zielModal();
+    if (!modal || this.zielSaving()) {
       return;
     }
     const trupp = modal.trupp;
@@ -619,15 +666,17 @@ export class DashboardPage implements OnInit, OnDestroy {
         { personId: trupp.person2Id, personName: trupp.person2Name, value: Number(modal.p2) }
       ];
       if (values.some((v) => !modal.p1 || !modal.p2 || !Number.isFinite(v.value) || v.value <= 0)) {
-        modal.error = this.i18n.t('crewState.targetPressureMissing');
+        this.setZielError(this.i18n.t('crewState.targetPressureMissing'));
         return;
       }
       const tooHigh = values.find((v) => v.value > this.maxDruckFor(trupp, v.personId));
       if (tooHigh) {
-        modal.error = this.i18n.t('crewState.targetPressureTooHigh', {
-          person: tooHigh.personName,
-          value: this.maxDruckFor(trupp, tooHigh.personId)
-        });
+        this.setZielError(
+          this.i18n.t('crewState.targetPressureTooHigh', {
+            person: tooHigh.personName,
+            value: this.maxDruckFor(trupp, tooHigh.personId)
+          })
+        );
         return;
       }
       zielDruck = values.map((v) => ({
@@ -637,15 +686,15 @@ export class DashboardPage implements OnInit, OnDestroy {
         druckBar: v.value
       }));
     }
-    this.zielSaving = true;
+    this.zielSaving.set(true);
     const error = await this.submitZustand(trupp, 'arbeit', zielDruck, druckNichtGemeldet);
-    this.zielSaving = false;
+    this.zielSaving.set(false);
     if (error) {
       // Dialog offen lassen, damit die Werte korrigiert werden koennen.
-      modal.error = error;
+      this.setZielError(error);
       return;
     }
-    this.zielModal = null;
+    this.zielModal.set(null);
   }
 
   // Ueber die Warteschlange: der Zustand gilt sofort (auch offline) mit der Zeit des Tippens.
@@ -681,28 +730,28 @@ export class DashboardPage implements OnInit, OnDestroy {
   openProtokoll(trupp: Trupp): void {
     // Eingaben dieses Geraets, die noch nicht beim Server sind, fehlen im Serverprotokoll: darauf hinweisen.
     const pendingCount = this.monitoring.outbox.waiting().filter((i) => i.truppId === trupp.id).length;
-    const modal = {
+    const modal: ProtokollModal = {
       title: this.i18n.t('protocol.title', { name: trupp.bezeichnung }),
       loading: true,
       error: '',
-      eintraege: [] as ProtokollEintrag[],
+      eintraege: [],
       pendingCount
     };
-    this.protokollModal = modal;
-    this.http.get<TruppProtokoll>(`${this.baseUrl}/trupps/${trupp.id}/protokoll`).subscribe({
-      next: (p) => {
-        modal.eintraege = p.eintraege;
-        modal.loading = false;
-      },
-      error: (err) => {
-        modal.error = this.apiError(err, 'protocol.loadFailed');
-        modal.loading = false;
+    this.protokollModal.set(modal);
+    // Nur uebernehmen, solange noch derselbe Dialog offen ist.
+    const update = (patch: Partial<ProtokollModal>) => {
+      if (this.protokollModal()?.title === modal.title) {
+        this.protokollModal.update((m) => (m ? { ...m, ...patch } : m));
       }
+    };
+    this.http.get<TruppProtokoll>(`${this.baseUrl}/trupps/${trupp.id}/protokoll`).subscribe({
+      next: (p) => update({ eintraege: p.eintraege, loading: false }),
+      error: (err) => update({ error: this.apiError(err, 'protocol.loadFailed'), loading: false })
     });
   }
 
   closeProtokoll(): void {
-    this.protokollModal = null;
+    this.protokollModal.set(null);
   }
 
   describeEintrag(e: ProtokollEintrag): string {
@@ -713,42 +762,35 @@ export class DashboardPage implements OnInit, OnDestroy {
     const personName = personId === trupp.person1Id ? trupp.person1Name : trupp.person2Name;
     const last =
       personId === trupp.person1Id ? trupp.druckMessungenPerson1 : trupp.druckMessungenPerson2;
-    this.druckModal = {
-      open: true,
-      trupp,
-      personId,
-      personName,
-      value: null,
-      last
-    };
-    this.druckModalError = '';
+    this.druckModal.set({ trupp, personId, personName, value: null, last });
+    this.druckModalError.set('');
     window.setTimeout(() => {
       this.druckInput?.nativeElement.focus();
     }, 0);
   }
 
   closeDruckModal(): void {
-    this.druckModal = null;
-    this.druckModalError = '';
+    this.druckModal.set(null);
+    this.druckModalError.set('');
   }
 
   async saveDruckModal(): Promise<void> {
-    if (!this.druckModal || this.druckSaving) {
+    const modal = this.druckModal();
+    if (!modal || this.druckSaving()) {
       return;
     }
-    const value = Number(this.druckModal.value);
+    const value = Number(modal.value);
     if (!Number.isFinite(value) || value <= 0) {
       return;
     }
     const maxAllowed = this.maxDruckForModal();
     if (maxAllowed !== null && value > maxAllowed) {
-      this.druckModalError = this.i18n.t('dashboard.pressureMaxValue', { value: maxAllowed });
+      this.druckModalError.set(this.i18n.t('dashboard.pressureMaxValue', { value: maxAllowed }));
       this.monitoring.notify(this.i18n.t('dashboard.pressureTooHigh', { value: maxAllowed }), 'warn');
       return;
     }
     // Ueber die Warteschlange: ohne Netz wird die Messung mit ihrer Erfassungszeit gespeichert und spaeter gesendet.
-    const modal = this.druckModal;
-    this.druckSaving = true;
+    this.druckSaving.set(true);
     const result = await this.monitoring.outbox.submit({
       id: this.monitoring.outbox.newId(),
       kind: 'druck',
@@ -759,10 +801,10 @@ export class DashboardPage implements OnInit, OnDestroy {
       druckBar: value,
       zeit: this.monitoring.outbox.nowIso()
     });
-    this.druckSaving = false;
+    this.druckSaving.set(false);
     if (result.status === 'rejected') {
       // Dialog offen lassen, damit der Wert korrigiert werden kann.
-      this.druckModalError = result.error;
+      this.druckModalError.set(result.error);
       return;
     }
     this.closeDruckModal();
@@ -772,16 +814,14 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   maxDruckForModal(): number | null {
-    if (!this.druckModal) {
+    const modal = this.druckModal();
+    if (!modal) {
       return null;
     }
-    const last = this.druckModal.last;
-    if (last && last.length > 0) {
-      return last[0].druckBar;
+    if (modal.last && modal.last.length > 0) {
+      return modal.last[0].druckBar;
     }
-    return this.druckModal.personId === this.druckModal.trupp.person1Id
-      ? this.druckModal.trupp.startdruckPerson1Bar
-      : this.druckModal.trupp.startdruckPerson2Bar;
+    return modal.personId === modal.trupp.person1Id ? modal.trupp.startdruckPerson1Bar : modal.trupp.startdruckPerson2Bar;
   }
 
   isPersonInActiveTrupp(personId: string): boolean {
@@ -791,7 +831,7 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   isTruppNameInActiveTrupp(truppNameId: string): boolean {
-    const truppName = this.truppnamen.find((t) => t.id === truppNameId);
+    const truppName = this.truppnamen().find((t) => t.id === truppNameId);
     if (!truppName) {
       return false;
     }

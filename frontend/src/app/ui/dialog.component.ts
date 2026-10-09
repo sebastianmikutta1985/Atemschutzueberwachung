@@ -102,6 +102,10 @@ const FOCUSABLE =
       border-color: var(--status-crit-solid);
       border-top-width: var(--space-2);
     }
+    /* Der Dialog selbst bekommt nur programmatisch Fokus (ohne Eingabefeld): kein Rahmen um das ganze Feld */
+    .dialog:focus {
+      outline: none;
+    }
     .dialog__head {
       display: flex;
       align-items: center;
@@ -163,6 +167,8 @@ export class DialogComponent implements AfterViewInit, OnDestroy {
   readonly role = input<'dialog' | 'alertdialog'>('dialog');
   // Darf per Esc, Schliessen-Knopf und Klick daneben geschlossen werden (nicht bei Alarmen).
   readonly closable = input(true);
+  // Klick daneben schliesst nicht, wenn sonst eine Eingabe verloren ginge (Esc und Abbrechen gehen weiter).
+  readonly backdropClose = input(true);
   readonly close = output<void>();
 
   readonly titleId = `dialog-title-${++nextId}`;
@@ -185,7 +191,7 @@ export class DialogComponent implements AfterViewInit, OnDestroy {
   }
 
   onBackdrop(): void {
-    if (this.closable()) {
+    if (this.closable() && this.backdropClose()) {
       this.close.emit();
     }
   }
