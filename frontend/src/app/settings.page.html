@@ -1,220 +1,206 @@
-<div class="page">
-  <header class="hero">
-    <div class="hero__text">
-      <p class="hero__eyebrow">{{ i18n.t('settings.eyebrow') }}</p>
-      <h1>{{ i18n.t('settings.title') }}</h1>
-      <p class="hero__sub">{{ i18n.t('settings.subtitle') }}</p>
-    </div>
-    <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
-    <div class="hero__meta">
-      <div class="pill" [attr.data-live]="liveStatus">
-        <span class="pill__label">{{ i18n.t('common.live') }}</span>
-        <span class="pill__value">
-          {{
-            liveStatus === 'connected'
-              ? i18n.t('common.connected')
-              : liveStatus === 'connecting'
-                ? i18n.t('common.connecting')
-                : i18n.t('common.offline')
-          }}
-        </span>
-      </div>
-      <div class="pill" *ngIf="authInfo">
-        <span class="pill__label">{{ i18n.t('common.organization') }}</span>
-        <span class="pill__value">{{ authInfo.orgName }} ({{ authInfo.orgCode }})</span>
-      </div>
-      <label class="theme-toggle">
-        <input type="checkbox" [checked]="themeMode === 'dark'" (change)="toggleTheme()" />
-        <span class="theme-toggle__track">
-          <span class="theme-toggle__thumb"></span>
-        </span>
-        <span class="theme-toggle__label">{{ i18n.t('common.darkMode') }}</span>
-      </label>
-      <div class="lang-switch" [attr.aria-label]="i18n.t('language.switchLabel')">
-        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'de'" (click)="i18n.setLang('de')">DE</button>
-        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'en'" (click)="i18n.setLang('en')">EN</button>
-      </div>
-      <button class="ghost btn-icon" type="button" [routerLink]="['/']">{{ i18n.t('common.back') }}</button>
-      <button class="ghost btn-icon" type="button" (click)="logout()">{{ i18n.t('common.logout') }}</button>
-    </div>
-  </header>
+<app-page [heading]="'settings.title' | t" [subtitle]="authInfo ? authInfo.orgName + ' (' + authInfo.orgCode + ')' : ''" backLink="/">
+  <app-connection-indicator page-actions [status]="liveStatus()" />
+  <button
+    page-actions
+    appIconButton
+    type="button"
+    [icon]="themeMode() === 'dark' ? 'sun' : 'moon'"
+    [label]="(themeMode() === 'dark' ? 'ui.lightMode' : 'ui.darkMode') | t"
+    (click)="toggleTheme()"
+  ></button>
+  <app-lang-switch page-actions [lang]="i18n.lang()" (langChange)="i18n.setLang($event)" />
+  <button page-actions appButton variant="ghost" icon="logout" type="button" (click)="logout()">{{ 'common.logout' | t }}</button>
 
-  <section class="card settings">
-    <div class="list__head">
-      <h2>{{ i18n.t('settings.carrierSettings') }}</h2>
-      <div class="muted">{{ i18n.t('dashboard.entries', { count: geraetetraeger.length }) }}</div>
-    </div>
-    <div class="settings__grid">
-      <div class="settings__form">
+  <app-panel [heading]="'settings.carrierSettings' | t" [meta]="'dashboard.entries' | t: { count: geraetetraeger().length }">
+    <div class="mf-grid">
+      <div class="mf-form">
         <label>
-          {{ i18n.t('settings.firstName') }}
-          <input type="text" [(ngModel)]="geraetetraegerForm.vorname" />
+          {{ 'settings.firstName' | t }}
+          <input type="text" name="gtVorname" [(ngModel)]="geraetetraegerForm.vorname" />
         </label>
         <label>
-          {{ i18n.t('settings.lastName') }}
-          <input type="text" [(ngModel)]="geraetetraegerForm.nachname" />
+          {{ 'settings.lastName' | t }}
+          <input type="text" name="gtNachname" [(ngModel)]="geraetetraegerForm.nachname" />
         </label>
         <label>
-          {{ i18n.t('settings.radioNameOptional') }}
-          <input type="text" [(ngModel)]="geraetetraegerForm.funkrufname" />
+          {{ 'settings.radioNameOptional' | t }}
+          <input type="text" name="gtFunk" [(ngModel)]="geraetetraegerForm.funkrufname" />
         </label>
-        <label class="checkbox">
-          <input type="checkbox" [(ngModel)]="geraetetraegerForm.aktiv" />
-          {{ i18n.t('common.active') }}
+        <label class="mf-check">
+          <input type="checkbox" name="gtAktiv" [(ngModel)]="geraetetraegerForm.aktiv" />
+          <span>{{ 'common.active' | t }}</span>
         </label>
-        <button class="primary" type="button" (click)="addGeraetetraeger()">{{ i18n.t('common.save') }}</button>
-        <div class="muted">{{ i18n.t('settings.csvImportHint') }}</div>
-        <input type="file" accept=".csv,text/csv" (change)="importGeraetetraeger($event)" />
-        <div class="trupp__actions trupp__actions--row">
-          <button class="ghost" type="button" (click)="downloadCsvBeispiel()">{{ i18n.t('settings.sampleCsv') }}</button>
-          <button class="ghost" type="button" (click)="previewCsvImport()">{{ i18n.t('settings.checkCsv') }}</button>
-          <button class="primary" type="button" (click)="runCsvImport()">{{ i18n.t('settings.importCsv') }}</button>
-        </div>
-        <div class="muted" *ngIf="importMessage">{{ importMessage }}</div>
-      </div>
+        <button appButton variant="primary" icon="plus" type="button" (click)="addGeraetetraeger()">{{ 'common.save' | t }}</button>
 
-      <div class="settings__list">
-        <div class="trupp" *ngFor="let traeger of geraetetraeger">
-          <div class="trupp__status" [attr.data-status]="traeger.aktiv ? 'gruen' : 'beendet'">
-            {{ traeger.aktiv ? (i18n.t('common.active') | uppercase) : (i18n.t('common.inactive') | uppercase) }}
+        <div class="csv">
+          <p class="mf-hint">{{ 'settings.csvImportHint' | t }}</p>
+          <input type="file" accept=".csv,text/csv" (change)="importGeraetetraeger($event)" />
+          <div class="mf-item__actions">
+            <button appButton size="sm" variant="ghost" icon="download" type="button" (click)="downloadCsvBeispiel()">{{ 'settings.sampleCsv' | t }}</button>
+            <button appButton size="sm" variant="ghost" icon="check" type="button" (click)="previewCsvImport()">{{ 'settings.checkCsv' | t }}</button>
+            <button appButton size="sm" variant="primary" icon="upload" type="button" (click)="runCsvImport()">{{ 'settings.importCsv' | t }}</button>
           </div>
-          <div class="trupp__info">
-            <div class="trupp__title">{{ traeger.nachname }} {{ traeger.vorname }}</div>
-            <div class="muted">{{ traeger.funkrufname || i18n.t('settings.noRadioName') }}</div>
-          </div>
-          <div class="trupp__actions">
-            <button class="ghost" type="button" (click)="toggleGeraetetraeger(traeger)">
-              {{ traeger.aktiv ? i18n.t('settings.deactivate') : i18n.t('settings.activate') }}
-            </button>
-            <button class="danger" type="button" (click)="deleteGeraetetraeger(traeger)">
-              {{ i18n.t('common.delete') }}
-            </button>
-          </div>
+          @if (importMessage()) {
+            <p class="mf-hint" role="status">{{ importMessage() }}</p>
+          }
         </div>
       </div>
-    </div>
-  </section>
 
-  <section class="card settings">
-    <div class="list__head">
-      <h2>{{ i18n.t('settings.crewSettings') }}</h2>
-      <div class="muted">{{ i18n.t('dashboard.entries', { count: truppnamen.length }) }}</div>
+      <ul class="mf-list">
+        @for (traeger of geraetetraeger(); track traeger.id) {
+          <li class="mf-item">
+            <div class="mf-item__info">
+              <span class="state-pill" [attr.data-state]="traeger.aktiv ? 'on' : 'off'">
+                <app-icon [name]="traeger.aktiv ? 'check' : 'close'" size="sm" />
+                {{ (traeger.aktiv ? 'common.active' : 'common.inactive') | t }}
+              </span>
+              <strong>{{ traeger.nachname }} {{ traeger.vorname }}</strong>
+              <span class="muted">{{ traeger.funkrufname || ('settings.noRadioName' | t) }}</span>
+            </div>
+            <div class="mf-item__actions">
+              <button appButton size="sm" variant="ghost" type="button" (click)="toggleGeraetetraeger(traeger)">
+                {{ (traeger.aktiv ? 'settings.deactivate' : 'settings.activate') | t }}
+              </button>
+              <button appButton size="sm" variant="ghost" icon="trash" type="button" (click)="deleteGeraetetraeger(traeger)">
+                {{ 'common.delete' | t }}
+              </button>
+            </div>
+          </li>
+        }
+      </ul>
     </div>
-    <div class="settings__grid">
-      <div class="settings__form">
+  </app-panel>
+
+  <app-panel [heading]="'settings.crewSettings' | t" [meta]="'dashboard.entries' | t: { count: truppnamen().length }">
+    <div class="mf-grid">
+      <div class="mf-form">
         <label>
-          {{ i18n.t('settings.crewName') }}
-          <input type="text" [(ngModel)]="truppNameForm.name" />
+          {{ 'settings.crewName' | t }}
+          <input type="text" name="tnName" [(ngModel)]="truppNameForm.name" />
         </label>
-        <label class="checkbox">
-          <input type="checkbox" [(ngModel)]="truppNameForm.aktiv" />
-          {{ i18n.t('common.active') }}
+        <label class="mf-check">
+          <input type="checkbox" name="tnAktiv" [(ngModel)]="truppNameForm.aktiv" />
+          <span>{{ 'common.active' | t }}</span>
         </label>
-        <button class="primary" type="button" (click)="addTruppName()">{{ i18n.t('common.save') }}</button>
+        <button appButton variant="primary" icon="plus" type="button" (click)="addTruppName()">{{ 'common.save' | t }}</button>
       </div>
 
-      <div class="settings__list">
-        <div
-          class="trupp trupp--draggable"
-          *ngFor="let item of truppnamen; let i = index"
-          [class.trupp--dragging]="dragIndex === i"
-          draggable="true"
-          (dragstart)="onDragStart(i, $event)"
-          (dragover)="onDragOver($event)"
-          (drop)="onDrop(i, $event)"
-        >
-          <div class="trupp__status" [attr.data-status]="item.aktiv ? 'gruen' : 'beendet'">
-            {{ item.aktiv ? (i18n.t('common.active') | uppercase) : (i18n.t('common.inactive') | uppercase) }}
-          </div>
-          <div class="trupp__info">
-            <div class="trupp__title" *ngIf="editingTruppNameId !== item.id">{{ item.name }}</div>
-            <input *ngIf="editingTruppNameId === item.id" type="text" [(ngModel)]="editingTruppNameValue" />
-            <div class="muted">{{ i18n.t('settings.template') }}</div>
-          </div>
-          <div class="trupp__actions trupp__actions--row">
-            <button class="ghost" type="button" *ngIf="editingTruppNameId !== item.id" (click)="startEditTruppName(item)">
-              {{ i18n.t('settings.rename') }}
-            </button>
-            <button class="primary" type="button" *ngIf="editingTruppNameId === item.id" (click)="saveEditTruppName(item)">
-              {{ i18n.t('common.save') }}
-            </button>
-            <button class="ghost" type="button" *ngIf="editingTruppNameId === item.id" (click)="cancelEditTruppName()">
-              {{ i18n.t('common.cancel') }}
-            </button>
-            <button class="ghost" type="button" (click)="toggleTruppName(item)">
-              {{ item.aktiv ? i18n.t('settings.deactivate') : i18n.t('settings.activate') }}
-            </button>
-            <button class="danger" type="button" (click)="deleteTruppName(item)">
-              {{ i18n.t('common.delete') }}
-            </button>
-          </div>
+      <ul class="mf-list">
+        @for (item of truppnamen(); track item.id; let i = $index; let first = $first; let last = $last) {
+          <li
+            class="mf-item mf-item--draggable"
+            [class.mf-item--dragging]="dragIndex() === i"
+            draggable="true"
+            (dragstart)="onDragStart(i, $event)"
+            (dragover)="onDragOver($event)"
+            (drop)="onDrop(i, $event)"
+          >
+            <div class="mf-item__info">
+              <span class="state-pill" [attr.data-state]="item.aktiv ? 'on' : 'off'">
+                <app-icon [name]="item.aktiv ? 'check' : 'close'" size="sm" />
+                {{ (item.aktiv ? 'common.active' : 'common.inactive') | t }}
+              </span>
+              @if (editingTruppNameId() === item.id) {
+                <input class="rename-input" type="text" [name]="'tnEdit' + item.id" [(ngModel)]="editingTruppNameValue" [attr.aria-label]="'settings.crewName' | t" />
+              } @else {
+                <strong>{{ item.name }}</strong>
+              }
+            </div>
+            <div class="mf-item__actions">
+              <!-- Reihenfolge auch ohne Ziehen aendern (Touch) -->
+              <button appIconButton type="button" icon="arrow-up" [label]="'ui.moveUp' | t" [disabled]="first" (click)="moveTruppName(i, -1)"></button>
+              <button appIconButton type="button" icon="arrow-down" [label]="'ui.moveDown' | t" [disabled]="last" (click)="moveTruppName(i, 1)"></button>
+              @if (editingTruppNameId() === item.id) {
+                <button appButton size="sm" variant="primary" type="button" (click)="saveEditTruppName(item)">{{ 'common.save' | t }}</button>
+                <button appButton size="sm" variant="ghost" type="button" (click)="cancelEditTruppName()">{{ 'common.cancel' | t }}</button>
+              } @else {
+                <button appButton size="sm" variant="ghost" icon="edit" type="button" (click)="startEditTruppName(item)">{{ 'settings.rename' | t }}</button>
+              }
+              <button appButton size="sm" variant="ghost" type="button" (click)="toggleTruppName(item)">
+                {{ (item.aktiv ? 'settings.deactivate' : 'settings.activate') | t }}
+              </button>
+              <button appButton size="sm" variant="ghost" icon="trash" type="button" (click)="deleteTruppName(item)">{{ 'common.delete' | t }}</button>
+            </div>
+          </li>
+        }
+      </ul>
+    </div>
+  </app-panel>
+
+  <app-panel [heading]="'settings.standardSettings' | t" [meta]="'settings.defaultForNewCrews' | t">
+    <div class="mf-grid">
+      <div class="mf-form">
+        <div class="mf-row">
+          <label>
+            {{ 'dashboard.startPressureP1' | t }}
+            <input type="number" name="osP1" min="0" inputmode="numeric" [(ngModel)]="orgSettingsForm.defaultStartdruckPerson1Bar" />
+          </label>
+          <label>
+            {{ 'dashboard.startPressureP2' | t }}
+            <input type="number" name="osP2" min="0" inputmode="numeric" [(ngModel)]="orgSettingsForm.defaultStartdruckPerson2Bar" />
+          </label>
         </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="card settings">
-    <div class="list__head">
-      <h2>{{ i18n.t('settings.standardSettings') }}</h2>
-      <div class="muted">{{ i18n.t('settings.defaultForNewCrews') }}</div>
-    </div>
-    <div class="settings__grid">
-      <div class="settings__form">
-        <label>
-          {{ i18n.t('dashboard.startPressureP1') }}
-          <input type="number" min="0" [(ngModel)]="orgSettingsForm.defaultStartdruckPerson1Bar" />
-        </label>
-        <label>
-          {{ i18n.t('dashboard.startPressureP2') }}
-          <input type="number" min="0" [(ngModel)]="orgSettingsForm.defaultStartdruckPerson2Bar" />
-        </label>
-        <label>
-          {{ i18n.t('dashboard.warnTime') }}
-          <input type="number" min="0" [(ngModel)]="orgSettingsForm.defaultWarnzeitMin" />
-        </label>
-        <label>
-          {{ i18n.t('dashboard.maxTime') }}
-          <input type="number" min="0" [(ngModel)]="orgSettingsForm.defaultMaxzeitMin" />
-        </label>
-        <label>
-          {{ i18n.t('retreat.reserve') }}
-          <input type="number" min="0" max="100" [(ngModel)]="orgSettingsForm.defaultRueckzugReserveBar" />
-          <span class="muted">{{ i18n.t('retreat.reserveHint') }}</span>
-        </label>
-        <button class="primary" type="button" (click)="saveOrgSettings()">{{ i18n.t('common.save') }}</button>
-        <div class="muted" *ngIf="orgSettingsMessage">{{ orgSettingsMessage }}</div>
-      </div>
-      <div class="settings__list">
-        <div class="trupp">
-          <div class="trupp__info">
-            <div class="trupp__title">{{ i18n.t('settings.activeDefaults') }}</div>
-            <div class="muted">{{ i18n.t('settings.startPressureP1', { value: orgSettingsForm.defaultStartdruckPerson1Bar }) }}</div>
-            <div class="muted">{{ i18n.t('settings.startPressureP2', { value: orgSettingsForm.defaultStartdruckPerson2Bar }) }}</div>
-            <div class="muted">{{ i18n.t('settings.warnTimeValue', { value: orgSettingsForm.defaultWarnzeitMin }) }}</div>
-            <div class="muted">{{ i18n.t('settings.maxTimeValue', { value: orgSettingsForm.defaultMaxzeitMin }) }}</div>
-            <div class="muted">{{ i18n.t('retreat.reserveValue', { value: orgSettingsForm.defaultRueckzugReserveBar }) }}</div>
-          </div>
+        <div class="mf-row">
+          <label>
+            {{ 'dashboard.warnTime' | t }}
+            <input type="number" name="osWarn" min="0" inputmode="numeric" [(ngModel)]="orgSettingsForm.defaultWarnzeitMin" />
+          </label>
+          <label>
+            {{ 'dashboard.maxTime' | t }}
+            <input type="number" name="osMax" min="0" inputmode="numeric" [(ngModel)]="orgSettingsForm.defaultMaxzeitMin" />
+          </label>
         </div>
+        <label>
+          {{ 'retreat.reserve' | t }}
+          <input type="number" name="osReserve" min="0" max="100" inputmode="numeric" [(ngModel)]="orgSettingsForm.defaultRueckzugReserveBar" />
+          <span class="mf-hint">{{ 'retreat.reserveHint' | t }}</span>
+        </label>
+        <button appButton variant="primary" icon="check" type="button" (click)="saveOrgSettings()">{{ 'common.save' | t }}</button>
+        @if (orgSettingsMessage()) {
+          <p class="mf-hint" role="status">{{ orgSettingsMessage() }}</p>
+        }
       </div>
+      <dl class="defaults">
+        <dt>{{ 'settings.activeDefaults' | t }}</dt>
+        <dd>{{ 'settings.startPressureP1' | t: { value: orgSettingsForm.defaultStartdruckPerson1Bar } }}</dd>
+        <dd>{{ 'settings.startPressureP2' | t: { value: orgSettingsForm.defaultStartdruckPerson2Bar } }}</dd>
+        <dd>{{ 'settings.warnTimeValue' | t: { value: orgSettingsForm.defaultWarnzeitMin } }}</dd>
+        <dd>{{ 'settings.maxTimeValue' | t: { value: orgSettingsForm.defaultMaxzeitMin } }}</dd>
+        <dd>{{ 'retreat.reserveValue' | t: { value: orgSettingsForm.defaultRueckzugReserveBar } }}</dd>
+      </dl>
     </div>
-  </section>
+  </app-panel>
 
-  <section class="card settings">
-    <div class="list__head">
-      <h2>{{ i18n.t('settings.auditTitle') }}</h2>
+  <app-panel [heading]="'settings.auditTitle' | t">
+    @if (auditEntries().length === 0) {
+      <p class="muted">{{ 'settings.auditEmpty' | t }}</p>
+    } @else {
+      <ol class="audit-list">
+        @for (a of auditEntries(); track $index) {
+          <li>
+            <time>{{ a.zeit | date: 'dd.MM.yy HH:mm' }}</time>
+            <span>{{ describeAudit(a) }}</span>
+          </li>
+        }
+      </ol>
+    }
+  </app-panel>
+</app-page>
+
+@if (confirmModal(); as cm) {
+  <app-dialog [heading]="cm.title" icon="trash" tone="crit" role="alertdialog" (close)="confirmModal.set(null)">
+    <p>{{ cm.text }}</p>
+    <div dialog-actions class="dialog__actions">
+      <button appButton variant="ghost" type="button" data-autofocus (click)="confirmModal.set(null)">{{ 'common.cancel' | t }}</button>
+      <button appButton variant="danger" icon="trash" type="button" (click)="confirmAction()">{{ 'common.delete' | t }}</button>
     </div>
-    <p class="muted" *ngIf="auditEntries.length === 0">{{ i18n.t('settings.auditEmpty') }}</p>
-    <ol class="protocol-list" *ngIf="auditEntries.length > 0">
-      <li *ngFor="let a of auditEntries">
-        <span class="protocol-list__time">{{ a.zeit | date: 'dd.MM.yy HH:mm' }}</span>
-        <span>{{ describeAudit(a) }}</span>
-      </li>
-    </ol>
-  </section>
-</div>
+  </app-dialog>
+}
 
-<div class="toast-stack" *ngIf="toasts.length">
-  <div class="toast" *ngFor="let t of toasts" [class.toast--warn]="t.type === 'warn'">
-    {{ t.text }}
+@if (toasts().length) {
+  <div class="settings-toasts" aria-live="polite">
+    @for (t of toasts(); track t.id) {
+      <app-banner tone="warn">{{ t.text }}</app-banner>
+    }
   </div>
-</div>
+}

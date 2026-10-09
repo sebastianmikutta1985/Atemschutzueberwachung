@@ -1,0 +1,85 @@
+/* Einstellungen: ergaenzt admin-list.css. Nur Tokens. */
+
+.csv {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: var(--border-w-thin) solid var(--border);
+}
+
+.csv input[type='file'] {
+  padding: var(--space-2);
+  min-height: var(--touch-min);
+}
+
+.mf-item--draggable {
+  cursor: grab;
+}
+
+.mf-item--dragging {
+  opacity: 0.5;
+}
+
+.rename-input {
+  width: auto;
+  min-width: var(--size-text-min);
+}
+
+.defaults {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.defaults dt {
+  font-weight: var(--fw-bold);
+}
+
+.defaults dd {
+  margin: 0;
+  color: var(--text-muted);
+  font-weight: var(--fw-semibold);
+}
+
+.audit-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.audit-list li {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  font-size: var(--fs-sm);
+}
+
+.audit-list time {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-toasts {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  left: var(--space-4);
+  z-index: var(--z-banner);
+  display: grid;
+  justify-items: end;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.settings-toasts app-banner {
+  width: min(100%, var(--dialog-max));
+  box-shadow: var(--shadow-2);
+}

@@ -1,117 +1,114 @@
-<div class="page">
-  <header class="hero">
-    <div class="hero__text">
-      <p class="hero__eyebrow">{{ i18n.t('manufacturer.eyebrow') }}</p>
-      <h1>{{ i18n.t('manufacturer.title') }}</h1>
-      <p class="hero__sub">{{ i18n.t('manufacturer.subtitle') }}</p>
-    </div>
-    <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
-    <div class="hero__meta">
-      <div class="lang-switch" [attr.aria-label]="i18n.t('language.switchLabel')">
-        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'de'" (click)="i18n.setLang('de')">DE</button>
-        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'en'" (click)="i18n.setLang('en')">EN</button>
-      </div>
-      <button class="ghost btn-icon" type="button" [routerLink]="['/login']">{{ i18n.t('common.back') }}</button>
-      <button class="ghost btn-icon" type="button" *ngIf="signedIn" (click)="logoutSystem()">{{ i18n.t('common.logout') }}</button>
-    </div>
-  </header>
+<app-page [heading]="'manufacturer.title' | t" [subtitle]="'manufacturer.subtitle' | t" backLink="/login" [narrow]="!signedIn()">
+  <app-lang-switch page-actions [lang]="i18n.lang()" (langChange)="i18n.setLang($event)" />
+  @if (signedIn()) {
+    <button page-actions appButton variant="ghost" icon="logout" type="button" (click)="logoutSystem()">{{ 'common.logout' | t }}</button>
+  }
 
-  <section class="card" *ngIf="!signedIn">
-    <form class="card__body" (ngSubmit)="loginSystem()">
-      <label>
-        {{ i18n.t('manufacturer.secret') }}
-        <input type="password" name="systemSecret" autocomplete="current-password" [(ngModel)]="systemSecret" />
-      </label>
-      <div class="form-error" *ngIf="error" role="alert">{{ error }}</div>
-      <button class="primary btn-icon" type="submit">{{ i18n.t('login.submit') }}</button>
-    </form>
-  </section>
-
-  <section class="card" *ngIf="signedIn">
-    <div class="list__head">
-      <h2>{{ i18n.t('manufacturer.newOrganization') }}</h2>
-    </div>
-    <form class="card__body" (ngSubmit)="createOrg()">
-      <label>
-        {{ i18n.t('manufacturer.name') }}
-        <input type="text" name="orgName" maxlength="200" [(ngModel)]="orgForm.name" />
-      </label>
-      <div class="row">
+  @if (!signedIn()) {
+    <app-panel [heading]="'manufacturer.secret' | t">
+      <form class="mf-form" (ngSubmit)="loginSystem()">
         <label>
-          {{ i18n.t('manufacturer.adminPin') }}
-          <input type="password" name="adminPin" autocomplete="new-password" minlength="6" [(ngModel)]="orgForm.adminPin" />
+          {{ 'manufacturer.secret' | t }}
+          <input type="password" name="systemSecret" autocomplete="current-password" [(ngModel)]="systemSecret" />
         </label>
-        <label>
-          {{ i18n.t('manufacturer.userPin') }}
-          <input type="password" name="userPin" autocomplete="new-password" minlength="6" [(ngModel)]="orgForm.userPin" />
-        </label>
-      </div>
+        @if (error()) {
+          <div class="form-error" role="alert">{{ error() }}</div>
+        }
+        <button appButton variant="primary" size="lg" icon="lock" [block]="true" type="submit">{{ 'login.submit' | t }}</button>
+      </form>
+    </app-panel>
+  } @else {
+    <div class="mf-grid">
+      <app-panel [heading]="'manufacturer.newOrganization' | t">
+        <form class="mf-form" (ngSubmit)="createOrg()">
+          <label>
+            {{ 'manufacturer.name' | t }}
+            <input type="text" name="orgName" maxlength="200" [(ngModel)]="orgForm.name" />
+          </label>
+          <div class="mf-row">
+            <label>
+              {{ 'manufacturer.adminPin' | t }}
+              <input type="password" name="adminPin" autocomplete="new-password" minlength="6" [(ngModel)]="orgForm.adminPin" />
+            </label>
+            <label>
+              {{ 'manufacturer.userPin' | t }}
+              <input type="password" name="userPin" autocomplete="new-password" minlength="6" [(ngModel)]="orgForm.userPin" />
+            </label>
+          </div>
+          <label>
+            {{ 'manufacturer.status' | t }}
+            <select name="orgStatus" [(ngModel)]="orgForm.status">
+              <option value="aktiv">{{ 'manufacturer.statusActive' | t }}</option>
+              <option value="gesperrt">{{ 'manufacturer.statusBlocked' | t }}</option>
+            </select>
+          </label>
+          @if (error()) {
+            <div class="form-error" role="alert">{{ error() }}</div>
+          }
+          <button appButton variant="primary" icon="plus" type="submit">{{ 'manufacturer.createOrganization' | t }}</button>
+        </form>
+      </app-panel>
+
+      <app-panel [heading]="'manufacturer.organizations' | t" [meta]="'dashboard.entries' | t: { count: orgs().length }">
+        @if (orgs().length === 0) {
+          <p class="muted">{{ 'manufacturer.noOrganizations' | t }}</p>
+        } @else {
+          <ul class="mf-list">
+            @for (org of orgs(); track org.id) {
+              <li class="mf-item">
+                <div class="mf-item__info">
+                  <span class="state-pill" [attr.data-state]="org.status === 'aktiv' ? 'on' : 'off'">
+                    <app-icon [name]="org.status === 'aktiv' ? 'check' : 'lock'" size="sm" />
+                    {{ (org.status === 'aktiv' ? 'common.active' : 'manufacturer.statusBlocked') | t }}
+                  </span>
+                  <strong>{{ org.name }}</strong>
+                  <span class="muted">{{ 'manufacturer.code' | t }}: {{ org.code }}</span>
+                </div>
+                <div class="mf-item__actions">
+                  <button appButton size="sm" variant="ghost" [icon]="org.status === 'aktiv' ? 'lock' : 'check'" type="button" (click)="toggleStatus(org)">
+                    {{ (org.status === 'aktiv' ? 'manufacturer.block' : 'settings.activate') | t }}
+                  </button>
+                  <button appButton size="sm" variant="ghost" icon="key" type="button" (click)="openPinReset(org, 'admin')">{{ 'manufacturer.resetAdminPin' | t }}</button>
+                  <button appButton size="sm" variant="ghost" icon="key" type="button" (click)="openPinReset(org, 'user')">{{ 'manufacturer.resetUserPin' | t }}</button>
+                </div>
+              </li>
+            }
+          </ul>
+        }
+      </app-panel>
+    </div>
+  }
+</app-page>
+
+@if (pinReset(); as reset) {
+  <app-dialog
+    [heading]="'manufacturer.resetPinTitle' | t: { role: reset.role === 'admin' ? 'Admin' : ('manufacturer.roleUser' | t) }"
+    icon="key"
+    (close)="pinReset.set(null)"
+  >
+    <form (ngSubmit)="submitPinReset()">
+      <p class="muted">{{ reset.org.name }} – {{ 'manufacturer.resetPinHint' | t }}</p>
       <label>
-        {{ i18n.t('manufacturer.status') }}
-        <select name="orgStatus" [(ngModel)]="orgForm.status">
-          <option value="aktiv">{{ i18n.t('manufacturer.statusActive') }}</option>
-          <option value="gesperrt">{{ i18n.t('manufacturer.statusBlocked') }}</option>
-        </select>
+        {{ 'manufacturer.newPin' | t }}
+        <input #pinResetInput type="password" name="newPin" autocomplete="new-password" minlength="6" [(ngModel)]="reset.pin" />
       </label>
-      <div class="form-error" *ngIf="error" role="alert">{{ error }}</div>
-      <button class="primary btn-icon" type="submit">{{ i18n.t('manufacturer.createOrganization') }}</button>
-    </form>
-  </section>
-
-  <section class="card list" *ngIf="signedIn">
-    <div class="list__head">
-      <h2>{{ i18n.t('manufacturer.organizations') }}</h2>
-      <div class="muted">{{ i18n.t('dashboard.entries', { count: orgs.length }) }}</div>
-    </div>
-    <div class="list__body" *ngIf="orgs.length === 0">
-      <p class="muted">{{ i18n.t('manufacturer.noOrganizations') }}</p>
-    </div>
-    <div class="list__body" *ngIf="orgs.length > 0">
-      <div class="trupp" *ngFor="let org of orgs">
-        <div class="trupp__status" [attr.data-status]="org.status === 'aktiv' ? 'gruen' : 'beendet'">
-          {{ org.status === 'aktiv' ? (i18n.t('common.active') | uppercase) : (i18n.t('manufacturer.statusBlocked') | uppercase) }}
-        </div>
-        <div class="trupp__info">
-          <div class="trupp__title">{{ org.name }}</div>
-          <div class="muted">{{ i18n.t('manufacturer.code') }}: {{ org.code }}</div>
-        </div>
-        <div class="trupp__actions">
-          <button class="ghost" type="button" (click)="toggleStatus(org)">
-            {{ org.status === 'aktiv' ? i18n.t('manufacturer.block') : i18n.t('settings.activate') }}
-          </button>
-          <button class="ghost" type="button" (click)="openPinReset(org, 'admin')">{{ i18n.t('manufacturer.resetAdminPin') }}</button>
-          <button class="ghost" type="button" (click)="openPinReset(org, 'user')">{{ i18n.t('manufacturer.resetUserPin') }}</button>
-        </div>
+      @if (reset.error) {
+        <div class="form-error" role="alert">{{ reset.error }}</div>
+      }
+      <div class="dialog__actions">
+        <button appButton variant="ghost" type="button" (click)="pinReset.set(null)">{{ 'common.cancel' | t }}</button>
+        <button appButton variant="primary" type="submit">{{ 'common.save' | t }}</button>
       </div>
-    </div>
-  </section>
-</div>
+    </form>
+  </app-dialog>
+}
 
-<div class="modal" *ngIf="pinReset">
-  <div class="modal__backdrop" (click)="pinReset = null"></div>
-  <form class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="pin-reset-title" (ngSubmit)="submitPinReset()">
-    <h3 id="pin-reset-title">{{ i18n.t('manufacturer.resetPinTitle', { role: pinReset.role === 'admin' ? 'Admin' : i18n.t('manufacturer.roleUser') }) }}</h3>
-    <p class="muted">{{ pinReset.org.name }} – {{ i18n.t('manufacturer.resetPinHint') }}</p>
-    <label>
-      {{ i18n.t('manufacturer.newPin') }}
-      <input #pinResetInput type="password" name="newPin" autocomplete="new-password" minlength="6" [(ngModel)]="pinReset.pin" />
-    </label>
-    <div class="form-error" *ngIf="pinReset.error" role="alert">{{ pinReset.error }}</div>
-    <div class="modal__actions">
-      <button class="ghost" type="button" (click)="pinReset = null">{{ i18n.t('common.cancel') }}</button>
-      <button class="primary" type="submit">{{ i18n.t('common.save') }}</button>
+@if (blockConfirm(); as org) {
+  <app-dialog [heading]="'manufacturer.blockConfirmTitle' | t" icon="lock" tone="warn" role="alertdialog" (close)="blockConfirm.set(null)">
+    <p>{{ 'manufacturer.blockConfirmText' | t: { name: org.name } }}</p>
+    <div dialog-actions class="dialog__actions">
+      <button appButton variant="ghost" type="button" (click)="blockConfirm.set(null)">{{ 'common.cancel' | t }}</button>
+      <button appButton variant="danger" icon="lock" type="button" (click)="confirmBlock()">{{ 'manufacturer.block' | t }}</button>
     </div>
-  </form>
-</div>
-
-<div class="modal" *ngIf="blockConfirm">
-  <div class="modal__backdrop" (click)="blockConfirm = null"></div>
-  <div class="modal__panel" role="alertdialog" aria-modal="true" aria-labelledby="block-title">
-    <h3 id="block-title">{{ i18n.t('manufacturer.blockConfirmTitle') }}</h3>
-    <p class="muted">{{ i18n.t('manufacturer.blockConfirmText', { name: blockConfirm.name }) }}</p>
-    <div class="modal__actions">
-      <button class="ghost" type="button" (click)="blockConfirm = null">{{ i18n.t('common.cancel') }}</button>
-      <button class="danger" type="button" (click)="confirmBlock()">{{ i18n.t('manufacturer.block') }}</button>
-    </div>
-  </div>
-</div>
+  </app-dialog>
+}

@@ -175,7 +175,7 @@
               <button appButton size="sm" variant="ghost" icon="download" type="button" (click)="exportEinsatz(einsatz)">{{ 'common.export' | t }}</button>
               <button appButton size="sm" variant="ghost" icon="download" type="button" (click)="exportEinsatzPdf(einsatz)">{{ 'common.pdf' | t }}</button>
               @if (einsatz.status !== 'aktiv' && authInfo?.role === 'admin') {
-                <button appButton size="sm" variant="danger" icon="trash" type="button" (click)="deleteEinsatz(einsatz)">{{ 'common.delete' | t }}</button>
+                <button appButton size="sm" variant="ghost" icon="trash" type="button" (click)="deleteEinsatz(einsatz)">{{ 'common.delete' | t }}</button>
               }
             </div>
           </li>

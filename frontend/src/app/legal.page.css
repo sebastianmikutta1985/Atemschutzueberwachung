@@ -1,0 +1,52 @@
+/* Gemeinsame Styles der Seiten Impressum, Datenschutz und Cookies. Nur Tokens. */
+
+.legal {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  background: var(--surface);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-lg);
+  line-height: var(--lh-base);
+}
+
+.legal h2 {
+  margin-top: var(--space-4);
+  font-size: var(--fs-lg);
+}
+
+.legal h2:first-of-type {
+  margin-top: 0;
+}
+
+.legal p,
+.legal li {
+  margin: 0;
+  max-width: 70ch;
+}
+
+.legal ul {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.legal-note {
+  padding: var(--space-3) var(--space-4);
+  border-left: var(--space-1) solid var(--status-warn-solid);
+  border-radius: var(--radius-sm);
+  background: var(--status-warn-bg);
+  color: var(--status-warn-fg);
+}
+
+.legal-note strong {
+  display: block;
+  margin-bottom: var(--space-1);
+}
+
+@media (max-width: 520px) {
+  .legal {
+    padding: var(--space-4);
+  }
+}

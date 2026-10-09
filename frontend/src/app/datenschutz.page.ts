@@ -1,13 +1,16 @@
-import { CommonModule } from '@angular/common';
-import { Component, effect } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect } from '@angular/core';
 import { Title } from '@angular/platform-browser';
-import { RouterLink } from '@angular/router';
 import { TranslationService } from './translation.service';
+import { LangSwitchComponent } from './ui/lang-switch.component';
+import { PageComponent } from './ui/page.component';
+import { TranslatePipe } from './ui/translate.pipe';
 
 @Component({
   selector: 'app-datenschutz-page',
-  imports: [CommonModule, RouterLink],
-  templateUrl: './datenschutz.page.html'
+  imports: [LangSwitchComponent, PageComponent, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  templateUrl: './datenschutz.page.html',
+  styleUrl: './legal.page.css'
 })
 export class DatenschutzPage {
   constructor(

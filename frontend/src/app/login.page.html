@@ -1,87 +1,85 @@
-<div class="page page--login">
-  <header class="hero login-hero">
-    <div class="hero__text">
-      <p class="hero__eyebrow">{{ i18n.t('login.eyebrow') }}</p>
-      <h1>{{ i18n.t('login.title') }}</h1>
-      <p class="hero__sub">{{ i18n.t('login.subtitle') }}</p>
-    </div>
-    <div class="hero__side login-hero__side">
-      <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
-    </div>
+<div class="login">
+  <header class="login__bar">
+    <span class="login__wordmark">CrewTrace</span>
+    <app-lang-switch [lang]="i18n.lang()" (langChange)="i18n.setLang($event)" />
   </header>
 
-  <section class="grid login-grid">
-    <article class="card login-intro">
-      <div class="card__body">
-        <p class="hero__eyebrow">{{ i18n.t('login.infoEyebrow') }}</p>
-        <h2>{{ i18n.t('login.infoTitle') }}</h2>
-        <p class="login-intro__lead">{{ i18n.t('login.infoLead') }}</p>
-
-        <div class="login-intro__points">
-          <div class="login-point">
-            <strong>{{ i18n.t('login.point1Title') }}</strong>
-            <span>{{ i18n.t('login.point1Text') }}</span>
-          </div>
-          <div class="login-point">
-            <strong>{{ i18n.t('login.point2Title') }}</strong>
-            <span>{{ i18n.t('login.point2Text') }}</span>
-          </div>
-          <div class="login-point">
-            <strong>{{ i18n.t('login.point3Title') }}</strong>
-            <span>{{ i18n.t('login.point3Text') }}</span>
-          </div>
-        </div>
+  <main class="login__main">
+    <section class="login__card" aria-labelledby="login-title">
+      <div class="login__intro">
+        <h1 id="login-title">{{ 'login.title' | t }}</h1>
+        <p>{{ 'login.subtitle' | t }}</p>
       </div>
-    </article>
-
-    <section class="card login-form-card">
-      <div class="card__body">
-        <div class="login-form-card__top">
-          <div class="lang-switch" [attr.aria-label]="i18n.t('language.switchLabel')">
-            <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'de'" (click)="i18n.setLang('de')">DE</button>
-            <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'en'" (click)="i18n.setLang('en')">EN</button>
-          </div>
-        </div>
-        <form class="login-form" (ngSubmit)="login()">
-          <label>
-            {{ i18n.t('login.organizationCode') }}
-            <input
-              type="text"
-              name="orgaCode"
-              autocomplete="organization"
-              autocapitalize="characters"
-              spellcheck="false"
-              [(ngModel)]="orgaCode"
-              [placeholder]="i18n.t('login.organizationCodePlaceholder')"
-            />
-          </label>
-          <label>
-            {{ i18n.t('login.pin') }}
-            <input
-              type="password"
-              name="pin"
-              autocomplete="current-password"
-              inputmode="numeric"
-              [(ngModel)]="pin"
-              [placeholder]="i18n.t('login.pinPlaceholder')"
-            />
-          </label>
-          <label class="checkbox">
-            <input type="checkbox" name="remember" [(ngModel)]="remember" />
-            {{ i18n.t('login.remember') }}
-          </label>
-          <div class="form-error" *ngIf="error" role="alert">{{ error }}</div>
-          <button class="primary btn-icon" type="submit" [disabled]="loading">
-            {{ loading ? i18n.t('login.wait') : i18n.t('login.submit') }}
-          </button>
-        </form>
-        <div class="login-footer">
-          <a href="mailto:contact@crew-trace.com">{{ i18n.t('common.support') }}</a>
-          <a [routerLink]="['/impressum']">{{ i18n.t('legal.imprint') }}</a>
-          <a [routerLink]="['/datenschutz']">{{ i18n.t('legal.privacy') }}</a>
-          <a [routerLink]="['/cookies']">{{ i18n.t('legal.cookies') }}</a>
-        </div>
-      </div>
+      <form class="login__form" (ngSubmit)="login()">
+        <label>
+          {{ 'login.organizationCode' | t }}
+          <input
+            type="text"
+            name="orgaCode"
+            autocomplete="organization"
+            autocapitalize="characters"
+            spellcheck="false"
+            [(ngModel)]="orgaCode"
+            [placeholder]="'login.organizationCodePlaceholder' | t"
+          />
+        </label>
+        <label>
+          {{ 'login.pin' | t }}
+          <input
+            type="password"
+            name="pin"
+            autocomplete="current-password"
+            inputmode="numeric"
+            [(ngModel)]="pin"
+            [placeholder]="'login.pinPlaceholder' | t"
+          />
+        </label>
+        <label class="login__check">
+          <input type="checkbox" name="remember" [(ngModel)]="remember" />
+          <span>{{ 'login.remember' | t }}</span>
+        </label>
+        @if (error()) {
+          <div class="form-error" role="alert">{{ error() }}</div>
+        }
+        <button appButton variant="primary" size="lg" icon="arrow-right" [block]="true" type="submit" [disabled]="loading()">
+          {{ (loading() ? 'login.wait' : 'login.submit') | t }}
+        </button>
+      </form>
     </section>
-  </section>
+
+    <section class="login__info" aria-labelledby="login-info-title">
+      <h2 id="login-info-title">{{ 'login.infoTitle' | t }}</h2>
+      <p class="login__lead">{{ 'login.infoLead' | t }}</p>
+      <ul class="login__points">
+        <li>
+          <app-icon name="clock" />
+          <div>
+            <strong>{{ 'login.point1Title' | t }}</strong>
+            <span>{{ 'login.point1Text' | t }}</span>
+          </div>
+        </li>
+        <li>
+          <app-icon name="gauge" />
+          <div>
+            <strong>{{ 'login.point2Title' | t }}</strong>
+            <span>{{ 'login.point2Text' | t }}</span>
+          </div>
+        </li>
+        <li>
+          <app-icon name="list" />
+          <div>
+            <strong>{{ 'login.point3Title' | t }}</strong>
+            <span>{{ 'login.point3Text' | t }}</span>
+          </div>
+        </li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="login__footer">
+    <a href="mailto:contact@crew-trace.com">{{ 'common.support' | t }}</a>
+    <a [routerLink]="['/impressum']">{{ 'legal.imprint' | t }}</a>
+    <a [routerLink]="['/datenschutz']">{{ 'legal.privacy' | t }}</a>
+    <a [routerLink]="['/cookies']">{{ 'legal.cookies' | t }}</a>
+  </footer>
 </div>

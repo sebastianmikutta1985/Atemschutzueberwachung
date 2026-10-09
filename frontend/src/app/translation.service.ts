@@ -157,7 +157,9 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       noOperationTitle: 'Kein Einsatz aktiv',
       noOperationText: 'Starten Sie einen Einsatz, um Trupps anzulegen und zu überwachen.',
       crews: 'Trupps',
-      alarmAt: 'Alarm {time}'
+      alarmAt: 'Alarm {time}',
+      moveUp: 'Nach oben',
+      moveDown: 'Nach unten'
     },
     crewCard: {
       startShort: 'Start'
@@ -560,7 +562,9 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       noOperationTitle: 'No active incident',
       noOperationText: 'Start an incident to add and monitor crews.',
       crews: 'Crews',
-      alarmAt: 'Alarm {time}'
+      alarmAt: 'Alarm {time}',
+      moveUp: 'Move up',
+      moveDown: 'Move down'
     },
     crewCard: {
       startShort: 'Start'
