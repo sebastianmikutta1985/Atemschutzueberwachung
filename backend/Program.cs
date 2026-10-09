@@ -1393,7 +1393,7 @@ static async Task EnsureOrganizationDefaults(AppDbContext db)
         var has = await HasColumn(db, "Organizations", name);
         if (!has)
         {
-            await db.Database.ExecuteSqlRawAsync($"ALTER TABLE Organizations ADD COLUMN {name} {ddl};");
+            await AddColumn(db, "Organizations", name, ddl);
         }
     }
 }
@@ -1469,9 +1469,7 @@ static async Task EnsureOrganizationColumns(AppDbContext db)
         var hasColumn = await HasColumn(db, table, "OrganizationId");
         if (!hasColumn)
         {
-            await db.Database.ExecuteSqlRawAsync(
-                $"ALTER TABLE {table} ADD COLUMN OrganizationId TEXT NOT NULL DEFAULT '';"
-            );
+            await AddColumn(db, table, "OrganizationId", "TEXT NOT NULL DEFAULT ''");
         }
     }
 }
@@ -1492,7 +1490,7 @@ static async Task EnsureProtokollSchema(AppDbContext db)
     {
         if (!await HasColumn(db, table, column))
         {
-            await db.Database.ExecuteSqlRawAsync($"ALTER TABLE {table} ADD COLUMN {column} TEXT NULL;");
+            await AddColumn(db, table, column, "TEXT NULL");
         }
     }
     // Bestehende Trupps erhalten die Standardreserve.
@@ -1534,6 +1532,22 @@ static async Task<bool> HasColumn(AppDbContext db, string tableName, string colu
     }
     return false;
 }
+
+// Tabellen- und Spaltennamen lassen sich in SQL nicht als Parameter uebergeben. Alle Aufrufer setzen
+// feste Namen aus dem Code ein; die Pruefung stellt sicher, dass das so bleibt.
+static Task AddColumn(AppDbContext db, string table, string column, string definition)
+{
+    if (!IsSqlIdentifier(table) || !IsSqlIdentifier(column))
+    {
+        throw new ArgumentException($"Ungueltiger Tabellen- oder Spaltenname: {table}.{column}");
+    }
+#pragma warning disable EF1002 // Bezeichner sind geprueft, die Definition ist eine Konstante im Code.
+    return db.Database.ExecuteSqlRawAsync($"ALTER TABLE {table} ADD COLUMN {column} {definition};");
+#pragma warning restore EF1002
+}
+
+static bool IsSqlIdentifier(string name) =>
+    name.Length > 0 && char.IsAsciiLetter(name[0]) && name.All(char.IsAsciiLetterOrDigit);
 
 static async Task EnsureDefaultOrganization(AppDbContext db)
 {
