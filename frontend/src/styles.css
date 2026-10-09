@@ -56,6 +56,8 @@
   --icon-sm: 1.125rem;
   --icon-md: 1.5rem;
   --icon-lg: 2rem;
+  --size-action-min: 8rem;
+  --size-text-min: 16rem;
 
   /* Ebenen */
   --z-raised: 2;

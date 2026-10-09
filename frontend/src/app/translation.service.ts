@@ -132,6 +132,28 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       reserveValue: 'Rückzugsreserve: {value} bar',
       reserveHint: 'Rückzugsdruck = 2 × Verbrauch auf dem Hinweg + Reserve. Gilt für neu angelegte Trupps.'
     },
+    ui: {
+      status: {
+        ok: 'OK',
+        rueckzug: 'Rückzug',
+        ueberfaellig: 'Überfällig',
+        funkausfall: 'Kein Funk',
+        mayday: 'Mayday',
+        beendet: 'Beendet'
+      },
+      connection: {
+        connected: 'Live',
+        connecting: 'Verbindet …',
+        disconnected: 'Offline',
+        snapshot: 'Stand {time}'
+      },
+      menu: 'Menü',
+      remaining: 'Restzeit',
+      duration: 'Dauer',
+      newCrew: 'Trupp anlegen',
+      lightMode: 'Helles Design',
+      darkMode: 'Dunkles Design'
+    },
     crewCard: {
       startShort: 'Start'
     },
@@ -507,6 +529,28 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       reserve: 'Retreat reserve (bar)',
       reserveValue: 'Retreat reserve: {value} bar',
       reserveHint: 'Retreat pressure = 2 × consumption on the way in + reserve. Applies to newly created crews.'
+    },
+    ui: {
+      status: {
+        ok: 'OK',
+        rueckzug: 'Retreat',
+        ueberfaellig: 'Overdue',
+        funkausfall: 'No radio',
+        mayday: 'Mayday',
+        beendet: 'Finished'
+      },
+      connection: {
+        connected: 'Live',
+        connecting: 'Connecting …',
+        disconnected: 'Offline',
+        snapshot: 'As of {time}'
+      },
+      menu: 'Menu',
+      remaining: 'Remaining',
+      duration: 'Duration',
+      newCrew: 'Add crew',
+      lightMode: 'Light theme',
+      darkMode: 'Dark theme'
     },
     crewCard: {
       startShort: 'Start'
