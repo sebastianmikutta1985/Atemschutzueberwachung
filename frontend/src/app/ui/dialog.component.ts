@@ -123,6 +123,12 @@ const FOCUSABLE =
       font-size: var(--fs-xl);
       font-weight: var(--fw-heavy);
     }
+    /* Alarme: Titel gross und in Alarmfarbe */
+    .dialog-host[data-tone='alarm'] .dialog__title {
+      font-size: var(--fs-2xl);
+      color: var(--status-crit-fg);
+      letter-spacing: var(--tracking-caps);
+    }
     .dialog__body {
       display: grid;
       gap: var(--space-4);

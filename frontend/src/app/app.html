@@ -1,14 +1,12 @@
-<app-alarm-overlay></app-alarm-overlay>
-<router-outlet></router-outlet>
+<app-alarm-overlay />
+<router-outlet />
 
-<div class="modal" *ngIf="idleWarningOpen">
-  <div class="modal__backdrop"></div>
-  <div class="modal__panel">
-    <h3>{{ i18n.t('app.idleTitle') }}</h3>
-    <p class="muted">{{ i18n.t('app.idleText') }}</p>
-    <div class="modal__actions">
-      <button class="ghost" type="button" (click)="stayLoggedIn()">{{ i18n.t('app.stayLoggedIn') }}</button>
-      <button class="danger" type="button" (click)="logoutNow()">{{ i18n.t('app.logoutNow') }}</button>
+@if (idleWarningOpen()) {
+  <app-dialog [heading]="'app.idleTitle' | t" icon="clock" tone="warn" (close)="stayLoggedIn()">
+    <p>{{ 'app.idleText' | t }}</p>
+    <div dialog-actions class="dialog__actions">
+      <button appButton variant="ghost" icon="logout" type="button" (click)="logoutNow()">{{ 'app.logoutNow' | t }}</button>
+      <button appButton variant="primary" type="button" (click)="stayLoggedIn()">{{ 'app.stayLoggedIn' | t }}</button>
     </div>
-  </div>
-</div>
+  </app-dialog>
+}
