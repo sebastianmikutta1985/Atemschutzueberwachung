@@ -308,6 +308,11 @@
 /* ---------- Handy ---------- */
 
 @media (max-width: 640px) {
+  /* Einsatz beenden ueber die volle Breite, wie die Aktionen der Karten */
+  .einsatz-bar > button {
+    flex: 1 1 100%;
+  }
+
   .topbar {
     grid-template-columns: 1fr auto;
     grid-template-areas:

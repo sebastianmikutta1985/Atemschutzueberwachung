@@ -305,6 +305,15 @@ import { TranslatePipe } from './ui/translate.pipe';
       color: var(--text-muted);
       font-weight: var(--fw-semibold);
     }
+    /* Schmal: beide Mayday-Knoepfe gleich breit ueber die ganze Zeile, wie auf der Karte */
+    @media (max-width: 640px) {
+      .overlay-actions {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: 1fr;
+        width: 100%;
+      }
+    }
     @media (max-width: 520px) {
       .overlay-bottom {
         right: var(--space-2);
