@@ -1,9 +1,8 @@
-import { CommonModule } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, effect, OnInit, OnDestroy } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, OnDestroy, OnInit, signal } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
 import { ThemeMode, ThemeStore } from './theme.store';
@@ -11,24 +10,55 @@ import { AuditEintrag, Geraetetraeger, OrgSettings, TruppName } from './models';
 import { RealtimeService } from './realtime.service';
 import { SessionService } from './session.service';
 import { TranslationService } from './translation.service';
+import { BannerComponent } from './ui/banner.component';
+import { ButtonComponent, IconButtonComponent } from './ui/button.component';
+import { ConnectionIndicatorComponent, LiveStatus } from './ui/connection-indicator.component';
+import { DialogComponent } from './ui/dialog.component';
+import { IconComponent } from './ui/icon.component';
+import { LangSwitchComponent } from './ui/lang-switch.component';
+import { PageComponent } from './ui/page.component';
+import { PanelComponent } from './ui/panel.component';
+import { TranslatePipe } from './ui/translate.pipe';
+
+// Rueckfrage vor dem Loeschen (statt window.confirm), mit klar benannter Aktion.
+interface ConfirmModal {
+  title: string;
+  text: string;
+  action: () => void;
+}
 
 @Component({
   selector: 'app-settings-page',
-  imports: [CommonModule, FormsModule, RouterLink],
-  templateUrl: './settings.page.html'
+  imports: [
+    DatePipe,
+    FormsModule,
+    BannerComponent,
+    ButtonComponent,
+    IconButtonComponent,
+    ConnectionIndicatorComponent,
+    DialogComponent,
+    IconComponent,
+    LangSwitchComponent,
+    PageComponent,
+    PanelComponent,
+    TranslatePipe
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  templateUrl: './settings.page.html',
+  styleUrls: ['./admin-list.css', './settings.page.css']
 })
 export class SettingsPage implements OnInit, OnDestroy {
   private readonly baseUrl = environment.apiBaseUrl;
 
-  geraetetraeger: Geraetetraeger[] = [];
-  truppnamen: TruppName[] = [];
-  orgSettings: OrgSettings | null = null;
-  auditEntries: AuditEintrag[] = [];
-  dragIndex: number | null = null;
+  readonly geraetetraeger = signal<Geraetetraeger[]>([]);
+  readonly truppnamen = signal<TruppName[]>([]);
+  readonly orgSettings = signal<OrgSettings | null>(null);
+  readonly auditEntries = signal<AuditEintrag[]>([]);
+  readonly dragIndex = signal<number | null>(null);
   private unsubscribeRealtime?: () => void;
   private unsubscribeStatus?: () => void;
-  liveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
-  themeMode: ThemeMode = 'light';
+  readonly liveStatus = signal<LiveStatus>('disconnected');
+  readonly themeMode = signal<ThemeMode>('light');
 
   geraetetraegerForm = {
     vorname: '',
@@ -49,15 +79,16 @@ export class SettingsPage implements OnInit, OnDestroy {
     defaultMaxzeitMin: 30,
     defaultRueckzugReserveBar: 10
   };
-  orgSettingsMessage = '';
-  importMessage = '';
+  readonly orgSettingsMessage = signal('');
+  readonly importMessage = signal('');
   importRows: { vorname: string; nachname: string; funkrufname: string; aktiv: boolean }[] = [];
-  private lastLiveStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
-  toasts: { id: number; text: string; type: 'warn' }[] = [];
+  private lastLiveStatus: LiveStatus = 'disconnected';
+  readonly toasts = signal<{ id: number; text: string; type: 'warn' }[]>([]);
   private toastId = 0;
 
-  editingTruppNameId: string | null = null;
+  readonly editingTruppNameId = signal<string | null>(null);
   editingTruppNameValue = '';
+  readonly confirmModal = signal<ConfirmModal | null>(null);
 
   constructor(
     private http: HttpClient,
@@ -100,14 +131,14 @@ export class SettingsPage implements OnInit, OnDestroy {
         this.pushToast(this.i18n.t('dashboard.liveOffline'), 'warn');
       }
       this.lastLiveStatus = status;
-      this.liveStatus = status;
+      this.liveStatus.set(status);
     });
   }
 
   private loadTheme(): void {
     const themeKey = AuthStore.themeKey();
-    this.themeMode = ThemeStore.load(themeKey);
-    ThemeStore.apply(this.themeMode);
+    this.themeMode.set(ThemeStore.load(themeKey));
+    ThemeStore.apply(this.themeMode());
   }
 
   private updatePageTitle(): void {
@@ -118,9 +149,9 @@ export class SettingsPage implements OnInit, OnDestroy {
 
   toggleTheme(): void {
     const themeKey = AuthStore.themeKey();
-    this.themeMode = this.themeMode === 'dark' ? 'light' : 'dark';
-    ThemeStore.save(this.themeMode, themeKey);
-    ThemeStore.apply(this.themeMode);
+    this.themeMode.set(this.themeMode() === 'dark' ? 'light' : 'dark');
+    ThemeStore.save(this.themeMode(), themeKey);
+    ThemeStore.apply(this.themeMode());
   }
 
   ngOnDestroy(): void {
@@ -139,9 +170,9 @@ export class SettingsPage implements OnInit, OnDestroy {
 
   private pushToast(text: string, type: 'warn'): void {
     const id = ++this.toastId;
-    this.toasts = [...this.toasts, { id, text, type }];
+    this.toasts.update((list) => [...list, { id, text, type }]);
     window.setTimeout(() => {
-      this.toasts = this.toasts.filter((t) => t.id !== id);
+      this.toasts.update((list) => list.filter((t) => t.id !== id));
     }, 6000);
   }
 
@@ -157,21 +188,27 @@ export class SettingsPage implements OnInit, OnDestroy {
     this.session.logout();
   }
 
+  confirmAction(): void {
+    const action = this.confirmModal()?.action;
+    this.confirmModal.set(null);
+    action?.();
+  }
+
   loadGeraetetraeger(): void {
     this.http.get<Geraetetraeger[]>(`${this.baseUrl}/geraetetraeger`).subscribe((list) => {
-      this.geraetetraeger = list;
+      this.geraetetraeger.set(list);
     });
   }
 
   loadTruppnamen(): void {
     this.http.get<TruppName[]>(`${this.baseUrl}/truppnamen`).subscribe((list) => {
-      this.truppnamen = list;
+      this.truppnamen.set(list);
     });
   }
 
   loadAudit(): void {
     this.http.get<AuditEintrag[]>(`${this.baseUrl}/audit`).subscribe((list) => {
-      this.auditEntries = list;
+      this.auditEntries.set(list);
     });
   }
 
@@ -188,19 +225,24 @@ export class SettingsPage implements OnInit, OnDestroy {
     return `${entry.aktion}: ${entry.details}`;
   }
 
+  private applyOrgSettings(settings: OrgSettings): void {
+    this.orgSettingsForm.defaultStartdruckPerson1Bar = settings.defaultStartdruckPerson1Bar;
+    this.orgSettingsForm.defaultStartdruckPerson2Bar = settings.defaultStartdruckPerson2Bar;
+    this.orgSettingsForm.defaultWarnzeitMin = settings.defaultWarnzeitMin;
+    this.orgSettingsForm.defaultMaxzeitMin = settings.defaultMaxzeitMin;
+    this.orgSettingsForm.defaultRueckzugReserveBar = settings.defaultRueckzugReserveBar;
+    // Zuletzt setzen: das Signal stoesst die Anzeige des geaenderten Formulars an.
+    this.orgSettings.set(settings);
+  }
+
   loadOrgSettings(): void {
     this.http.get<OrgSettings>(`${this.baseUrl}/settings`).subscribe((settings) => {
-      this.orgSettings = settings;
-      this.orgSettingsForm.defaultStartdruckPerson1Bar = settings.defaultStartdruckPerson1Bar;
-      this.orgSettingsForm.defaultStartdruckPerson2Bar = settings.defaultStartdruckPerson2Bar;
-      this.orgSettingsForm.defaultWarnzeitMin = settings.defaultWarnzeitMin;
-      this.orgSettingsForm.defaultMaxzeitMin = settings.defaultMaxzeitMin;
-      this.orgSettingsForm.defaultRueckzugReserveBar = settings.defaultRueckzugReserveBar;
+      this.applyOrgSettings(settings);
     });
   }
 
   saveOrgSettings(): void {
-    this.orgSettingsMessage = '';
+    this.orgSettingsMessage.set('');
     const payload = {
       defaultStartdruckPerson1Bar: this.orgSettingsForm.defaultStartdruckPerson1Bar,
       defaultStartdruckPerson2Bar: this.orgSettingsForm.defaultStartdruckPerson2Bar,
@@ -210,16 +252,11 @@ export class SettingsPage implements OnInit, OnDestroy {
     };
     this.http.put<OrgSettings>(`${this.baseUrl}/settings`, payload).subscribe({
       next: (settings) => {
-        this.orgSettings = settings;
-        this.orgSettingsForm.defaultStartdruckPerson1Bar = settings.defaultStartdruckPerson1Bar;
-        this.orgSettingsForm.defaultStartdruckPerson2Bar = settings.defaultStartdruckPerson2Bar;
-        this.orgSettingsForm.defaultWarnzeitMin = settings.defaultWarnzeitMin;
-        this.orgSettingsForm.defaultMaxzeitMin = settings.defaultMaxzeitMin;
-        this.orgSettingsForm.defaultRueckzugReserveBar = settings.defaultRueckzugReserveBar;
-        this.orgSettingsMessage = this.i18n.t('settings.saved');
+        this.applyOrgSettings(settings);
+        this.orgSettingsMessage.set(this.i18n.t('settings.saved'));
       },
       error: (err) => {
-        this.orgSettingsMessage = err?.error?.error ?? this.i18n.t('settings.saveFailed');
+        this.orgSettingsMessage.set(err?.error?.error ?? this.i18n.t('settings.saveFailed'));
       }
     });
   }
@@ -254,20 +291,22 @@ export class SettingsPage implements OnInit, OnDestroy {
     if (!file) {
       return;
     }
-    this.importMessage = this.i18n.t('settings.importRunning');
+    this.importMessage.set(this.i18n.t('settings.importRunning'));
     const reader = new FileReader();
     reader.onload = () => {
       const text = String(reader.result || '');
       this.importRows = this.parseCsvRows(text);
       if (this.importRows.length === 0) {
-        this.importMessage = this.i18n.t('settings.importNoValidRows');
+        this.importMessage.set(this.i18n.t('settings.importNoValidRows'));
         return;
       }
       const plan = this.buildImportPlan();
-      this.importMessage = this.i18n.t('settings.csvLoaded', {
-        newCount: plan.toCreate.length,
-        skipped: plan.skipped
-      });
+      this.importMessage.set(
+        this.i18n.t('settings.csvLoaded', {
+          newCount: plan.toCreate.length,
+          skipped: plan.skipped
+        })
+      );
     };
     reader.readAsText(file, 'utf-8');
   }
@@ -278,7 +317,7 @@ export class SettingsPage implements OnInit, OnDestroy {
       'Max;Mustermann;Funk 1;true',
       'Anna;Musterfrau;;false'
     ].join('\n');
-    const blob = new Blob(['\uFEFF' + sample], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['﻿' + sample], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -289,33 +328,35 @@ export class SettingsPage implements OnInit, OnDestroy {
 
   previewCsvImport(): void {
     if (!this.importRows.length) {
-      this.importMessage = this.i18n.t('settings.selectCsvFirst');
+      this.importMessage.set(this.i18n.t('settings.selectCsvFirst'));
       return;
     }
     const plan = this.buildImportPlan();
-    this.importMessage = this.i18n.t('settings.importPreview', {
-      newCount: plan.toCreate.length,
-      skipped: plan.skipped
-    });
+    this.importMessage.set(
+      this.i18n.t('settings.importPreview', {
+        newCount: plan.toCreate.length,
+        skipped: plan.skipped
+      })
+    );
   }
 
   runCsvImport(): void {
     if (!this.importRows.length) {
-      this.importMessage = this.i18n.t('settings.selectCsvFirst');
+      this.importMessage.set(this.i18n.t('settings.selectCsvFirst'));
       return;
     }
     const plan = this.buildImportPlan();
     if (plan.toCreate.length === 0) {
-      this.importMessage = this.i18n.t('settings.noNewEntries');
+      this.importMessage.set(this.i18n.t('settings.noNewEntries'));
       return;
     }
-    this.importMessage = this.i18n.t('settings.importRunning');
+    this.importMessage.set(this.i18n.t('settings.importRunning'));
     let done = 0;
     let failed = 0;
     // "complete" wird nach einem Fehler nicht aufgerufen, daher Abschluss in beiden Faellen pruefen.
     const finishIfDone = () => {
       if (done + failed === plan.toCreate.length) {
-        this.importMessage = this.i18n.t('settings.importFinished', { done, failed });
+        this.importMessage.set(this.i18n.t('settings.importFinished', { done, failed }));
         this.importRows = [];
         this.loadGeraetetraeger();
       }
@@ -366,7 +407,7 @@ export class SettingsPage implements OnInit, OnDestroy {
       `${normalize(v.nachname)}|${normalize(v.vorname)}|${normalize(v.funkrufname || '')}`;
 
     const existingKeys = new Set(
-      this.geraetetraeger.map((g) =>
+      this.geraetetraeger().map((g) =>
         key({ vorname: g.vorname, nachname: g.nachname, funkrufname: g.funkrufname ?? '' })
       )
     );
@@ -405,18 +446,17 @@ export class SettingsPage implements OnInit, OnDestroy {
   }
 
   deleteGeraetetraeger(traeger: Geraetetraeger): void {
-    const ok = window.confirm(
-      this.i18n.t('settings.deleteCarrierConfirm', { name: traeger.nachname })
-    );
-    if (!ok) {
-      return;
-    }
-
-    this.http.delete(`${this.baseUrl}/geraetetraeger/${traeger.id}`).subscribe({
-      next: () => {
-        this.loadGeraetetraeger();
-      },
-      error: (err) => this.showApiError(err)
+    this.confirmModal.set({
+      title: this.i18n.t('common.delete'),
+      text: this.i18n.t('settings.deleteCarrierConfirm', { name: traeger.nachname }),
+      action: () => {
+        this.http.delete(`${this.baseUrl}/geraetetraeger/${traeger.id}`).subscribe({
+          next: () => {
+            this.loadGeraetetraeger();
+          },
+          error: (err) => this.showApiError(err)
+        });
+      }
     });
   }
 
@@ -456,26 +496,27 @@ export class SettingsPage implements OnInit, OnDestroy {
   }
 
   deleteTruppName(item: TruppName): void {
-    const ok = window.confirm(this.i18n.t('settings.deleteCrewConfirm', { name: item.name }));
-    if (!ok) {
-      return;
-    }
-
-    this.http.delete(`${this.baseUrl}/truppnamen/${item.id}`).subscribe({
-      next: () => {
-        this.loadTruppnamen();
-      },
-      error: (err) => this.showApiError(err)
+    this.confirmModal.set({
+      title: this.i18n.t('common.delete'),
+      text: this.i18n.t('settings.deleteCrewConfirm', { name: item.name }),
+      action: () => {
+        this.http.delete(`${this.baseUrl}/truppnamen/${item.id}`).subscribe({
+          next: () => {
+            this.loadTruppnamen();
+          },
+          error: (err) => this.showApiError(err)
+        });
+      }
     });
   }
 
   startEditTruppName(item: TruppName): void {
-    this.editingTruppNameId = item.id;
     this.editingTruppNameValue = item.name;
+    this.editingTruppNameId.set(item.id);
   }
 
   cancelEditTruppName(): void {
-    this.editingTruppNameId = null;
+    this.editingTruppNameId.set(null);
     this.editingTruppNameValue = '';
   }
 
@@ -500,7 +541,7 @@ export class SettingsPage implements OnInit, OnDestroy {
   }
 
   onDragStart(index: number, event: DragEvent): void {
-    this.dragIndex = index;
+    this.dragIndex.set(index);
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', String(index));
@@ -516,32 +557,32 @@ export class SettingsPage implements OnInit, OnDestroy {
 
   onDrop(index: number, event: DragEvent): void {
     event.preventDefault();
-    const from = this.dragIndex;
-    this.dragIndex = null;
+    const from = this.dragIndex();
+    this.dragIndex.set(null);
     if (from === null || from === index) {
       return;
     }
-    const updated = [...this.truppnamen];
+    const updated = [...this.truppnamen()];
     const [item] = updated.splice(from, 1);
     updated.splice(index, 0, item);
-    this.truppnamen = updated;
+    this.truppnamen.set(updated);
     this.saveTruppnamenOrder();
   }
 
   moveTruppName(index: number, direction: -1 | 1): void {
     const nextIndex = index + direction;
-    if (nextIndex < 0 || nextIndex >= this.truppnamen.length) {
+    if (nextIndex < 0 || nextIndex >= this.truppnamen().length) {
       return;
     }
-    const updated = [...this.truppnamen];
+    const updated = [...this.truppnamen()];
     const [item] = updated.splice(index, 1);
     updated.splice(nextIndex, 0, item);
-    this.truppnamen = updated;
+    this.truppnamen.set(updated);
     this.saveTruppnamenOrder();
   }
 
   private saveTruppnamenOrder(): void {
-    const ids = this.truppnamen.map((t) => t.id);
+    const ids = this.truppnamen().map((t) => t.id);
     this.http.post(`${this.baseUrl}/truppnamen/reorder`, { ids }).subscribe({
       next: () => {
         this.loadTruppnamen();

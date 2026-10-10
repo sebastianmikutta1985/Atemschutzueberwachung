@@ -120,6 +120,7 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
     retreat: {
       at: 'Rückzug bei {value} bar',
       eta: 'Rückzug ca. {time}',
+      etaShort: 'Rückzug ca.',
       missing: 'Rückzugsdruck: Druck am Ziel fehlt',
       reached: 'Rückzugsdruck erreicht – Rückzug antreten!',
       estimated: 'Rückzugsdruck voraussichtlich erreicht – Druck abfragen',
@@ -131,6 +132,34 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       reserve: 'Rückzugsreserve (bar)',
       reserveValue: 'Rückzugsreserve: {value} bar',
       reserveHint: 'Rückzugsdruck = 2 × Verbrauch auf dem Hinweg + Reserve. Gilt für neu angelegte Trupps.'
+    },
+    ui: {
+      status: {
+        ok: 'OK',
+        rueckzug: 'Rückzug',
+        ueberfaellig: 'Überfällig',
+        funkausfall: 'Kein Funk',
+        mayday: 'Mayday',
+        beendet: 'Beendet'
+      },
+      connection: {
+        connected: 'Live',
+        connecting: 'Verbindet …',
+        disconnected: 'Offline',
+        snapshot: 'Stand {time}'
+      },
+      menu: 'Menü',
+      remaining: 'Restzeit',
+      duration: 'Dauer',
+      newCrew: 'Trupp anlegen',
+      lightMode: 'Helles Design',
+      darkMode: 'Dunkles Design',
+      noOperationTitle: 'Kein Einsatz aktiv',
+      noOperationText: 'Starten Sie einen Einsatz, um Trupps anzulegen und zu überwachen.',
+      crews: 'Trupps',
+      alarmAt: 'Alarm {time}',
+      moveUp: 'Nach oben',
+      moveDown: 'Nach unten'
     },
     crewCard: {
       startShort: 'Start'
@@ -496,6 +525,7 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
     retreat: {
       at: 'Retreat at {value} bar',
       eta: 'Retreat approx. {time}',
+      etaShort: 'Retreat approx.',
       missing: 'Retreat pressure: pressure at target missing',
       reached: 'Retreat pressure reached – start retreat!',
       estimated: 'Retreat pressure probably reached – check pressure',
@@ -507,6 +537,34 @@ const TRANSLATIONS: Record<Lang, TranslationTree> = {
       reserve: 'Retreat reserve (bar)',
       reserveValue: 'Retreat reserve: {value} bar',
       reserveHint: 'Retreat pressure = 2 × consumption on the way in + reserve. Applies to newly created crews.'
+    },
+    ui: {
+      status: {
+        ok: 'OK',
+        rueckzug: 'Retreat',
+        ueberfaellig: 'Overdue',
+        funkausfall: 'No radio',
+        mayday: 'Mayday',
+        beendet: 'Finished'
+      },
+      connection: {
+        connected: 'Live',
+        connecting: 'Connecting …',
+        disconnected: 'Offline',
+        snapshot: 'As of {time}'
+      },
+      menu: 'Menu',
+      remaining: 'Remaining',
+      duration: 'Duration',
+      newCrew: 'Add crew',
+      lightMode: 'Light theme',
+      darkMode: 'Dark theme',
+      noOperationTitle: 'No active incident',
+      noOperationText: 'Start an incident to add and monitor crews.',
+      crews: 'Crews',
+      alarmAt: 'Alarm {time}',
+      moveUp: 'Move up',
+      moveDown: 'Move down'
     },
     crewCard: {
       startShort: 'Start'

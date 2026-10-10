@@ -1,6 +1,5 @@
-import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, effect } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, OnInit, signal } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -8,19 +7,25 @@ import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
 import { ThemeStore } from './theme.store';
 import { TranslationService } from './translation.service';
+import { ButtonComponent } from './ui/button.component';
+import { IconComponent } from './ui/icon.component';
+import { LangSwitchComponent } from './ui/lang-switch.component';
+import { TranslatePipe } from './ui/translate.pipe';
 
 @Component({
   selector: 'app-login-page',
-  imports: [CommonModule, FormsModule, RouterLink],
-  templateUrl: './login.page.html'
+  imports: [FormsModule, RouterLink, ButtonComponent, IconComponent, LangSwitchComponent, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  templateUrl: './login.page.html',
+  styleUrl: './login.page.css'
 })
-export class LoginPage {
+export class LoginPage implements OnInit {
   private readonly baseUrl = environment.apiBaseUrl;
   orgaCode = '';
   pin = '';
   remember = false;
-  error = '';
-  loading = false;
+  readonly error = signal('');
+  readonly loading = signal(false);
 
   constructor(
     private http: HttpClient,
@@ -51,14 +56,14 @@ export class LoginPage {
   }
 
   login(): void {
-    this.error = '';
+    this.error.set('');
     const code = this.orgaCode.trim();
     const pin = this.pin.trim();
     if (!code || !pin) {
-      this.error = this.i18n.t('login.errorRequired');
+      this.error.set(this.i18n.t('login.errorRequired'));
       return;
     }
-    this.loading = true;
+    this.loading.set(true);
     this.http
       .post<{ role: 'admin' | 'user'; orgName: string; orgCode: string }>(
         `${this.baseUrl}/auth/login`,
@@ -85,9 +90,10 @@ export class LoginPage {
           this.router.navigateByUrl('/');
         },
         error: (err) => {
-          this.error =
-            err?.status === 429 ? this.i18n.t('login.errorTooManyAttempts') : this.i18n.t('login.errorLogin');
-          this.loading = false;
+          this.error.set(
+            err?.status === 429 ? this.i18n.t('login.errorTooManyAttempts') : this.i18n.t('login.errorLogin')
+          );
+          this.loading.set(false);
         }
       });
   }

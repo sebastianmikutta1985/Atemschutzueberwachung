@@ -1,455 +1,456 @@
-<div class="page">
-  <header class="hero">
-    <div class="hero__text">
-      <p class="hero__eyebrow">{{ i18n.t('dashboard.eyebrow') }}</p>
-      <h1>{{ i18n.t('dashboard.title') }}</h1>
-      <p class="hero__sub">{{ i18n.t('dashboard.subtitle') }}</p>
-      <button class="ghost hero__meta-toggle" type="button" (click)="toggleMobileMeta()">
-        {{ mobileMetaOpen ? i18n.t('dashboard.quickMenuHide') : i18n.t('dashboard.quickMenuShow') }}
-      </button>
-    </div>
-    <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
-    <div class="hero__meta" [class.hero__meta--open]="mobileMetaOpen">
-      <div class="pill" [attr.data-live]="liveStatus">
-        <span class="pill__label">{{ i18n.t('common.live') }}</span>
-        <span class="pill__value">
-          {{
-            liveStatus === 'connected'
-              ? i18n.t('common.connected')
-              : liveStatus === 'connecting'
-                ? i18n.t('common.connecting')
-                : i18n.t('common.offline')
-          }}
-        </span>
-      </div>
-      <div class="pill" [class.pill--warn]="clockDeviationText" [attr.title]="clockDeviationText">
-        <span class="pill__label">{{ i18n.t('common.systemTime') }}</span>
-        <span class="pill__value">{{ currentEpoch | date: 'HH:mm:ss' }}</span>
-        <span class="pill__label" *ngIf="clockDeviationText">{{ i18n.t('dashboard.clockCorrectedShort') }}</span>
-      </div>
-      <div class="pill" *ngIf="authInfo">
-        <span class="pill__label">{{ i18n.t('common.organization') }}</span>
-        <span class="pill__value">{{ authInfo.orgName }}</span>
-      </div>
-      <div class="pill" [class.pill--live]="currentEinsatz">
-        <span class="pill__label">{{ i18n.t('common.operation') }}</span>
-        <span class="pill__value">
-          {{ currentEinsatz ? i18n.t('dashboard.operationStateActive') : i18n.t('dashboard.operationStateNone') }}
-        </span>
-      </div>
-      <label class="theme-toggle">
-        <input type="checkbox" [checked]="themeMode === 'dark'" (change)="toggleTheme()" />
-        <span class="theme-toggle__track">
-          <span class="theme-toggle__thumb"></span>
-        </span>
-        <span class="theme-toggle__label">{{ i18n.t('common.darkMode') }}</span>
-      </label>
-      <div class="lang-switch" [attr.aria-label]="i18n.t('language.switchLabel')">
-        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'de'" (click)="i18n.setLang('de')">DE</button>
-        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'en'" (click)="i18n.setLang('en')">EN</button>
-      </div>
-      <button class="ghost btn-icon" type="button" (click)="refresh()">{{ i18n.t('common.refresh') }}</button>
-      <button
-        class="ghost btn-icon"
-        type="button"
-        [routerLink]="['/einstellungen']"
-        *ngIf="authInfo?.role === 'admin'"
-      >
-        {{ i18n.t('common.settings') }}
-      </button>
-      <button class="ghost btn-icon" type="button" (click)="logout()">{{ i18n.t('common.logout') }}</button>
-    </div>
-  </header>
+<header class="topbar">
+  <div class="topbar__brand">
+    <span class="topbar__wordmark">CrewTrace</span>
+    @if (authInfo) {
+      <span class="topbar__org">{{ authInfo.orgName }}</span>
+    }
+  </div>
 
-  <div class="grid">
-    <section class="card">
-      <h2>{{ i18n.t('dashboard.createOperation') }}</h2>
-      <form class="card__body" *ngIf="!currentEinsatz" (ngSubmit)="createEinsatz()">
+  <div class="topbar__status">
+    <app-connection-indicator
+      [status]="liveStatus()"
+      [lost]="monitoring.connectionLost()"
+      [snapshotFrom]="monitoring.snapshotFrom()"
+    />
+    <span class="topbar__clock" [class.topbar__clock--warn]="clockDeviationText" [attr.title]="clockDeviationText">
+      <app-icon [name]="clockDeviationText ? 'alert-triangle' : 'clock'" size="sm" />
+      <time>{{ currentEpoch | date: 'HH:mm:ss' }}</time>
+      @if (clockDeviationText) {
+        <span class="visually-hidden">{{ clockDeviationText }}</span>
+      }
+    </span>
+  </div>
+
+  <div class="topbar__actions">
+    @if (currentEinsatz) {
+      <button appButton variant="primary" icon="plus" type="button" (click)="openTruppDialog()">
+        {{ 'ui.newCrew' | t }}
+      </button>
+    }
+    <button
+      appIconButton
+      type="button"
+      icon="menu"
+      [label]="'ui.menu' | t"
+      [attr.aria-expanded]="menuOpen()"
+      aria-controls="topbar-menu"
+      (click)="menuOpen.set(!menuOpen())"
+    ></button>
+  </div>
+
+  @if (menuOpen()) {
+    <div class="topbar__menu-backdrop" (click)="menuOpen.set(false)"></div>
+    <div id="topbar-menu" class="topbar__menu">
+      <button appButton variant="ghost" [block]="true" [icon]="themeMode() === 'dark' ? 'sun' : 'moon'" type="button" (click)="toggleTheme()">
+        {{ (themeMode() === 'dark' ? 'ui.lightMode' : 'ui.darkMode') | t }}
+      </button>
+      <div class="topbar__lang" role="group" [attr.aria-label]="'language.switchLabel' | t">
+        <app-icon name="globe" size="sm" />
+        <button appButton size="sm" type="button" [variant]="i18n.lang() === 'de' ? 'primary' : 'ghost'" [attr.aria-pressed]="i18n.lang() === 'de'" (click)="i18n.setLang('de')">DE</button>
+        <button appButton size="sm" type="button" [variant]="i18n.lang() === 'en' ? 'primary' : 'ghost'" [attr.aria-pressed]="i18n.lang() === 'en'" (click)="i18n.setLang('en')">EN</button>
+      </div>
+      <button appButton variant="ghost" [block]="true" icon="refresh" type="button" (click)="refresh(); menuOpen.set(false)">
+        {{ 'common.refresh' | t }}
+      </button>
+      @if (authInfo?.role === 'admin') {
+        <a appButton variant="ghost" [block]="true" icon="sliders" [routerLink]="['/einstellungen']">{{ 'common.settings' | t }}</a>
+      }
+      <button appButton variant="ghost" [block]="true" icon="logout" type="button" (click)="menuOpen.set(false); logout()">
+        {{ 'common.logout' | t }}
+      </button>
+    </div>
+  }
+</header>
+
+<main class="dash">
+  @if (!currentEinsatz) {
+    <section class="dash__start" aria-labelledby="start-title">
+      <div class="dash__start-intro">
+        <h1 id="start-title">{{ 'ui.noOperationTitle' | t }}</h1>
+        <p class="muted">{{ 'ui.noOperationText' | t }}</p>
+      </div>
+      <form class="dash__start-form" (ngSubmit)="createEinsatz()">
         <label>
-          {{ i18n.t('dashboard.operationName') }}
+          {{ 'dashboard.operationName' | t }}
           <input
             type="text"
             name="einsatzName"
             maxlength="200"
             [(ngModel)]="einsatzForm.name"
-            [placeholder]="i18n.t('dashboard.operationNamePlaceholder')"
+            [placeholder]="'dashboard.operationNamePlaceholder' | t"
           />
         </label>
         <label>
-          {{ i18n.t('dashboard.operationPlace') }}
+          {{ 'dashboard.operationPlace' | t }}
           <input
             type="text"
             name="einsatzOrt"
             maxlength="200"
             [(ngModel)]="einsatzForm.ort"
-            [placeholder]="i18n.t('dashboard.operationPlacePlaceholder')"
+            [placeholder]="'dashboard.operationPlacePlaceholder' | t"
           />
         </label>
         <label>
-          {{ i18n.t('dashboard.operationAlarmTime') }}
+          {{ 'dashboard.operationAlarmTime' | t }}
           <input type="datetime-local" name="einsatzAlarmzeit" [(ngModel)]="einsatzForm.alarmzeit" />
         </label>
-        <button class="primary" type="submit">{{ i18n.t('dashboard.startOperation') }}</button>
-        <div class="form-error" *ngIf="errorMessage">{{ errorMessage }}</div>
-      </form>
-
-      <div class="card__body" *ngIf="currentEinsatz">
-        <div class="info">
-          <div>
-            <strong>{{ currentEinsatz.name }}</strong>
-            <div class="muted">{{ currentEinsatz.ort }}</div>
-          </div>
-          <div>
-            <div class="muted">{{ i18n.t('dashboard.operationAlarmTime') }}</div>
-            <div>{{ currentEinsatz.alarmzeit | date: 'HH:mm' }}</div>
-          </div>
-        </div>
-        <button class="danger" type="button" (click)="endEinsatz()">{{ i18n.t('dashboard.endOperation') }}</button>
-      </div>
-    </section>
-
-    <section class="card">
-      <h2>{{ i18n.t('dashboard.crewCapture') }}</h2>
-      <form class="card__body" (ngSubmit)="addTrupp()">
-        <fieldset [disabled]="!currentEinsatz">
-          <label>
-            {{ i18n.t('dashboard.crewLabel') }}
-            <select name="truppNameId" [(ngModel)]="truppForm.truppNameId">
-              <option value="">{{ i18n.t('common.pleaseSelect') }}</option>
-              <option *ngFor="let t of availableTruppnamen" [value]="t.id">{{ t.name }}</option>
-            </select>
-          </label>
-          <label>
-            {{ i18n.t('dashboard.person1') }}
-            <select name="person1Id" [(ngModel)]="truppForm.person1Id">
-              <option value="">{{ i18n.t('common.pleaseSelect') }}</option>
-              <option *ngFor="let t of availablePerson1" [value]="t.id">{{ personOptionLabel(t) }}</option>
-            </select>
-          </label>
-          <label>
-            {{ i18n.t('dashboard.person2') }}
-            <select name="person2Id" [(ngModel)]="truppForm.person2Id">
-              <option value="">{{ i18n.t('common.pleaseSelect') }}</option>
-              <option *ngFor="let t of availablePerson2" [value]="t.id">{{ personOptionLabel(t) }}</option>
-            </select>
-          </label>
-          <div class="row row--stack-sm">
-            <label>
-              {{ i18n.t('dashboard.startPressureP1') }}
-              <input type="number" name="startdruckP1" min="1" max="400" inputmode="numeric" [(ngModel)]="truppForm.startdruckPerson1Bar" />
-            </label>
-            <label>
-              {{ i18n.t('dashboard.startPressureP2') }}
-              <input type="number" name="startdruckP2" min="1" max="400" inputmode="numeric" [(ngModel)]="truppForm.startdruckPerson2Bar" />
-            </label>
-          </div>
-          <label>
-            {{ i18n.t('dashboard.startTime') }}
-            <input type="datetime-local" name="startzeit" step="1" [(ngModel)]="truppForm.startzeit" />
-          </label>
-          <div class="row row--stack-sm">
-            <label>
-              {{ i18n.t('dashboard.warnTime') }}
-              <input type="number" name="warnzeit" min="1" max="240" inputmode="numeric" [(ngModel)]="truppForm.warnzeitMin" />
-            </label>
-            <label>
-              {{ i18n.t('dashboard.maxTime') }}
-              <input type="number" name="maxzeit" min="1" max="240" inputmode="numeric" [(ngModel)]="truppForm.maxzeitMin" />
-            </label>
-          </div>
-        </fieldset>
-        <button class="primary" type="submit" [disabled]="!canAddTrupp()">
-          {{ i18n.t('dashboard.addCrew') }}
+        @if (errorMessage()) {
+          <div class="form-error" role="alert">{{ errorMessage() }}</div>
+        }
+        <button appButton variant="primary" size="lg" icon="arrow-right" [block]="true" type="submit">
+          {{ 'dashboard.startOperation' | t }}
         </button>
-        <div class="form-error" *ngIf="truppError">{{ truppError }}</div>
       </form>
     </section>
-  </div>
-
-  <section class="card list" #dashboardSection>
-    <div class="list__head">
-      <h2>{{ i18n.t('dashboard.board') }}</h2>
-      <div class="muted">
-        {{
-          currentEinsatz
-            ? i18n.t(endedCrewCount ? 'dashboard.crewsActiveEnded' : 'dashboard.crewsActive', { count: activeCrewCount, ended: endedCrewCount })
-            : i18n.t('dashboard.waitForOperation')
-        }}
+  } @else {
+    <section class="einsatz-bar" aria-labelledby="einsatz-title">
+      <div class="einsatz-bar__info">
+        <h1 id="einsatz-title" class="einsatz-bar__title">{{ currentEinsatz.name }}</h1>
+        <p class="einsatz-bar__meta">
+          <span>{{ currentEinsatz.ort }}</span>
+          <span>{{ 'ui.alarmAt' | t: { time: (currentEinsatz.alarmzeit | date: 'HH:mm') ?? '' } }}</span>
+          <span>{{ (endedCrewCount ? 'dashboard.crewsActiveEnded' : 'dashboard.crewsActive') | t: { count: activeCrewCount, ended: endedCrewCount } }}</span>
+        </p>
       </div>
-    </div>
+      <button appButton variant="danger" icon="check-circle" type="button" (click)="endEinsatz()">
+        {{ 'dashboard.endOperation' | t }}
+      </button>
+    </section>
 
-    <div class="list__body" *ngIf="currentEinsatz">
-      <div class="einsatz-inline">
-        <div class="einsatz-inline__status">{{ i18n.t('common.active') | uppercase }}</div>
-        <div class="einsatz-inline__info">
-          <div class="einsatz-inline__title">{{ currentEinsatz.name }}</div>
-          <div class="muted">{{ currentEinsatz.ort }}</div>
-        </div>
-        <div class="einsatz-inline__meta">
-          <div class="muted">{{ i18n.t('dashboard.alarm') }}</div>
-          <div>{{ currentEinsatz.alarmzeit | date: 'dd.MM.yyyy HH:mm:ss' }}</div>
-        </div>
-        <div class="einsatz-inline__meta" *ngIf="currentEinsatz.endzeit">
-          <div class="muted">{{ i18n.t('dashboard.end') }}</div>
-          <div>{{ currentEinsatz.endzeit | date: 'dd.MM.yyyy HH:mm:ss' }}</div>
-        </div>
-        <div class="einsatz-inline__meta" *ngIf="!currentEinsatz.endzeit">
-          <div class="muted">{{ i18n.t('dashboard.end') }}</div>
-          <div>-</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="list__body" *ngIf="trupps.length === 0">
-      <p class="muted">{{ i18n.t('dashboard.noCrews') }}</p>
-    </div>
-
-    <div class="list__body list__body--grid" *ngIf="trupps.length > 0">
-      <app-trupp-card
-        *ngFor="let trupp of trupps; trackBy: trackTrupp"
-        [trupp]="trupp"
-        [now]="currentEpoch"
-        (pressure)="addDruckmessung(trupp, $event)"
-        (end)="endTrupp(trupp)"
-        (zustandChange)="changeZustand(trupp, $event)"
-        (protokoll)="openProtokoll(trupp)"
-        (mayday)="monitoring.triggerMayday(trupp)"
-        (maydayInfo)="monitoring.openMaydayDialog(trupp, 'info')"
-        (maydayEnd)="monitoring.openMaydayDialog(trupp, 'ende')"
-      ></app-trupp-card>
-    </div>
-  </section>
-
-  <section class="card list">
-    <div class="list__head">
-      <h2>{{ i18n.t('dashboard.recentOperations') }}</h2>
-      <div class="muted">{{ i18n.t('dashboard.entries', { count: letzteEinsaetze.length }) }}</div>
-    </div>
-    <div class="list__body" *ngIf="letzteEinsaetze.length === 0">
-      <p class="muted">{{ i18n.t('dashboard.noRecentOperations') }}</p>
-    </div>
-    <div class="list__body" *ngIf="letzteEinsaetze.length > 0">
-      <div class="trupp" *ngFor="let einsatz of letzteEinsaetze">
-        <div class="trupp__status" [attr.data-status]="einsatz.status === 'aktiv' ? 'gruen' : 'beendet'">
-          {{ einsatz.status === 'aktiv' ? (i18n.t('common.active') | uppercase) : (i18n.t('dashboard.ended') | uppercase) }}
-        </div>
-        <div class="trupp__info">
-          <div class="trupp__title">{{ einsatz.name }}</div>
-          <div class="muted">{{ einsatz.ort }}</div>
-        </div>
-        <div class="trupp__metric">
-          <div class="muted">{{ i18n.t('dashboard.alarm') }}</div>
-          <div>{{ einsatz.alarmzeit | date: 'dd.MM.yyyy HH:mm' }}</div>
-        </div>
-        <div class="trupp__metric" *ngIf="einsatz.endzeit">
-          <div class="muted">{{ i18n.t('dashboard.end') }}</div>
-          <div>{{ einsatz.endzeit | date: 'dd.MM.yyyy HH:mm' }}</div>
-        </div>
-        <div class="trupp__metric" *ngIf="!einsatz.endzeit">
-          <div class="muted">{{ i18n.t('dashboard.end') }}</div>
-          <div>-</div>
-        </div>
-        <div class="trupp__actions">
-          <button class="ghost" type="button" (click)="openEinsatzDetails(einsatz)">{{ i18n.t('common.details') }}</button>
-          <button class="ghost" type="button" (click)="exportEinsatz(einsatz)">{{ i18n.t('common.export') }}</button>
-          <button class="ghost" type="button" (click)="exportEinsatzPdf(einsatz)">{{ i18n.t('common.pdf') }}</button>
-          <button
-            class="danger"
-            type="button"
-            *ngIf="einsatz.status !== 'aktiv' && authInfo?.role === 'admin'"
-            (click)="deleteEinsatz(einsatz)"
-          >
-            {{ i18n.t('common.delete') }}
+    <section class="uebersicht" aria-labelledby="uebersicht-title">
+      <h2 id="uebersicht-title" class="visually-hidden">{{ 'ui.crews' | t }}</h2>
+      @if (trupps.length === 0) {
+        <div class="uebersicht__empty">
+          <p>{{ 'dashboard.noCrews' | t }}</p>
+          <button appButton variant="primary" size="lg" icon="plus" type="button" (click)="openTruppDialog()">
+            {{ 'ui.newCrew' | t }}
           </button>
         </div>
-      </div>
-    </div>
-  </section>
-</div>
+      } @else {
+        <div class="uebersicht__grid">
+          @for (trupp of trupps; track trupp.id) {
+            <app-trupp-karte
+              [trupp]="trupp"
+              [now]="currentEpoch"
+              (pressure)="addDruckmessung(trupp, $event)"
+              (end)="endTrupp(trupp)"
+              (zustandChange)="changeZustand(trupp, $event)"
+              (protokoll)="openProtokoll(trupp)"
+              (mayday)="monitoring.triggerMayday(trupp)"
+              (maydayInfo)="monitoring.openMaydayDialog(trupp, 'info')"
+              (maydayEnd)="monitoring.openMaydayDialog(trupp, 'ende')"
+            />
+          }
+        </div>
+      }
+    </section>
+  }
 
-<div class="modal" *ngIf="druckModal?.open">
-  <!-- Kein Schliessen per Klick daneben: ein versehentlicher Tipp wuerde die Eingabe verwerfen. -->
-  <div class="modal__backdrop"></div>
-  <form class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="druck-title" (ngSubmit)="saveDruckModal()">
-    <h3 id="druck-title">{{ i18n.t('dashboard.pressureMeasurement') }}</h3>
-    <p class="muted">{{ druckModal!.trupp.bezeichnung }} - {{ druckModal!.personName }}</p>
-    <label>
-      {{ i18n.t('dashboard.pressureBar') }}
-      <input
-        #druckInput
-        type="number"
-        name="druckValue"
-        inputmode="numeric"
-        min="1"
-        [max]="maxDruckForModal() ?? null"
-        [(ngModel)]="druckModal!.value"
-      />
-    </label>
-    <div class="form-error" *ngIf="druckModalError">{{ druckModalError }}</div>
-    <div class="modal__last" *ngIf="druckModal?.last?.length">
-      <div class="muted">{{ i18n.t('dashboard.latestMeasurementsTitle') }}</div>
-      <ul>
-        <li *ngFor="let m of druckModal!.last">
-          {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}
-        </li>
+  <details class="history">
+    <summary>
+      <span class="history__title">{{ 'dashboard.recentOperations' | t }}</span>
+      <span class="muted">{{ 'dashboard.entries' | t: { count: letzteEinsaetze().length } }}</span>
+      <app-icon class="history__chevron" name="chevron-down" />
+    </summary>
+    @if (letzteEinsaetze().length === 0) {
+      <p class="muted">{{ 'dashboard.noRecentOperations' | t }}</p>
+    } @else {
+      <ul class="history__list">
+        @for (einsatz of letzteEinsaetze(); track einsatz.id) {
+          <li class="history__item">
+            <div class="history__info">
+              <strong>{{ einsatz.name }}</strong>
+              <span class="muted">{{ einsatz.ort }}</span>
+            </div>
+            <div class="history__time">
+              <span class="muted">{{ 'dashboard.alarm' | t }}</span>
+              <time>{{ einsatz.alarmzeit | date: 'dd.MM.yyyy HH:mm' }}</time>
+            </div>
+            <div class="history__time">
+              <span class="muted">{{ 'dashboard.end' | t }}</span>
+              <time>{{ einsatz.endzeit ? (einsatz.endzeit | date: 'dd.MM.yyyy HH:mm') : '–' }}</time>
+            </div>
+            <div class="history__actions">
+              <button appButton size="sm" variant="ghost" icon="list" type="button" (click)="openEinsatzDetails(einsatz)">{{ 'common.details' | t }}</button>
+              <button appButton size="sm" variant="ghost" icon="download" type="button" (click)="exportEinsatz(einsatz)">{{ 'common.export' | t }}</button>
+              <button appButton size="sm" variant="ghost" icon="download" type="button" (click)="exportEinsatzPdf(einsatz)">{{ 'common.pdf' | t }}</button>
+              @if (einsatz.status !== 'aktiv' && authInfo?.role === 'admin') {
+                <button appButton size="sm" variant="ghost" icon="trash" type="button" (click)="deleteEinsatz(einsatz)">{{ 'common.delete' | t }}</button>
+              }
+            </div>
+          </li>
+        }
       </ul>
-    </div>
-    <div class="modal__actions">
-      <button class="ghost" type="button" (click)="closeDruckModal()">{{ i18n.t('common.cancel') }}</button>
-      <button class="primary" type="submit" [disabled]="druckSaving">{{ i18n.t('common.save') }}</button>
-    </div>
-  </form>
-</div>
+    }
+  </details>
+</main>
 
-<div class="modal" *ngIf="detailsModal?.open">
-  <div class="modal__backdrop" (click)="closeEinsatzDetails()"></div>
-  <div class="modal__panel" role="dialog" aria-modal="true">
-    <h3>{{ i18n.t('dashboard.operationDetails') }}</h3>
-    <p class="muted">{{ detailsModal!.einsatz.name }} - {{ detailsModal!.einsatz.ort }}</p>
-    <div class="muted">{{ i18n.t('dashboard.alarm') }}: {{ detailsModal!.einsatz.alarmzeit | date: 'dd.MM.yyyy HH:mm' }}</div>
-    <div class="muted" *ngIf="detailsModal!.einsatz.endzeit">
-      {{ i18n.t('dashboard.end') }}: {{ detailsModal!.einsatz.endzeit | date: 'dd.MM.yyyy HH:mm' }}
-    </div>
-
-    <div *ngIf="detailsModal!.loading" class="muted">{{ i18n.t('dashboard.loadCrews') }}</div>
-
-    <div *ngIf="!detailsModal!.loading && detailsModal!.trupps.length === 0" class="muted">
-      {{ i18n.t('dashboard.noCrewsRecorded') }}
-    </div>
-
-    <div *ngIf="!detailsModal!.loading && detailsModal!.trupps.length > 0" class="details-list">
-      <div class="details-row" *ngFor="let t of detailsModal!.trupps">
-        <div class="details-row__left">
-          <div class="details-title">{{ t.bezeichnung }}</div>
-          <div class="muted">{{ i18n.t('dashboard.p1') }}: {{ t.person1Name }} - {{ i18n.t('dashboard.p2') }}: {{ t.person2Name }}</div>
-          <div class="details-meta">
-            <div class="muted">{{ i18n.t('dashboard.start') }}: {{ t.startzeit | date: 'HH:mm:ss' }}</div>
-            <div class="muted" *ngIf="t.endzeit">{{ i18n.t('dashboard.end') }}: {{ t.endzeit | date: 'HH:mm:ss' }}</div>
-          </div>
-          <button class="link-button" type="button" (click)="openProtokoll(t)">{{ i18n.t('protocol.open') }}</button>
+@if (truppDialogOpen()) {
+  <app-dialog [heading]="'ui.newCrew' | t" icon="plus" (close)="closeTruppDialog()">
+    <form (ngSubmit)="addTrupp()">
+      <fieldset [disabled]="!currentEinsatz">
+        <label>
+          {{ 'dashboard.crewLabel' | t }}
+          <select name="truppNameId" [(ngModel)]="truppForm.truppNameId" data-autofocus>
+            <option value="">{{ 'common.pleaseSelect' | t }}</option>
+            @for (t of availableTruppnamen; track t.id) {
+              <option [value]="t.id">{{ t.name }}</option>
+            }
+          </select>
+        </label>
+        <div class="form-row">
+          <label>
+            {{ 'dashboard.person1' | t }}
+            <select name="person1Id" [(ngModel)]="truppForm.person1Id">
+              <option value="">{{ 'common.pleaseSelect' | t }}</option>
+              @for (t of availablePerson1; track t.id) {
+                <option [value]="t.id">{{ personOptionLabel(t) }}</option>
+              }
+            </select>
+          </label>
+          <label>
+            {{ 'dashboard.startPressureP1' | t }}
+            <input type="number" name="startdruckP1" min="1" max="400" inputmode="numeric" [(ngModel)]="truppForm.startdruckPerson1Bar" />
+          </label>
         </div>
-        <div class="details-row__right details-pressures">
-          <div>
-            <div class="muted">{{ i18n.t('dashboard.p1Measurements') }}</div>
-            <div class="details-pressures__list" *ngIf="t.druckMessungenPerson1.length">
-              <div *ngFor="let m of t.druckMessungenPerson1">
-                {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}
-              </div>
-            </div>
-            <div class="muted" *ngIf="!t.druckMessungenPerson1.length">{{ i18n.t('dashboard.noMeasurements') }}</div>
-          </div>
-          <div>
-            <div class="muted">{{ i18n.t('dashboard.p2Measurements') }}</div>
-            <div class="details-pressures__list" *ngIf="t.druckMessungenPerson2.length">
-              <div *ngFor="let m of t.druckMessungenPerson2">
-                {{ m.druckBar }} bar - {{ m.zeit | date: 'HH:mm:ss' }}
-              </div>
-            </div>
-            <div class="muted" *ngIf="!t.druckMessungenPerson2.length">{{ i18n.t('dashboard.noMeasurements') }}</div>
-          </div>
+        <div class="form-row">
+          <label>
+            {{ 'dashboard.person2' | t }}
+            <select name="person2Id" [(ngModel)]="truppForm.person2Id">
+              <option value="">{{ 'common.pleaseSelect' | t }}</option>
+              @for (t of availablePerson2; track t.id) {
+                <option [value]="t.id">{{ personOptionLabel(t) }}</option>
+              }
+            </select>
+          </label>
+          <label>
+            {{ 'dashboard.startPressureP2' | t }}
+            <input type="number" name="startdruckP2" min="1" max="400" inputmode="numeric" [(ngModel)]="truppForm.startdruckPerson2Bar" />
+          </label>
         </div>
+        <label>
+          {{ 'dashboard.startTime' | t }}
+          <input type="datetime-local" name="startzeit" step="1" [(ngModel)]="truppForm.startzeit" />
+        </label>
+        <div class="form-row form-row--even">
+          <label>
+            {{ 'dashboard.warnTime' | t }}
+            <input type="number" name="warnzeit" min="1" max="240" inputmode="numeric" [(ngModel)]="truppForm.warnzeitMin" />
+          </label>
+          <label>
+            {{ 'dashboard.maxTime' | t }}
+            <input type="number" name="maxzeit" min="1" max="240" inputmode="numeric" [(ngModel)]="truppForm.maxzeitMin" />
+          </label>
+        </div>
+      </fieldset>
+      @if (truppError()) {
+        <div class="form-error" role="alert">{{ truppError() }}</div>
+      }
+      <div class="dialog__actions">
+        <button appButton variant="ghost" type="button" (click)="closeTruppDialog()">{{ 'common.cancel' | t }}</button>
+        <button appButton variant="primary" icon="plus" type="submit" [disabled]="!canAddTrupp()">{{ 'dashboard.addCrew' | t }}</button>
+      </div>
+    </form>
+  </app-dialog>
+}
+
+@if (druckModal(); as d) {
+  <!-- Kein Schliessen per Klick daneben: ein versehentlicher Tipp wuerde die Eingabe verwerfen. -->
+  <app-dialog [heading]="'dashboard.pressureMeasurement' | t" icon="gauge" [backdropClose]="false" (close)="closeDruckModal()">
+    <form (ngSubmit)="saveDruckModal()">
+      <p class="dlg-context">{{ d.trupp.bezeichnung }} · {{ d.personName }}</p>
+      <label>
+        {{ 'dashboard.pressureBar' | t }}
+        <input
+          #druckInput
+          class="dlg-big-input"
+          type="number"
+          name="druckValue"
+          inputmode="numeric"
+          min="1"
+          [max]="maxDruckForModal() ?? null"
+          [(ngModel)]="d.value"
+        />
+      </label>
+      @if (druckModalError()) {
+        <div class="form-error" role="alert">{{ druckModalError() }}</div>
+      }
+      @if (d.last.length) {
+        <div class="dlg-readings">
+          <span class="muted">{{ 'dashboard.latestMeasurementsTitle' | t }}</span>
+          <ul>
+            @for (m of d.last; track $index) {
+              <li><strong>{{ m.druckBar }} bar</strong> <time>{{ m.zeit | date: 'HH:mm:ss' }}</time></li>
+            }
+          </ul>
+        </div>
+      }
+      <div class="dialog__actions">
+        <button appButton variant="ghost" type="button" (click)="closeDruckModal()">{{ 'common.cancel' | t }}</button>
+        <button appButton variant="primary" icon="check" type="submit" [disabled]="druckSaving()">{{ 'common.save' | t }}</button>
+      </div>
+    </form>
+  </app-dialog>
+}
+
+@if (zielModal(); as z) {
+  <!-- Kein Schliessen per Klick daneben: ein versehentlicher Tipp wuerde die Eingabe verwerfen. -->
+  <app-dialog [heading]="'crewState.targetTitle' | t" icon="target" [backdropClose]="false" (close)="closeZielModal()">
+    <form (ngSubmit)="saveZiel(false)">
+      <p class="dlg-context">{{ z.trupp.bezeichnung }} – {{ 'crewState.targetText' | t }}</p>
+      <label>
+        {{ z.trupp.person1Name }} ({{ 'dashboard.pressureBar' | t }})
+        <input
+          #zielInput
+          class="dlg-big-input"
+          type="number"
+          name="zielP1"
+          inputmode="numeric"
+          min="1"
+          [max]="maxDruckFor(z.trupp, z.trupp.person1Id)"
+          [(ngModel)]="z.p1"
+        />
+        @if (zielRetreat(z.trupp, z.trupp.startdruckPerson1Bar, z.p1); as value) {
+          <span class="dlg-hint">{{ 'retreat.targetPreview' | t: { value: value } }}</span>
+        }
+      </label>
+      <label>
+        {{ z.trupp.person2Name }} ({{ 'dashboard.pressureBar' | t }})
+        <input
+          class="dlg-big-input"
+          type="number"
+          name="zielP2"
+          inputmode="numeric"
+          min="1"
+          [max]="maxDruckFor(z.trupp, z.trupp.person2Id)"
+          [(ngModel)]="z.p2"
+        />
+        @if (zielRetreat(z.trupp, z.trupp.startdruckPerson2Bar, z.p2); as value) {
+          <span class="dlg-hint">{{ 'retreat.targetPreview' | t: { value: value } }}</span>
+        }
+      </label>
+      @if (z.error) {
+        <div class="form-error" role="alert">{{ z.error }}</div>
+      }
+      <div class="dialog__actions">
+        <button appButton variant="ghost" type="button" (click)="closeZielModal()">{{ 'common.cancel' | t }}</button>
+        <button appButton variant="ghost" type="button" [disabled]="zielSaving()" (click)="saveZiel(true)">
+          {{ 'crewState.targetSkip' | t }}
+        </button>
+        <button appButton variant="primary" icon="check" type="submit" [disabled]="zielSaving()">{{ 'common.save' | t }}</button>
+      </div>
+    </form>
+  </app-dialog>
+}
+
+@if (protokollModal(); as p) {
+  <app-dialog [heading]="p.title" icon="list" (close)="closeProtokoll()">
+    @if (p.pendingCount) {
+      <p class="dlg-note" role="status">{{ 'protocol.pendingHint' | t: { count: p.pendingCount } }}</p>
+    }
+    @if (p.loading) {
+      <p class="muted">{{ 'protocol.loading' | t }}</p>
+    }
+    @if (p.error) {
+      <div class="form-error" role="alert">{{ p.error }}</div>
+    }
+    @if (!p.loading && !p.error) {
+      <ol class="protocol-list">
+        @for (e of p.eintraege; track $index) {
+          <li [attr.data-typ]="e.typ">
+            <time class="protocol-list__time">{{ e.zeit | date: 'HH:mm:ss' }}</time>
+            <span>{{ describeEintrag(e) }}</span>
+          </li>
+        }
+      </ol>
+    }
+    <div dialog-actions class="dialog__actions">
+      <button appButton variant="primary" type="button" (click)="closeProtokoll()">{{ 'common.close' | t }}</button>
+    </div>
+  </app-dialog>
+}
+
+@if (detailsModal(); as dm) {
+  <app-dialog [heading]="'dashboard.operationDetails' | t" icon="list" (close)="closeEinsatzDetails()">
+    <div class="dlg-context">
+      <strong>{{ dm.einsatz.name }}</strong> · {{ dm.einsatz.ort }}
+      <div class="muted">
+        {{ 'dashboard.alarm' | t }}: <time>{{ dm.einsatz.alarmzeit | date: 'dd.MM.yyyy HH:mm' }}</time>
+        @if (dm.einsatz.endzeit) {
+          · {{ 'dashboard.end' | t }}: <time>{{ dm.einsatz.endzeit | date: 'dd.MM.yyyy HH:mm' }}</time>
+        }
       </div>
     </div>
-
-    <div class="modal__actions">
-      <button class="primary" type="button" (click)="closeEinsatzDetails()">{{ i18n.t('common.close') }}</button>
+    @if (dm.loading) {
+      <p class="muted">{{ 'dashboard.loadCrews' | t }}</p>
+    } @else if (dm.trupps.length === 0) {
+      <p class="muted">{{ 'dashboard.noCrewsRecorded' | t }}</p>
+    } @else {
+      <ul class="details-list">
+        @for (t of dm.trupps; track t.id) {
+          <li class="details-row">
+            <div class="details-row__head">
+              <strong>{{ t.bezeichnung }}</strong>
+              <span class="muted">
+                {{ 'dashboard.start' | t }} <time>{{ t.startzeit | date: 'HH:mm:ss' }}</time>
+                @if (t.endzeit) {
+                  · {{ 'dashboard.end' | t }} <time>{{ t.endzeit | date: 'HH:mm:ss' }}</time>
+                }
+              </span>
+            </div>
+            <div class="details-pressures">
+              <div>
+                <span class="muted">{{ 'dashboard.p1' | t }}: {{ t.person1Name }}</span>
+                @for (m of t.druckMessungenPerson1; track $index) {
+                  <div class="tabular">{{ m.druckBar }} bar · {{ m.zeit | date: 'HH:mm:ss' }}</div>
+                } @empty {
+                  <div class="muted">{{ 'dashboard.noMeasurements' | t }}</div>
+                }
+              </div>
+              <div>
+                <span class="muted">{{ 'dashboard.p2' | t }}: {{ t.person2Name }}</span>
+                @for (m of t.druckMessungenPerson2; track $index) {
+                  <div class="tabular">{{ m.druckBar }} bar · {{ m.zeit | date: 'HH:mm:ss' }}</div>
+                } @empty {
+                  <div class="muted">{{ 'dashboard.noMeasurements' | t }}</div>
+                }
+              </div>
+            </div>
+            <button appButton variant="ghost" size="sm" icon="list" type="button" (click)="openProtokoll(t)">{{ 'protocol.open' | t }}</button>
+          </li>
+        }
+      </ul>
+    }
+    <div dialog-actions class="dialog__actions">
+      <button appButton variant="primary" type="button" (click)="closeEinsatzDetails()">{{ 'common.close' | t }}</button>
     </div>
-  </div>
-</div>
+  </app-dialog>
+}
 
-<div class="modal" *ngIf="deleteModal?.open">
-  <div class="modal__backdrop" (click)="closeDeleteModal()"></div>
-  <div class="modal__panel" role="dialog" aria-modal="true">
-    <h3>{{ i18n.t('dashboard.deleteOperation') }}</h3>
-    <p class="muted">{{ i18n.t('dashboard.deleteOperationConfirm', { name: deleteModal!.einsatz.name }) }}</p>
-    <p class="muted">{{ i18n.t('dashboard.deleteOperationAudit') }}</p>
+@if (deleteModal(); as del) {
+  <app-dialog [heading]="'dashboard.deleteOperation' | t" icon="trash" tone="crit" (close)="closeDeleteModal()">
+    <p>{{ 'dashboard.deleteOperationConfirm' | t: { name: del.einsatz.name } }}</p>
+    <p class="muted">{{ 'dashboard.deleteOperationAudit' | t }}</p>
     <label>
-      {{ i18n.t('dashboard.deleteReason') }}
-      <textarea #deleteReason name="deleteGrund" rows="3" maxlength="500" [(ngModel)]="deleteModal!.grund"></textarea>
+      {{ 'dashboard.deleteReason' | t }}
+      <textarea #deleteReason name="deleteGrund" rows="3" maxlength="500" [(ngModel)]="del.grund"></textarea>
     </label>
-    <div class="form-error" *ngIf="deleteModal!.error">{{ deleteModal!.error }}</div>
-    <div class="modal__actions">
-      <button class="ghost" type="button" (click)="closeDeleteModal()">{{ i18n.t('common.cancel') }}</button>
-      <button class="danger" type="button" (click)="confirmDeleteEinsatz()">{{ i18n.t('common.delete') }}</button>
+    @if (del.error) {
+      <div class="form-error" role="alert">{{ del.error }}</div>
+    }
+    <div dialog-actions class="dialog__actions">
+      <button appButton variant="ghost" type="button" (click)="closeDeleteModal()">{{ 'common.cancel' | t }}</button>
+      <button appButton variant="danger" icon="trash" type="button" (click)="confirmDeleteEinsatz()">{{ 'common.delete' | t }}</button>
     </div>
-  </div>
-</div>
+  </app-dialog>
+}
 
-<div class="modal" *ngIf="zielModal">
-  <!-- Kein Schliessen per Klick daneben: ein versehentlicher Tipp wuerde die Eingabe verwerfen. -->
-  <div class="modal__backdrop"></div>
-  <form class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="ziel-title" (ngSubmit)="saveZiel(false)">
-    <h3 id="ziel-title">{{ i18n.t('crewState.targetTitle') }}</h3>
-    <p class="muted">{{ zielModal.trupp.bezeichnung }} – {{ i18n.t('crewState.targetText') }}</p>
-    <label>
-      {{ zielModal.trupp.person1Name }} ({{ i18n.t('dashboard.pressureBar') }})
-      <input
-        #zielInput
-        type="number"
-        name="zielP1"
-        inputmode="numeric"
-        min="1"
-        [max]="maxDruckFor(zielModal.trupp, zielModal.trupp.person1Id)"
-        [(ngModel)]="zielModal.p1"
-      />
-      <span class="muted" *ngIf="zielRetreat(zielModal.trupp, zielModal.trupp.startdruckPerson1Bar, zielModal.p1) as value">
-        {{ i18n.t('retreat.targetPreview', { value: value }) }}
-      </span>
-    </label>
-    <label>
-      {{ zielModal.trupp.person2Name }} ({{ i18n.t('dashboard.pressureBar') }})
-      <input
-        type="number"
-        name="zielP2"
-        inputmode="numeric"
-        min="1"
-        [max]="maxDruckFor(zielModal.trupp, zielModal.trupp.person2Id)"
-        [(ngModel)]="zielModal.p2"
-      />
-      <span class="muted" *ngIf="zielRetreat(zielModal.trupp, zielModal.trupp.startdruckPerson2Bar, zielModal.p2) as value">
-        {{ i18n.t('retreat.targetPreview', { value: value }) }}
-      </span>
-    </label>
-    <div class="form-error" *ngIf="zielModal.error">{{ zielModal.error }}</div>
-    <div class="modal__actions">
-      <button class="ghost" type="button" (click)="closeZielModal()">{{ i18n.t('common.cancel') }}</button>
-      <button class="ghost" type="button" [disabled]="zielSaving" (click)="saveZiel(true)">
-        {{ i18n.t('crewState.targetSkip') }}
-      </button>
-      <button class="primary" type="submit" [disabled]="zielSaving">{{ i18n.t('common.save') }}</button>
+@if (confirmModal(); as cm) {
+  <app-dialog [heading]="cm.title" icon="alert-triangle" tone="warn" role="alertdialog" (close)="closeConfirmModal()">
+    <p>{{ cm.text }}</p>
+    <div dialog-actions class="dialog__actions">
+      <button appButton variant="ghost" type="button" #confirmCancel (click)="closeConfirmModal()">{{ 'common.cancel' | t }}</button>
+      <button appButton variant="danger" type="button" (click)="confirmAction()">{{ cm.confirmLabel }}</button>
     </div>
-  </form>
-</div>
-
-<div class="modal" *ngIf="protokollModal">
-  <div class="modal__backdrop" (click)="closeProtokoll()"></div>
-  <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="protokoll-title">
-    <h3 id="protokoll-title">{{ protokollModal.title }}</h3>
-    <div class="pending-note" *ngIf="protokollModal.pendingCount" role="status">
-      {{ i18n.t('protocol.pendingHint', { count: protokollModal.pendingCount }) }}
-    </div>
-    <div class="muted" *ngIf="protokollModal.loading">{{ i18n.t('protocol.loading') }}</div>
-    <div class="form-error" *ngIf="protokollModal.error">{{ protokollModal.error }}</div>
-    <ol class="protocol-list" *ngIf="!protokollModal.loading && !protokollModal.error">
-      <li *ngFor="let e of protokollModal.eintraege" [attr.data-typ]="e.typ">
-        <span class="protocol-list__time">{{ e.zeit | date: 'HH:mm:ss' }}</span>
-        <span>{{ describeEintrag(e) }}</span>
-      </li>
-    </ol>
-    <div class="modal__actions">
-      <button class="primary" type="button" (click)="closeProtokoll()">{{ i18n.t('common.close') }}</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal" *ngIf="confirmModal">
-  <div class="modal__backdrop" (click)="closeConfirmModal()"></div>
-  <div class="modal__panel" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
-    <h3 id="confirm-title">{{ confirmModal.title }}</h3>
-    <p class="muted">{{ confirmModal.text }}</p>
-    <div class="modal__actions">
-      <button class="ghost" type="button" #confirmCancel (click)="closeConfirmModal()">{{ i18n.t('common.cancel') }}</button>
-      <button class="danger" type="button" (click)="confirmAction()">{{ confirmModal.confirmLabel }}</button>
-    </div>
-  </div>
-</div>
+  </app-dialog>
+}

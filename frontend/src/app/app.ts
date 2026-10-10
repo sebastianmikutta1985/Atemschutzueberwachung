@@ -1,5 +1,4 @@
-import { CommonModule } from '@angular/common';
-import { Component, HostListener, OnDestroy, OnInit, ViewEncapsulation } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, OnDestroy, OnInit, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { AlarmOverlayComponent } from './alarm-overlay.component';
@@ -8,13 +7,15 @@ import { MonitoringService } from './monitoring.service';
 import { SessionService } from './session.service';
 import { ThemeStore } from './theme.store';
 import { TranslationService } from './translation.service';
+import { ButtonComponent } from './ui/button.component';
+import { DialogComponent } from './ui/dialog.component';
+import { TranslatePipe } from './ui/translate.pipe';
 
 @Component({
   selector: 'app-root',
-  imports: [CommonModule, RouterOutlet, AlarmOverlayComponent],
-  templateUrl: './app.html',
-  styleUrl: './app.css',
-  encapsulation: ViewEncapsulation.None
+  imports: [RouterOutlet, AlarmOverlayComponent, ButtonComponent, DialogComponent, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  templateUrl: './app.html'
 })
 export class App implements OnInit {
   private readonly idleTimeoutMs = 2 * 60 * 60 * 1000;
@@ -23,7 +24,7 @@ export class App implements OnInit {
   private idleTimer?: number;
   private idleWarningTimer?: number;
   private idleCheck?: number;
-  idleWarningOpen = false;
+  readonly idleWarningOpen = signal(false);
 
   constructor(
     private session: SessionService,
@@ -80,7 +81,7 @@ export class App implements OnInit {
     if (this.idleWarningTimer) {
       window.clearTimeout(this.idleWarningTimer);
     }
-    this.idleWarningOpen = false;
+    this.idleWarningOpen.set(false);
     this.idleWarningTimer = window.setTimeout(
       () => this.showIdleWarning(),
       this.idleTimeoutMs - this.idleWarningMs
@@ -105,7 +106,7 @@ export class App implements OnInit {
     if (this.deferWhileMonitoring()) {
       return;
     }
-    this.idleWarningOpen = true;
+    this.idleWarningOpen.set(true);
   }
 
   stayLoggedIn(): void {
@@ -114,7 +115,7 @@ export class App implements OnInit {
   }
 
   logoutNow(): void {
-    this.idleWarningOpen = false;
+    this.idleWarningOpen.set(false);
     this.session.logout();
   }
 
@@ -135,7 +136,7 @@ export class App implements OnInit {
     if (this.deferWhileMonitoring()) {
       return;
     }
-    this.idleWarningOpen = false;
+    this.idleWarningOpen.set(false);
     this.session.logout();
   }
 }

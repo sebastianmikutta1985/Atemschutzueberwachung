@@ -1,24 +1,11 @@
-<div class="page">
-  <header class="hero">
-    <div class="hero__text">
-      <p class="hero__eyebrow">{{ i18n.t('legal.eyebrow') }}</p>
-      <h1>{{ i18n.t('legal.privacy') }}</h1>
-      <p class="hero__sub">{{ i18n.t('legal.privacySubtitle') }}</p>
-    </div>
-    <img class="brand-logo brand-logo--hero" src="/crewtrace-logo.png" alt="CrewTrace" />
-    <div class="hero__meta">
-      <div class="lang-switch" [attr.aria-label]="i18n.t('language.switchLabel')">
-        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'de'" (click)="i18n.setLang('de')">DE</button>
-        <button type="button" [class.lang-switch__btn--active]="i18n.lang() === 'en'" (click)="i18n.setLang('en')">EN</button>
-      </div>
-      <a class="ghost btn-icon" [routerLink]="['/login']">{{ i18n.t('common.back') }}</a>
-    </div>
-  </header>
+<app-page [heading]="'legal.privacy' | t" [subtitle]="'legal.privacySubtitle' | t" backLink="/login" [narrow]="true">
+  <app-lang-switch page-actions [lang]="i18n.lang()" (langChange)="i18n.setLang($event)" />
 
-  <section class="card legal" *ngIf="i18n.lang() === 'de'; else privacyEnglish">
+  @if (i18n.lang() === 'de') {
+  <article class="legal">
     <div class="legal-note">
-      <strong>{{ i18n.t('legal.draftTitle') }}</strong>
-      <p>{{ i18n.t('legal.draftText') }}</p>
+      <strong>{{ ('legal.draftTitle' | t) }}</strong>
+      <p>{{ ('legal.draftText' | t) }}</p>
     </div>
     <h2>Verantwortlicher</h2>
     <p><strong>Firma:</strong> CrewTrace [bitte eintragen]</p>
@@ -65,13 +52,14 @@
       Sie haben das Recht auf Auskunft, Berichtigung, Löschung, Einschränkung der Verarbeitung,
       Datenübertragbarkeit sowie Widerspruch nach Maßgabe der DSGVO.
     </p>
-  </section>
+  </article>
+  } @else {
 
-  <ng-template #privacyEnglish>
-    <section class="card legal">
+  
+    <article class="legal">
       <div class="legal-note">
-        <strong>{{ i18n.t('legal.draftTitle') }}</strong>
-        <p>{{ i18n.t('legal.draftText') }}</p>
+        <strong>{{ ('legal.draftTitle' | t) }}</strong>
+        <p>{{ ('legal.draftText' | t) }}</p>
       </div>
       <h2>Controller</h2>
       <p><strong>Company:</strong> CrewTrace [please fill in]</p>
@@ -118,6 +106,6 @@
         You have the right to access, rectification, erasure, restriction of processing,
         data portability and objection in accordance with the GDPR.
       </p>
-    </section>
-  </ng-template>
-</div>
+    </article>
+  }
+</app-page>
