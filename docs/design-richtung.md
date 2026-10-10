@@ -11,8 +11,8 @@ Alles andere tritt zurück. Kein Schmuck, keine Verläufe, keine Animationen au�
 
 ## Themes
 
-- **Dunkel** ist die Standardannahme für den Einsatz (Nacht, Blendung vermeiden).
-- **Hell** ist voll gleichwertig und muss bei direkter Sonne funktionieren (höchster Kontrast, keine hellgrauen Texte).
+- **Hell** ist der Standard und muss bei direkter Sonne funktionieren (höchster Kontrast, keine hellgrauen Texte).
+- **Dunkel** ist voll gleichwertig und wird je Gerät im Menü gewählt (Nacht, Blendung vermeiden). Die Wahl bleibt pro Organisation und Rolle gespeichert.
 - Umschaltung weiter über `theme.store.ts`. Die Tokens hängen an dem Selektor, den der Store aktuell setzt.
 
 ## Statusmodell
