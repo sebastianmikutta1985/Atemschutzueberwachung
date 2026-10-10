@@ -71,6 +71,12 @@ const ICON: Record<BannerTone, IconName> = {
     .banner__actions:empty {
       display: none;
     }
+    /* Schmal: Aktionen in eigener Zeile ueber die volle Breite statt links haengend */
+    @media (max-width: 640px) {
+      .banner__actions {
+        flex: 1 1 100%;
+      }
+    }
   `
 })
 export class BannerComponent {

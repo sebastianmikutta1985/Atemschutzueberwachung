@@ -534,6 +534,10 @@ let nextId = 0;
         margin-left: 0;
         flex: 1 1 100%;
       }
+      /* Protokoll/Abbruch teilen sich die Zeile und sind zusammen so breit wie der Mayday-Knopf */
+      .karte__secondary > button[appButton] {
+        flex: 1 1 0;
+      }
       .karte__druck button {
         padding-inline: var(--space-2);
         font-size: var(--fs-base);
