@@ -41,10 +41,11 @@ export const ThemeStore = {
 
   load(themeKey?: string | null): ThemeMode {
     const raw = localStorage.getItem(this.keyFor(themeKey));
+    // Ohne gespeicherte Wahl hell (Standard); dunkel nur, wenn es auf diesem Geraet gewaehlt wurde.
     if (!raw) {
-      return 'dark';
+      return 'light';
     }
-    return raw === 'light' ? 'light' : 'dark';
+    return raw === 'dark' ? 'dark' : 'light';
   },
 
   save(mode: ThemeMode, themeKey?: string | null): void {

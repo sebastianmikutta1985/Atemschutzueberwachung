@@ -76,7 +76,7 @@
   --ease: cubic-bezier(0.2, 0, 0, 1);
 }
 
-/* ---------- Hell: fuer direkte Sonne, hoechster Kontrast ---------- */
+/* ---------- Hell: Standard, auch fuer direkte Sonne, hoechster Kontrast ---------- */
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
@@ -124,7 +124,7 @@
   --status-neutral-on: #ffffff;
 }
 
-/* ---------- Dunkel: Standard im Einsatz, keine Blendung ---------- */
+/* ---------- Dunkel: auf Wunsch je Geraet (Nacht, keine Blendung) ---------- */
 :root[data-theme='dark'] {
   color-scheme: dark;
 
