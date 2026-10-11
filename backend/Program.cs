@@ -1938,8 +1938,13 @@ static async Task<List<TruppProtokoll>> BuildProtokoll(AppDbContext db, Guid org
             new(t.Startzeit, "angelegt", null, null, null, null,
                 string.Join(", ", mitglieder.Select(m => $"{m.Name} {m.StartdruckBar} bar")), false)
         };
-        eintraege.AddRange(messungen.Where(m => m.TruppId == t.Id).Select(m => new ProtokollEintrag(
-            m.Zeit, "druck", null, mitglieder.FirstOrDefault(x => x.PersonId == m.PersonId)?.Name, m.DruckBar, m.Anlass, null, false)));
+        // In Reihenfolge der Mitglieder, damit gleichzeitige Werte (z. B. am Ziel) immer gleich sortiert sind.
+        eintraege.AddRange(messungen
+            .Where(m => m.TruppId == t.Id)
+            .Select(m => (Messung: m, Mitglied: mitglieder.FirstOrDefault(x => x.PersonId == m.PersonId)))
+            .OrderBy(x => x.Mitglied?.Reihenfolge ?? int.MaxValue)
+            .Select(x => new ProtokollEintrag(
+                x.Messung.Zeit, "druck", null, x.Mitglied?.Name, x.Messung.DruckBar, x.Messung.Anlass, null, false)));
         eintraege.AddRange(events.Where(e => e.TruppId == t.Id).Select(e =>
         {
             var d = ProtokollDaten(e.Daten);
