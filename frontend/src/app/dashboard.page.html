@@ -198,36 +198,38 @@
             }
           </select>
         </label>
-        <div class="form-row">
-          <label>
-            {{ 'dashboard.person1' | t }}
-            <select name="person1Id" [(ngModel)]="truppForm.person1Id">
-              <option value="">{{ 'common.pleaseSelect' | t }}</option>
-              @for (t of availablePerson1; track t.id) {
-                <option [value]="t.id">{{ personOptionLabel(t) }}</option>
-              }
-            </select>
-          </label>
-          <label>
-            {{ 'dashboard.startPressureP1' | t }}
-            <input type="number" name="startdruckP1" min="1" max="400" inputmode="numeric" [(ngModel)]="truppForm.startdruckPerson1Bar" />
-          </label>
-        </div>
-        <div class="form-row">
-          <label>
-            {{ 'dashboard.person2' | t }}
-            <select name="person2Id" [(ngModel)]="truppForm.person2Id">
-              <option value="">{{ 'common.pleaseSelect' | t }}</option>
-              @for (t of availablePerson2; track t.id) {
-                <option [value]="t.id">{{ personOptionLabel(t) }}</option>
-              }
-            </select>
-          </label>
-          <label>
-            {{ 'dashboard.startPressureP2' | t }}
-            <input type="number" name="startdruckP2" min="1" max="400" inputmode="numeric" [(ngModel)]="truppForm.startdruckPerson2Bar" />
-          </label>
-        </div>
+        <!-- Erste Zeile: Truppfuehrer. Weitere Truppmaenner bis zur Hoechstzahl, entfernbar bis zur Mindestzahl. -->
+        @for (m of truppForm.mitglieder; track $index; let i = $index) {
+          <div class="form-row form-row--member" [class.form-row--removable]="truppForm.mitglieder.length > minMitglieder">
+            <label class="member-person">
+              {{ roleLabel(i, truppForm.mitglieder.length) }}
+              <select [name]="'person' + i" [(ngModel)]="m.personId">
+                <option value="">{{ 'common.pleaseSelect' | t }}</option>
+                @for (t of availablePersons(i); track t.id) {
+                  <option [value]="t.id">{{ personOptionLabel(t) }}</option>
+                }
+              </select>
+            </label>
+            <label>
+              {{ 'dashboard.startPressure' | t }}
+              <input type="number" [name]="'startdruck' + i" min="1" max="400" inputmode="numeric" [(ngModel)]="m.startdruckBar" />
+            </label>
+            @if (i > 0 && truppForm.mitglieder.length > minMitglieder) {
+              <button
+                appIconButton
+                type="button"
+                icon="trash"
+                [label]="'crewCard.removeMember' | t: { role: roleLabel(i, truppForm.mitglieder.length) }"
+                (click)="removeMitgliedRow(i)"
+              ></button>
+            }
+          </div>
+        }
+        @if (truppForm.mitglieder.length < maxMitglieder) {
+          <button appButton variant="ghost" icon="plus" type="button" class="member-add" (click)="addMitgliedRow()">
+            {{ 'crewCard.addMember' | t }}
+          </button>
+        }
         <label>
           {{ 'dashboard.startTime' | t }}
           <input type="datetime-local" name="startzeit" step="1" [(ngModel)]="truppForm.startzeit" />
@@ -298,37 +300,25 @@
   <app-dialog [heading]="'crewState.targetTitle' | t" icon="target" [backdropClose]="false" (close)="closeZielModal()">
     <form (ngSubmit)="saveZiel(false)">
       <p class="dlg-context">{{ z.trupp.bezeichnung }} – {{ 'crewState.targetText' | t }}</p>
-      <label>
-        {{ z.trupp.person1Name }} ({{ 'dashboard.pressureBar' | t }})
-        <input
-          #zielInput
-          class="dlg-big-input"
-          type="number"
-          name="zielP1"
-          inputmode="numeric"
-          min="1"
-          [max]="maxDruckFor(z.trupp, z.trupp.person1Id)"
-          [(ngModel)]="z.p1"
-        />
-        @if (zielRetreat(z.trupp, z.trupp.startdruckPerson1Bar, z.p1); as value) {
-          <span class="dlg-hint">{{ 'retreat.targetPreview' | t: { value: value } }}</span>
-        }
-      </label>
-      <label>
-        {{ z.trupp.person2Name }} ({{ 'dashboard.pressureBar' | t }})
-        <input
-          class="dlg-big-input"
-          type="number"
-          name="zielP2"
-          inputmode="numeric"
-          min="1"
-          [max]="maxDruckFor(z.trupp, z.trupp.person2Id)"
-          [(ngModel)]="z.p2"
-        />
-        @if (zielRetreat(z.trupp, z.trupp.startdruckPerson2Bar, z.p2); as value) {
-          <span class="dlg-hint">{{ 'retreat.targetPreview' | t: { value: value } }}</span>
-        }
-      </label>
+      <!-- #zielInput an jedem Feld: der Fokus geht auf das erste. -->
+      @for (m of z.trupp.mitglieder; track m.personId; let i = $index) {
+        <label>
+          {{ m.name }} ({{ 'dashboard.pressureBar' | t }})
+          <input
+            #zielInput
+            class="dlg-big-input"
+            type="number"
+            [name]="'ziel' + i"
+            inputmode="numeric"
+            min="1"
+            [max]="maxDruckFor(m)"
+            [(ngModel)]="z.werte[i]"
+          />
+          @if (zielRetreat(z.trupp, m.startdruckBar, z.werte[i]); as value) {
+            <span class="dlg-hint">{{ 'retreat.targetPreview' | t: { value: value } }}</span>
+          }
+        </label>
+      }
       @if (z.error) {
         <div class="form-error" role="alert">{{ z.error }}</div>
       }
@@ -399,22 +389,16 @@
               </span>
             </div>
             <div class="details-pressures">
-              <div>
-                <span class="muted">{{ 'dashboard.p1' | t }}: {{ t.person1Name }}</span>
-                @for (m of t.druckMessungenPerson1; track $index) {
-                  <div class="tabular">{{ m.druckBar }} bar · {{ m.zeit | date: 'HH:mm:ss' }}</div>
-                } @empty {
-                  <div class="muted">{{ 'dashboard.noMeasurements' | t }}</div>
-                }
-              </div>
-              <div>
-                <span class="muted">{{ 'dashboard.p2' | t }}: {{ t.person2Name }}</span>
-                @for (m of t.druckMessungenPerson2; track $index) {
-                  <div class="tabular">{{ m.druckBar }} bar · {{ m.zeit | date: 'HH:mm:ss' }}</div>
-                } @empty {
-                  <div class="muted">{{ 'dashboard.noMeasurements' | t }}</div>
-                }
-              </div>
+              @for (p of t.mitglieder; track p.personId; let i = $index) {
+                <div>
+                  <span class="muted">{{ roleLabel(i, t.mitglieder.length) }}: {{ p.name }}</span>
+                  @for (m of p.druckMessungen; track $index) {
+                    <div class="tabular">{{ m.druckBar }} bar · {{ m.zeit | date: 'HH:mm:ss' }}</div>
+                  } @empty {
+                    <div class="muted">{{ 'dashboard.noMeasurements' | t }}</div>
+                  }
+                </div>
+              }
             </div>
             <button appButton variant="ghost" size="sm" icon="list" type="button" (click)="openProtokoll(t)">{{ 'protocol.open' | t }}</button>
           </li>

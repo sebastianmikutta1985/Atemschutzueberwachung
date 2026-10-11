@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { SwUpdate } from '@angular/service-worker';
 import { filter } from 'rxjs';
+import { memberNames } from './crew-status';
 import { AlarmState, AlarmType, maydayKey, MonitoringService } from './monitoring.service';
 import { OutboxItem } from './outbox.service';
 import { TranslationService } from './translation.service';
@@ -109,7 +110,7 @@ import { TranslatePipe } from './ui/translate.pipe';
       <app-dialog class="modal--mayday" heading="MAYDAY" icon="alert-octagon" tone="alarm" role="alertdialog" [closable]="false">
         <div class="alarm-body">
           <p class="alarm-crew">{{ t.bezeichnung }}</p>
-          <p>{{ t.person1Name }} · {{ t.person2Name }}</p>
+          <p>{{ memberNames(t) }}</p>
           <p class="alarm-meta">
             {{ 'mayday.since' | t: { time: (t.maydaySeit | date: 'HH:mm:ss') ?? '' } }}
             @if (t.maydayPosition) {
@@ -327,6 +328,7 @@ export class AlarmOverlayComponent {
   readonly monitoring = inject(MonitoringService);
   readonly i18n = inject(TranslationService);
   readonly maydayKey = maydayKey;
+  readonly memberNames = memberNames;
   // "Gesehen" erst nach kurzer Verzoegerung, damit ein Tipp fuer etwas anderes den Ton nicht versehentlich abstellt.
   readonly maydaySeenReady = signal(false);
   private lastMaydayKey: string | null = null;

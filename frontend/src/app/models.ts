@@ -21,26 +21,30 @@ export interface DruckInfo {
   pending?: boolean;
 }
 
+export type TruppRolle = 'fuehrer' | 'mitglied';
+
+export interface TruppMitglied {
+  personId: string;
+  name: string;
+  rolle: TruppRolle;
+  startdruckBar: number;
+  druckCount: number;
+  // Neueste Messung zuerst.
+  druckMessungen: DruckInfo[];
+}
+
 export interface Trupp {
   id: string;
   einsatzId: string;
   bezeichnung: string;
-  person1Id: string;
-  person2Id: string;
-  person1Name: string;
-  person2Name: string;
-  startdruckPerson1Bar: number;
-  startdruckPerson2Bar: number;
+  // Truppfuehrer zuerst, danach die Mitglieder in der Reihenfolge der Anlage.
+  mitglieder: TruppMitglied[];
   startzeit: string;
   warnzeitMin: number;
   maxzeitMin: number;
   endzeit?: string | null;
   startEpoch?: number | null;
   endEpoch?: number | null;
-  druckCountPerson1: number;
-  druckCountPerson2: number;
-  druckMessungenPerson1: DruckInfo[];
-  druckMessungenPerson2: DruckInfo[];
   warnAcked?: boolean;
   maxAcked?: boolean;
   // Reserve der Rueckzugsberechnung (beim Anlegen aus den Voreinstellungen uebernommen).
@@ -80,8 +84,8 @@ export interface ProtokollEintrag {
 export interface TruppProtokoll {
   truppId: string;
   bezeichnung: string;
-  person1Name: string;
-  person2Name: string;
+  // Namen, Truppfuehrer zuerst.
+  mitglieder: string[];
   eintraege: ProtokollEintrag[];
 }
 
@@ -109,8 +113,7 @@ export interface TruppName {
 }
 
 export interface OrgSettings {
-  defaultStartdruckPerson1Bar: number;
-  defaultStartdruckPerson2Bar: number;
+  defaultStartdruckBar: number;
   defaultWarnzeitMin: number;
   defaultMaxzeitMin: number;
   defaultRueckzugReserveBar: number;

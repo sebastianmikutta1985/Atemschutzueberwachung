@@ -305,6 +305,20 @@
   grid-template-columns: 1fr 1fr;
 }
 
+/* Personenzeile: Auswahl und Startdruck; sobald sich Truppmaenner entfernen lassen, eine Spalte fuer "Entfernen"
+   (beim Truppfuehrer bleibt sie leer, damit die Felder untereinander stehen) */
+.form-row--member {
+  align-items: end;
+}
+
+.form-row--removable {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) var(--touch-min);
+}
+
+.member-add {
+  justify-self: start;
+}
+
 /* ---------- Handy ---------- */
 
 @media (max-width: 640px) {
@@ -341,6 +355,15 @@
 @media (max-width: 420px) {
   .form-row {
     grid-template-columns: 1fr;
+  }
+
+  /* Person ueber die volle Breite, darunter Startdruck und Entfernen */
+  .form-row--removable {
+    grid-template-columns: minmax(0, 1fr) var(--touch-min);
+  }
+
+  .member-person {
+    grid-column: 1 / -1;
   }
 
   .topbar__actions [appButton] {

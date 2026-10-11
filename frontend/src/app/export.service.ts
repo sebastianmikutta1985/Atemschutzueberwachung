@@ -1,9 +1,10 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import jsPDF from 'jspdf';
-import { forkJoin } from 'rxjs';
+import { forkJoin, map } from 'rxjs';
 import * as XLSX from 'xlsx';
 import { environment } from '../environments/environment';
+import { formatRole, normalizeTrupp } from './crew-status';
 import { DruckInfo, Einsatz, Trupp, TruppProtokoll } from './models';
 import { describeProtokollEintrag } from './protocol-format';
 import { TranslationService } from './translation.service';
@@ -31,9 +32,16 @@ export class ExportService {
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }
 
+  // Rolle im Trupp: "Truppmann 2" bzw. kurz "TM2".
+  private role(index: number, count: number, short = false): string {
+    return formatRole(index, count, (key) => this.i18n.t(key), short);
+  }
+
   private load(einsatz: Einsatz) {
     return forkJoin({
-      list: this.http.get<Trupp[]>(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`),
+      list: this.http
+        .get<Trupp[]>(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`)
+        .pipe(map((list) => list.map(normalizeTrupp))),
       protokoll: this.http.get<TruppProtokoll[]>(`${this.baseUrl}/einsaetze/${einsatz.id}/protokoll`)
     });
   }
@@ -71,33 +79,32 @@ export class ExportService {
           ]
         ]);
 
+        // Eine Zeile je Person: Trupps haben zwei bis vier Mitglieder.
         const truppRows = [
           [
             this.i18n.t('dashboard.exportColCrewName'),
-            this.i18n.t('dashboard.exportColPerson1'),
-            this.i18n.t('dashboard.exportColPerson2'),
+            this.i18n.t('dashboard.exportColRole'),
+            this.i18n.t('dashboard.exportColPerson'),
             this.i18n.t('dashboard.exportColStartTime'),
             this.i18n.t('dashboard.exportColEndTime'),
-            this.i18n.t('dashboard.exportColStartPressureP1'),
-            this.i18n.t('dashboard.exportColStartPressureP2'),
+            this.i18n.t('dashboard.exportColStartPressure'),
             this.i18n.t('dashboard.exportColWarnTime'),
             this.i18n.t('dashboard.exportColMaxTime'),
-            this.i18n.t('dashboard.exportColMeasurementsP1'),
-            this.i18n.t('dashboard.exportColMeasurementsP2')
+            this.i18n.t('dashboard.exportColMeasurements')
           ],
-          ...list.map((t) => [
-            t.bezeichnung,
-            t.person1Name,
-            t.person2Name,
-            this.formatDateTime(t.startzeit),
-            t.endzeit ? this.formatDateTime(t.endzeit) : '-',
-            t.startdruckPerson1Bar,
-            t.startdruckPerson2Bar,
-            t.warnzeitMin,
-            t.maxzeitMin,
-            formatMessungen(t.druckMessungenPerson1 || []),
-            formatMessungen(t.druckMessungenPerson2 || [])
-          ])
+          ...list.flatMap((t) =>
+            t.mitglieder.map((m, i) => [
+              t.bezeichnung,
+              this.role(i, t.mitglieder.length),
+              m.name,
+              this.formatDateTime(t.startzeit),
+              t.endzeit ? this.formatDateTime(t.endzeit) : '-',
+              m.startdruckBar,
+              t.warnzeitMin,
+              t.maxzeitMin,
+              formatMessungen(m.druckMessungen)
+            ])
+          )
         ];
 
         const truppSheet = XLSX.utils.aoa_to_sheet(truppRows);
@@ -218,15 +225,13 @@ export class ExportService {
 
         for (const t of list) {
           const cols = [110, 150, 145, 70, 70, pageWidth - margin * 2 - 545];
-          const m1 = formatMessungen(t.druckMessungenPerson1 || []);
-          const m2 = formatMessungen(t.druckMessungenPerson2 || []);
-          const mLines = [
-            ...(m1.length ? m1.map((m) => `P1: ${m}`) : []),
-            ...(m2.length ? m2.map((m) => `P2: ${m}`) : [])
-          ];
+          const n = t.mitglieder.length;
+          const mLines = t.mitglieder.flatMap((m, i) =>
+            formatMessungen(m.druckMessungen).map((line) => `${this.role(i, n, true)}: ${line}`)
+          );
           const mText = mLines.length ? mLines.join('\n') : '-';
           const wrapped = doc.splitTextToSize(mText, cols[5] - 8);
-          const rowHeight = Math.max(48, 20 + wrapped.length * 12);
+          const rowHeight = Math.max(48, 20 + Math.max(wrapped.length, n) * 12);
           if (y + rowHeight > pageHeight - 40) {
             doc.addPage();
             drawHeader();
@@ -238,11 +243,11 @@ export class ExportService {
           let x = margin + 8;
           doc.text(String(t.bezeichnung), x, y + 16);
           x += cols[0];
-          doc.text(`P1: ${t.person1Name}\nP2: ${t.person2Name}`, x, y + 14);
+          doc.text(t.mitglieder.map((m, i) => `${this.role(i, n, true)}: ${m.name}`).join('\n'), x, y + 14);
           x += cols[1];
           doc.text(this.formatDateTime(t.startzeit), x, y + 16);
           x += cols[2];
-          doc.text(`P1 ${t.startdruckPerson1Bar}\nP2 ${t.startdruckPerson2Bar}`, x, y + 14);
+          doc.text(t.mitglieder.map((m, i) => `${this.role(i, n, true)} ${m.startdruckBar}`).join('\n'), x, y + 14);
           x += cols[3];
           doc.text(`${t.warnzeitMin}/${t.maxzeitMin}`, x, y + 16);
           x += cols[4];
@@ -269,7 +274,8 @@ export class ExportService {
         for (const p of protokoll) {
           ensureSpace(lineHeight * 3);
           doc.setFont('helvetica', 'bold');
-          doc.text(`${p.bezeichnung} – P1: ${p.person1Name}, P2: ${p.person2Name}`, margin, y);
+          const namen = p.mitglieder.map((name, i) => `${this.role(i, p.mitglieder.length, true)}: ${name}`).join(', ');
+          doc.text(`${p.bezeichnung} – ${namen}`, margin, y);
           y += lineHeight + 2;
           doc.setFont('helvetica', 'normal');
           for (const e of p.eintraege) {

@@ -6,6 +6,7 @@ import { AuthStore } from './auth.store';
 import {
   applyPending,
   elapsedSeconds,
+  mitgliedOf,
   normalizeTrupp,
   pressureCheckDue,
   pressureCheckFraction,
@@ -513,7 +514,7 @@ export class MonitoringService {
       if (trupp.rueckzugAcked || !this.shouldAlert(this.lastRetreatAlert, trupp.id, now, 15000)) {
         return;
       }
-      const person = reached.personId === trupp.person1Id ? trupp.person1Name : trupp.person2Name;
+      const person = mitgliedOf(trupp, reached.personId)?.name ?? '';
       this.notify(this.i18n.t('retreat.alarmCrew', { name: trupp.bezeichnung }), 'max');
       this.playBeep(4, true);
       this.vibrate([250, 120, 250, 120, 250]);
@@ -539,7 +540,7 @@ export class MonitoringService {
     }
     if (info.estimatedReached) {
       // Erneut erinnern, sobald eine neue Messung eine neue Prognose ergibt.
-      const key = `${trupp.id}:${trupp.druckCountPerson1 + trupp.druckCountPerson2}`;
+      const key = `${trupp.id}:${trupp.mitglieder.reduce((sum, m) => sum + m.druckCount, 0)}`;
       if (!this.remindedRetreatEstimates.has(key)) {
         this.remindedRetreatEstimates.add(key);
         this.notify(this.i18n.t('retreat.estimatedCrew', { name: trupp.bezeichnung }), 'warn');

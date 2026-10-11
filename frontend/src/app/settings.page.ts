@@ -73,8 +73,7 @@ export class SettingsPage implements OnInit, OnDestroy {
   };
 
   orgSettingsForm = {
-    defaultStartdruckPerson1Bar: 300,
-    defaultStartdruckPerson2Bar: 300,
+    defaultStartdruckBar: 300,
     defaultWarnzeitMin: 25,
     defaultMaxzeitMin: 30,
     defaultRueckzugReserveBar: 10
@@ -226,8 +225,7 @@ export class SettingsPage implements OnInit, OnDestroy {
   }
 
   private applyOrgSettings(settings: OrgSettings): void {
-    this.orgSettingsForm.defaultStartdruckPerson1Bar = settings.defaultStartdruckPerson1Bar;
-    this.orgSettingsForm.defaultStartdruckPerson2Bar = settings.defaultStartdruckPerson2Bar;
+    this.orgSettingsForm.defaultStartdruckBar = settings.defaultStartdruckBar;
     this.orgSettingsForm.defaultWarnzeitMin = settings.defaultWarnzeitMin;
     this.orgSettingsForm.defaultMaxzeitMin = settings.defaultMaxzeitMin;
     this.orgSettingsForm.defaultRueckzugReserveBar = settings.defaultRueckzugReserveBar;
@@ -244,8 +242,7 @@ export class SettingsPage implements OnInit, OnDestroy {
   saveOrgSettings(): void {
     this.orgSettingsMessage.set('');
     const payload = {
-      defaultStartdruckPerson1Bar: this.orgSettingsForm.defaultStartdruckPerson1Bar,
-      defaultStartdruckPerson2Bar: this.orgSettingsForm.defaultStartdruckPerson2Bar,
+      defaultStartdruckBar: this.orgSettingsForm.defaultStartdruckBar,
       defaultWarnzeitMin: this.orgSettingsForm.defaultWarnzeitMin,
       defaultMaxzeitMin: this.orgSettingsForm.defaultMaxzeitMin,
       defaultRueckzugReserveBar: this.orgSettingsForm.defaultRueckzugReserveBar

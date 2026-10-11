@@ -99,6 +99,8 @@ using (var scope = app.Services.CreateScope())
     await EnsureOrganizationColumns(db);
     await EnsureProtokollSchema(db);
     await EnsureDefaultOrganization(db);
+    // Nach EnsureDefaultOrganization: alte Trupps haben dann ihre OrganizationId.
+    await EnsureTruppMitglieder(db);
     await MigrateTimestampsToUtc(db, isNewDatabase, builder.Configuration["LEGACY_TIMEZONE"] ?? "Europe/Berlin");
     await MigrateSessionTokensToHash(db);
 }
@@ -161,21 +163,16 @@ orgApi.MapGet("/settings", async (HttpContext http, AppDbContext db) =>
     {
         return Results.NotFound();
     }
-    return Results.Ok(new OrgSettingsDto(
-        org.DefaultStartdruckPerson1Bar,
-        org.DefaultStartdruckPerson2Bar,
-        org.DefaultWarnzeitMin,
-        org.DefaultMaxzeitMin,
-        org.DefaultRueckzugReserveBar
-    ));
+    return Results.Ok(OrgSettingsDto.Of(org));
 }).WithOpenApi();
 
 adminApi.MapPut("/settings", async (HttpContext http, OrgSettingsUpdate dto, AppDbContext db, IHubContext<UpdatesHub> hub) =>
 {
     var auth = http.GetAuth();
+    // Aeltere App-Versionen senden noch "Startdruck Person 1/2": dann gilt der Wert von Person 1 fuer alle.
+    var startdruck = dto.DefaultStartdruckBar ?? dto.DefaultStartdruckPerson1Bar ?? 0;
     var settingsError =
-        Api.CheckDruck(dto.DefaultStartdruckPerson1Bar, "Startdruck Person 1")
-        ?? Api.CheckDruck(dto.DefaultStartdruckPerson2Bar, "Startdruck Person 2")
+        Api.CheckDruck(startdruck, "Startdruck")
         ?? Api.CheckZeiten(dto.DefaultWarnzeitMin, dto.DefaultMaxzeitMin)
         ?? (dto.DefaultRueckzugReserveBar is { } reserve ? Api.CheckReserve(reserve) : null);
     if (settingsError != null)
@@ -187,21 +184,17 @@ adminApi.MapPut("/settings", async (HttpContext http, OrgSettingsUpdate dto, App
     {
         return Results.NotFound();
     }
-    org.DefaultStartdruckPerson1Bar = dto.DefaultStartdruckPerson1Bar;
-    org.DefaultStartdruckPerson2Bar = dto.DefaultStartdruckPerson2Bar;
+    org.DefaultStartdruckBar = startdruck;
+    // Alte Spalten mitfuehren, damit ein Zuruecksetzen auf die vorige Version dieselben Werte sieht.
+    org.DefaultStartdruckPerson1Bar = startdruck;
+    org.DefaultStartdruckPerson2Bar = startdruck;
     org.DefaultWarnzeitMin = dto.DefaultWarnzeitMin;
     org.DefaultMaxzeitMin = dto.DefaultMaxzeitMin;
     // Fehlt bei aelteren App-Versionen: dann bleibt der bisherige Wert.
     org.DefaultRueckzugReserveBar = dto.DefaultRueckzugReserveBar ?? org.DefaultRueckzugReserveBar;
     await db.SaveChangesAsync();
     await NotifyOrgAsync(hub, auth.OrgId, "settings");
-    return Results.Ok(new OrgSettingsDto(
-        org.DefaultStartdruckPerson1Bar,
-        org.DefaultStartdruckPerson2Bar,
-        org.DefaultWarnzeitMin,
-        org.DefaultMaxzeitMin,
-        org.DefaultRueckzugReserveBar
-    ));
+    return Results.Ok(OrgSettingsDto.Of(org));
 }).WithOpenApi();
 
 // Auth
@@ -743,6 +736,9 @@ adminApi.MapPost("/einsaetze/{id:guid}/loeschen", async (Guid id, HttpContext ht
     db.AlarmEvents.RemoveRange(await db.AlarmEvents
         .Where(e => e.OrganizationId == auth.OrgId && relatedTruppIds.Contains(e.TruppId))
         .ToListAsync());
+    db.TruppMitglieder.RemoveRange(await db.TruppMitglieder
+        .Where(m => m.OrganizationId == auth.OrgId && relatedTruppIds.Contains(m.TruppId))
+        .ToListAsync());
     db.Trupps.RemoveRange(relatedTrupps);
 
     db.AuditLog.Add(new AuditLogEntry
@@ -781,53 +777,74 @@ orgApi.MapPost("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Http
     {
         return Api.Bad("Einsatz ist bereits beendet.");
     }
-    if (dto.Person1Id == dto.Person2Id)
+    // Der erste Eintrag ist der Truppfuehrer. Aeltere App-Versionen senden noch zwei feste Personen.
+    var angaben = dto.Mitglieder
+        ?? (dto.Person1Id is { } p1 && dto.Person2Id is { } p2
+            ? [new TruppMitgliedCreate(p1, dto.StartdruckPerson1Bar), new TruppMitgliedCreate(p2, dto.StartdruckPerson2Bar)]
+            : []);
+    if (angaben.Length < Api.MinTruppGroesse || angaben.Length > Api.MaxTruppGroesse)
     {
-        return Api.Bad("Person 1 und Person 2 muessen unterschiedlich sein.");
+        return Api.Bad($"Ein Trupp besteht aus {Api.MinTruppGroesse} bis {Api.MaxTruppGroesse} Personen.");
+    }
+    if (angaben.Select(a => a.PersonId).Distinct().Count() != angaben.Length)
+    {
+        return Api.Bad("Jede Person kann nur einmal im Trupp sein.");
     }
 
-    var person1 =await db.Geraetetraeger.FirstOrDefaultAsync(t => t.Id == dto.Person1Id && t.OrganizationId == auth.OrgId);
-    var person2 = await db.Geraetetraeger.FirstOrDefaultAsync(t => t.Id == dto.Person2Id && t.OrganizationId == auth.OrgId);
+    var personIds = angaben.Select(a => a.PersonId).ToArray();
+    var personen = await db.Geraetetraeger
+        .Where(t => personIds.Contains(t.Id) && t.OrganizationId == auth.OrgId)
+        .ToListAsync();
     var truppName = await db.Truppnamen.FirstOrDefaultAsync(t => t.Id == dto.TruppNameId && t.OrganizationId == auth.OrgId);
     var orgDefaults = await db.Organizations.FirstOrDefaultAsync(o => o.Id == auth.OrgId);
 
-    if (person1 == null || person2 == null || truppName == null)
+    if (personen.Count != angaben.Length || truppName == null)
     {
         return Results.BadRequest(new { error = "Trupp und Personen muessen aus der Liste gewaehlt werden." });
     }
-    if (!person1.Aktiv || !person2.Aktiv || !truppName.Aktiv)
+    if (personen.Any(p => !p.Aktiv) || !truppName.Aktiv)
     {
         return Api.Bad("Inaktive Personen oder Truppnamen koennen nicht eingesetzt werden.");
     }
 
-    var defP1 = orgDefaults?.DefaultStartdruckPerson1Bar ?? 300;
-    var defP2 = orgDefaults?.DefaultStartdruckPerson2Bar ?? 300;
-    var defWarn = orgDefaults?.DefaultWarnzeitMin ?? 25;
-    var defMax = orgDefaults?.DefaultMaxzeitMin ?? 30;
+    var defStart = orgDefaults?.DefaultStartdruckBar ?? 300;
+    var warnMin = dto.WarnzeitMin > 0 ? dto.WarnzeitMin : orgDefaults?.DefaultWarnzeitMin ?? 25;
+    var maxMin = dto.MaxzeitMin > 0 ? dto.MaxzeitMin : orgDefaults?.DefaultMaxzeitMin ?? 30;
 
-    var startP1 = dto.StartdruckPerson1Bar > 0 ? dto.StartdruckPerson1Bar : defP1;
-    var startP2 = dto.StartdruckPerson2Bar > 0 ? dto.StartdruckPerson2Bar : defP2;
-    var warnMin = dto.WarnzeitMin > 0 ? dto.WarnzeitMin : defWarn;
-    var maxMin = dto.MaxzeitMin > 0 ? dto.MaxzeitMin : defMax;
+    var mitglieder = angaben.Select((a, i) =>
+    {
+        var person = personen.First(p => p.Id == a.PersonId);
+        return new TruppMitglied
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = auth.OrgId,
+            PersonId = person.Id,
+            Name = person.AnzeigeName,
+            Rolle = i == 0 ? Api.RolleFuehrer : Api.RolleMitglied,
+            Reihenfolge = i,
+            StartdruckBar = a.StartdruckBar > 0 ? a.StartdruckBar : defStart
+        };
+    }).ToList();
 
     var truppError =
-        Api.CheckDruck(startP1, "Startdruck Person 1")
-        ?? Api.CheckDruck(startP2, "Startdruck Person 2")
+        mitglieder.Select(m => Api.CheckDruck(m.StartdruckBar, $"Startdruck {m.Name}")).FirstOrDefault(e => e != null)
         ?? Api.CheckZeiten(warnMin, maxMin);
     if (truppError != null)
     {
         return Api.Bad(truppError);
     }
 
-    var aktiveTrupps = await db.Trupps
-        .Where(t => t.OrganizationId == auth.OrgId && t.Endzeit == null)
-        .ToListAsync();
-    if (aktiveTrupps.Any(t => t.Person1Id == person1.Id || t.Person2Id == person1.Id
-        || t.Person1Id == person2.Id || t.Person2Id == person2.Id))
+    var schonImEinsatz = await db.TruppMitglieder
+        .Where(m => m.OrganizationId == auth.OrgId && personIds.Contains(m.PersonId)
+            && db.Trupps.Any(t => t.Id == m.TruppId && t.Endzeit == null))
+        .Select(m => m.Name)
+        .FirstOrDefaultAsync();
+    if (schonImEinsatz != null)
     {
-        return Api.Bad("Eine der Personen ist bereits in einem aktiven Trupp.");
+        return Api.Bad($"{schonImEinsatz} ist bereits in einem aktiven Trupp.");
     }
-    if (aktiveTrupps.Any(t => t.EinsatzId == einsatzId && t.Bezeichnung == truppName.Name))
+    if (await db.Trupps.AnyAsync(t => t.OrganizationId == auth.OrgId && t.Endzeit == null
+        && t.EinsatzId == einsatzId && t.Bezeichnung == truppName.Name))
     {
         return Api.Bad("Dieser Trupp ist in diesem Einsatz bereits aktiv.");
     }
@@ -838,23 +855,29 @@ orgApi.MapPost("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, Http
         EinsatzId = einsatzId,
         OrganizationId = auth.OrgId,
         Bezeichnung = truppName.Name,
-        Person1Id = person1.Id,
-        Person2Id = person2.Id,
-        Person1Name = person1.AnzeigeName,
-        Person2Name = person2.AnzeigeName,
-        StartdruckBar = startP1,
-        StartdruckPerson1Bar = startP1,
-        StartdruckPerson2Bar = startP2,
+        // Die ersten zwei Mitglieder auch in den alten Spalten, damit die vorige Version lesbar bleibt.
+        Person1Id = mitglieder[0].PersonId,
+        Person2Id = mitglieder[1].PersonId,
+        Person1Name = mitglieder[0].Name,
+        Person2Name = mitglieder[1].Name,
+        StartdruckBar = mitglieder[0].StartdruckBar,
+        StartdruckPerson1Bar = mitglieder[0].StartdruckBar,
+        StartdruckPerson2Bar = mitglieder[1].StartdruckBar,
         Startzeit = Api.ToUtc(dto.Startzeit) ?? DateTime.UtcNow,
         WarnzeitMin = warnMin,
         MaxzeitMin = maxMin,
         RueckzugReserveBar = orgDefaults?.DefaultRueckzugReserveBar ?? Api.DefaultRueckzugReserveBar
     };
+    foreach (var m in mitglieder)
+    {
+        m.TruppId = trupp.Id;
+    }
 
     db.Trupps.Add(trupp);
+    db.TruppMitglieder.AddRange(mitglieder);
     await db.SaveChangesAsync();
     await NotifyOrgAsync(hub, auth.OrgId, "trupp");
-    return Results.Ok(trupp);
+    return Results.Ok(new { trupp.Id });
 }).WithOpenApi();
 
 orgApi.MapGet("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpContext http, AppDbContext db) =>
@@ -874,23 +897,21 @@ orgApi.MapGet("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpC
         .Where(e => e.OrganizationId == auth.OrgId && truppIds.Contains(e.TruppId))
         .OrderByDescending(e => e.Zeit)
         .ToListAsync();
-
-    var counts = messungen
-        .GroupBy(m => new { m.TruppId, m.PersonId })
-        .Select(g => new { g.Key.TruppId, g.Key.PersonId, Count = g.Count() })
-        .ToList();
+    var alleMitglieder = await MitgliederOf(db, auth.OrgId, truppIds);
 
     var result = trupps.Select(t =>
     {
         // Alle Messungen, neueste zuerst (die Karte zeigt die letzten drei, Details und Export alle).
-        var p1 = messungen
-            .Where(m => m.TruppId == t.Id && m.PersonId == t.Person1Id)
-            .Select(m => new DruckInfo(m.DruckBar, m.Zeit, m.Anlass))
-            .ToArray();
-        var p2 = messungen
-            .Where(m => m.TruppId == t.Id && m.PersonId == t.Person2Id)
-            .Select(m => new DruckInfo(m.DruckBar, m.Zeit, m.Anlass))
-            .ToArray();
+        var mitglieder = alleMitglieder[t.Id].Select(m =>
+        {
+            var druck = messungen
+                .Where(d => d.TruppId == t.Id && d.PersonId == m.PersonId)
+                .Select(d => new DruckInfo(d.DruckBar, d.Zeit, d.Anlass))
+                .ToArray();
+            return new TruppMitgliedDto(m.PersonId, m.Name, m.Rolle, m.StartdruckBar, druck.Length, druck);
+        }).ToArray();
+        var p1 = mitglieder[0];
+        var p2 = mitglieder[1];
         var mayday = MaydayOf(alarmEvents.Where(e => e.TruppId == t.Id));
         var warnAcked = alarmEvents.Any(e => e.TruppId == t.Id && e.Typ == "warn_ack");
         var maxAcked = alarmEvents.Any(e => e.TruppId == t.Id && e.Typ == "max_ack");
@@ -900,20 +921,21 @@ orgApi.MapGet("/einsaetze/{einsatzId:guid}/trupps", async (Guid einsatzId, HttpC
             t.Id,
             t.EinsatzId,
             t.Bezeichnung,
-            t.Person1Id,
-            t.Person2Id,
-            t.Person1Name,
-            t.Person2Name,
-            t.StartdruckPerson1Bar,
-            t.StartdruckPerson2Bar,
+            mitglieder,
+            p1.PersonId,
+            p2.PersonId,
+            p1.Name,
+            p2.Name,
+            p1.StartdruckBar,
+            p2.StartdruckBar,
             t.Startzeit,
             t.WarnzeitMin,
             t.MaxzeitMin,
             t.Endzeit,
-            counts.FirstOrDefault(c => c.TruppId == t.Id && c.PersonId == t.Person1Id)?.Count ?? 0,
-            counts.FirstOrDefault(c => c.TruppId == t.Id && c.PersonId == t.Person2Id)?.Count ?? 0,
-            p1,
-            p2,
+            p1.DruckCount,
+            p2.DruckCount,
+            p1.DruckMessungen,
+            p2.DruckMessungen,
             warnAcked,
             maxAcked,
             Api.ZustandOf(t),
@@ -1396,6 +1418,12 @@ static async Task EnsureOrganizationDefaults(AppDbContext db)
             await AddColumn(db, "Organizations", name, ddl);
         }
     }
+    // Ein Startdruck fuer alle Mitglieder: uebernimmt den bisherigen Wert von Person 1.
+    if (!await HasColumn(db, "Organizations", "DefaultStartdruckBar"))
+    {
+        await AddColumn(db, "Organizations", "DefaultStartdruckBar", "INTEGER NOT NULL DEFAULT 300");
+        await db.Database.ExecuteSqlRawAsync("UPDATE Organizations SET DefaultStartdruckBar = DefaultStartdruckPerson1Bar;");
+    }
 }
 
 static async Task EnsureUserAccountsTable(AppDbContext db)
@@ -1509,6 +1537,49 @@ static async Task EnsureProtokollSchema(AppDbContext db)
             Details TEXT NOT NULL
         );
         """);
+}
+
+// Variable Truppgroesse: Mitglieder in eigener Tabelle. Trupps aus der Zeit fester Zweiertrupps erhalten einmalig
+// ihre zwei Personen als Mitglieder (Person 1 wird Truppfuehrer). Die alten Spalten bleiben fuer ein Zuruecksetzen.
+static async Task EnsureTruppMitglieder(AppDbContext db)
+{
+    await db.Database.ExecuteSqlRawAsync("""
+        CREATE TABLE IF NOT EXISTS TruppMitglieder (
+            Id TEXT NOT NULL PRIMARY KEY,
+            OrganizationId TEXT NOT NULL,
+            TruppId TEXT NOT NULL,
+            PersonId TEXT NOT NULL,
+            Name TEXT NOT NULL,
+            Rolle TEXT NOT NULL,
+            Reihenfolge INTEGER NOT NULL,
+            StartdruckBar INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS IX_TruppMitglieder_TruppId ON TruppMitglieder (TruppId);
+        """);
+
+    var ohneMitglieder = await db.Trupps
+        .Where(t => !db.TruppMitglieder.Any(m => m.TruppId == t.Id))
+        .ToListAsync();
+    if (ohneMitglieder.Count == 0)
+    {
+        return;
+    }
+    foreach (var t in ohneMitglieder)
+    {
+        db.TruppMitglieder.AddRange(
+            new TruppMitglied
+            {
+                Id = Guid.NewGuid(), OrganizationId = t.OrganizationId, TruppId = t.Id, PersonId = t.Person1Id,
+                Name = t.Person1Name, Rolle = Api.RolleFuehrer, Reihenfolge = 0, StartdruckBar = t.StartdruckPerson1Bar
+            },
+            new TruppMitglied
+            {
+                Id = Guid.NewGuid(), OrganizationId = t.OrganizationId, TruppId = t.Id, PersonId = t.Person2Id,
+                Name = t.Person2Name, Rolle = Api.RolleMitglied, Reihenfolge = 1, StartdruckBar = t.StartdruckPerson2Bar
+            });
+    }
+    await db.SaveChangesAsync();
+    Console.WriteLine($"[MIGRATION] {ohneMitglieder.Count} Trupps auf Mitgliederliste umgestellt.");
 }
 
 static async Task<bool> HasColumn(AppDbContext db, string tableName, string columnName)
@@ -1814,7 +1885,9 @@ static async Task EnsureAlarmEventsTable(AppDbContext db)
 // mindestens die Messung danach.
 static async Task<string?> CheckDruckmessung(AppDbContext db, Trupp trupp, Guid personId, int druckBar, DateTime zeit)
 {
-    if (personId != trupp.Person1Id && personId != trupp.Person2Id)
+    var mitglied = await db.TruppMitglieder.FirstOrDefaultAsync(m =>
+        m.OrganizationId == trupp.OrganizationId && m.TruppId == trupp.Id && m.PersonId == personId);
+    if (mitglied == null)
     {
         return "Person gehoert nicht zu diesem Trupp.";
     }
@@ -1835,8 +1908,7 @@ static async Task<string?> CheckDruckmessung(AppDbContext db, Trupp trupp, Guid 
 
     var vorher = bisherige.LastOrDefault(m => m.Zeit <= zeit);
     var danach = bisherige.FirstOrDefault(m => m.Zeit > zeit);
-    var maxDruck = vorher?.DruckBar
-        ?? (personId == trupp.Person1Id ? trupp.StartdruckPerson1Bar : trupp.StartdruckPerson2Bar);
+    var maxDruck = vorher?.DruckBar ?? mitglied.StartdruckBar;
     var minDruck = Math.Max(1, danach?.DruckBar ?? 1);
     return druckBar < minDruck || druckBar > maxDruck
         ? $"Druck muss zwischen {minDruck} und {maxDruck} bar liegen."
@@ -1853,19 +1925,26 @@ static async Task<List<TruppProtokoll>> BuildProtokoll(AppDbContext db, Guid org
     var events = await db.AlarmEvents
         .Where(e => e.OrganizationId == orgId && truppIds.Contains(e.TruppId))
         .ToListAsync();
+    var alleMitglieder = await MitgliederOf(db, orgId, truppIds);
 
     // Erst nach mehr als einer Minute beim Server angekommen: im Protokoll als nachgetragen kenntlich.
     static bool Nachgetragen(DateTime zeit, DateTime? erfasstAm) => erfasstAm != null && erfasstAm - zeit > TimeSpan.FromMinutes(1);
 
     return trupps.OrderBy(t => t.Startzeit).Select(t =>
     {
+        var mitglieder = alleMitglieder[t.Id];
         var eintraege = new List<ProtokollEintrag>
         {
             new(t.Startzeit, "angelegt", null, null, null, null,
-                $"P1 {t.StartdruckPerson1Bar} bar, P2 {t.StartdruckPerson2Bar} bar", false)
+                string.Join(", ", mitglieder.Select(m => $"{m.Name} {m.StartdruckBar} bar")), false)
         };
-        eintraege.AddRange(messungen.Where(m => m.TruppId == t.Id).Select(m => new ProtokollEintrag(
-            m.Zeit, "druck", null, m.PersonId == t.Person1Id ? t.Person1Name : t.Person2Name, m.DruckBar, m.Anlass, null, false)));
+        // In Reihenfolge der Mitglieder, damit gleichzeitige Werte (z. B. am Ziel) immer gleich sortiert sind.
+        eintraege.AddRange(messungen
+            .Where(m => m.TruppId == t.Id)
+            .Select(m => (Messung: m, Mitglied: mitglieder.FirstOrDefault(x => x.PersonId == m.PersonId)))
+            .OrderBy(x => x.Mitglied?.Reihenfolge ?? int.MaxValue)
+            .Select(x => new ProtokollEintrag(
+                x.Messung.Zeit, "druck", null, x.Mitglied?.Name, x.Messung.DruckBar, x.Messung.Anlass, null, false)));
         eintraege.AddRange(events.Where(e => e.TruppId == t.Id).Select(e =>
         {
             var d = ProtokollDaten(e.Daten);
@@ -1878,9 +1957,20 @@ static async Task<List<TruppProtokoll>> BuildProtokoll(AppDbContext db, Guid org
         }
         // Gleiche Zeit (z. B. Druck mit "Ziel erreicht"): Zustandswechsel vor den Messungen, Ende zuletzt.
         static int Rang(string typ) => typ switch { "angelegt" => 0, "zustand" => 1, "beendet" => 3, _ => 2 };
-        return new TruppProtokoll(t.Id, t.Bezeichnung, t.Person1Name, t.Person2Name,
+        return new TruppProtokoll(t.Id, t.Bezeichnung, mitglieder.Select(m => m.Name).ToArray(),
+            mitglieder[0].Name, mitglieder[1].Name,
             eintraege.OrderBy(e => e.Zeit).ThenBy(e => Rang(e.Typ)).ToList());
     }).ToList();
+}
+
+// Mitglieder je Trupp, Truppfuehrer zuerst.
+static async Task<Dictionary<Guid, List<TruppMitglied>>> MitgliederOf(AppDbContext db, Guid orgId, Guid[] truppIds)
+{
+    var mitglieder = await db.TruppMitglieder
+        .Where(m => m.OrganizationId == orgId && truppIds.Contains(m.TruppId))
+        .ToListAsync();
+    return truppIds.Distinct().ToDictionary(id => id,
+        id => mitglieder.Where(m => m.TruppId == id).OrderBy(m => m.Reihenfolge).ToList());
 }
 
 static EventDaten ProtokollDaten(string? daten)
@@ -2123,6 +2213,11 @@ static class Api
     public const int MaxRueckzugReserveBar = 100;
     // Schutz vor Fehleingaben; Kontrollen, "Ziel erreicht" und spaeter Rueckzug brauchen mehr als die frueheren 3.
     public const int MaxDruckmessungen = 20;
+    // FwDV 7: ein Trupp hat mindestens zwei Personen; mehr als vier sind auf dem Handy nicht mehr lesbar.
+    public const int MinTruppGroesse = 2;
+    public const int MaxTruppGroesse = 4;
+    public const string RolleFuehrer = "fuehrer";
+    public const string RolleMitglied = "mitglied";
 
     // Truppzustaende in ihrer Reihenfolge. Es geht nur vorwaerts; Ueberspringen ist erlaubt (Abbruch: direkt Rueckweg).
     public static readonly string[] Zustaende = ["anmarsch", "arbeit", "rueckweg"];
@@ -2269,6 +2364,7 @@ class AppDbContext : DbContext
 
     public DbSet<Einsatz> Einsaetze => Set<Einsatz>();
     public DbSet<Trupp> Trupps => Set<Trupp>();
+    public DbSet<TruppMitglied> TruppMitglieder => Set<TruppMitglied>();
     public DbSet<Geraetetraeger> Geraetetraeger => Set<Geraetetraeger>();
     public DbSet<TruppName> Truppnamen => Set<TruppName>();
     public DbSet<Druckmessung> Druckmessungen => Set<Druckmessung>();
@@ -2323,6 +2419,21 @@ class Trupp
     public DateTime? ZustandSeit { get; set; }
     // Reserve fuer die Rueckzugsberechnung (2 x Verbrauch auf dem Hinweg + Reserve), beim Anlegen festgehalten.
     public int RueckzugReserveBar { get; set; } = Api.DefaultRueckzugReserveBar;
+}
+
+// Person in einem Trupp. Name und Startdruck werden bei der Anlage festgehalten, damit das Protokoll unveraendert
+// bleibt, auch wenn der Geraetetraeger spaeter umbenannt oder geloescht wird.
+class TruppMitglied
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationId { get; set; }
+    public Guid TruppId { get; set; }
+    public Guid PersonId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    // "fuehrer" oder "mitglied"
+    public string Rolle { get; set; } = Api.RolleMitglied;
+    public int Reihenfolge { get; set; }
+    public int StartdruckBar { get; set; }
 }
 
 class Geraetetraeger
@@ -2394,6 +2505,8 @@ class Organization
     public string Code { get; set; } = string.Empty;
     public string Status { get; set; } = "aktiv";
     public DateTime CreatedAt { get; set; }
+    // Startdruck fuer alle Truppmitglieder; die Spalten Person1/2 stammen aus der Zeit fester Zweiertrupps.
+    public int DefaultStartdruckBar { get; set; } = 300;
     public int DefaultStartdruckPerson1Bar { get; set; } = 300;
     public int DefaultStartdruckPerson2Bar { get; set; } = 300;
     public int DefaultWarnzeitMin { get; set; } = 25;
@@ -2431,16 +2544,20 @@ class SystemSession
 }
 
 record EinsatzCreate(string? Name, string? Ort, DateTime? Alarmzeit);
+// Mitglieder: Truppfuehrer zuerst; Startdruck 0 = Voreinstellung. Person1/2 und StartdruckPerson1/2Bar senden nur
+// App-Versionen vor der variablen Truppgroesse (entfaellt im naechsten Release).
 record TruppCreate(
     Guid TruppNameId,
-    Guid Person1Id,
-    Guid Person2Id,
-    int StartdruckPerson1Bar,
-    int StartdruckPerson2Bar,
+    TruppMitgliedCreate[]? Mitglieder,
     DateTime? Startzeit,
     int WarnzeitMin,
-    int MaxzeitMin
+    int MaxzeitMin,
+    Guid? Person1Id = null,
+    Guid? Person2Id = null,
+    int StartdruckPerson1Bar = 0,
+    int StartdruckPerson2Bar = 0
 );
+record TruppMitgliedCreate(Guid PersonId, int StartdruckBar);
 record GeraetetraegerCreate(string? Vorname, string? Nachname, string? Funkrufname, bool Aktiv);
 record GeraetetraegerUpdate(string? Vorname, string? Nachname, string? Funkrufname, bool Aktiv);
 record TruppNameCreate(string? Name, bool Aktiv);
@@ -2461,8 +2578,15 @@ record TruppZustandCreate(string? Zustand, Guid? Id = null, DateTime? Zeit = nul
 record EinsatzLoeschen(string? Grund);
 record LoginRequest(string? OrgaCode, string? Pin);
 record SystemLoginRequest(string? Secret);
-record OrgSettingsDto(int DefaultStartdruckPerson1Bar, int DefaultStartdruckPerson2Bar, int DefaultWarnzeitMin, int DefaultMaxzeitMin, int DefaultRueckzugReserveBar);
-record OrgSettingsUpdate(int DefaultStartdruckPerson1Bar, int DefaultStartdruckPerson2Bar, int DefaultWarnzeitMin, int DefaultMaxzeitMin, int? DefaultRueckzugReserveBar = null);
+// DefaultStartdruckPerson1/2Bar nur fuer App-Versionen vor der variablen Truppgroesse (entfaellt im naechsten Release).
+record OrgSettingsDto(int DefaultStartdruckBar, int DefaultWarnzeitMin, int DefaultMaxzeitMin, int DefaultRueckzugReserveBar,
+    int DefaultStartdruckPerson1Bar, int DefaultStartdruckPerson2Bar)
+{
+    public static OrgSettingsDto Of(Organization org) => new(org.DefaultStartdruckBar, org.DefaultWarnzeitMin,
+        org.DefaultMaxzeitMin, org.DefaultRueckzugReserveBar, org.DefaultStartdruckBar, org.DefaultStartdruckBar);
+}
+record OrgSettingsUpdate(int DefaultWarnzeitMin, int DefaultMaxzeitMin, int? DefaultRueckzugReserveBar = null,
+    int? DefaultStartdruckBar = null, int? DefaultStartdruckPerson1Bar = null);
 record OrgCreate(string? Name, string? AdminPin, string? UserPin, string? Status);
 record OrgUpdate(string? Name, string? AdminPin, string? UserPin, string? Status);
 record AuthContext(Guid OrgId, string Role, string OrgName, string OrgCode);
@@ -2492,10 +2616,13 @@ class UpdatesHub : Hub
     }
 }
 
+// Person1/2-Felder nur fuer App-Versionen vor der variablen Truppgroesse (die ersten zwei Mitglieder);
+// entfallen im naechsten Release.
 record TruppDto(
     Guid Id,
     Guid EinsatzId,
     string Bezeichnung,
+    TruppMitgliedDto[] Mitglieder,
     Guid Person1Id,
     Guid Person2Id,
     string Person1Name,
@@ -2523,6 +2650,8 @@ record TruppDto(
     bool RueckzugAcked
 );
 
+// Messungen neueste zuerst.
+record TruppMitgliedDto(Guid PersonId, string Name, string Rolle, int StartdruckBar, int DruckCount, DruckInfo[] DruckMessungen);
 record DruckInfo(int DruckBar, DateTime Zeit, string? Anlass = null);
 record ProtokollEintrag(
     DateTime Zeit,
@@ -2543,5 +2672,7 @@ record EventDaten(
     int? Restdruck = null,
     bool ZeitKorrigiert = false);
 record MaydayStatus(bool Aktiv, DateTime? Seit, string? Position, int? Restdruck, string? Funkspruch);
-record TruppProtokoll(Guid TruppId, string Bezeichnung, string Person1Name, string Person2Name, List<ProtokollEintrag> Eintraege);
+// Person1/2Name nur fuer App-Versionen vor der variablen Truppgroesse; entfallen im naechsten Release.
+record TruppProtokoll(Guid TruppId, string Bezeichnung, string[] Mitglieder, string Person1Name, string Person2Name,
+    List<ProtokollEintrag> Eintraege);
 

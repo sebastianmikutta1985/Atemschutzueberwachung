@@ -17,9 +17,19 @@ import { RouterLink } from '@angular/router';
 import { environment } from '../environments/environment';
 import { AuthStore } from './auth.store';
 import { ClockService } from './clock.service';
-import { DEFAULT_RESERVE_BAR, parseEpoch } from './crew-status';
+import { currentPressure, DEFAULT_RESERVE_BAR, formatRole, mitgliedOf, normalizeTrupp } from './crew-status';
 import { ExportService } from './export.service';
-import { DruckInfo, Einsatz, Geraetetraeger, OrgSettings, ProtokollEintrag, Trupp, TruppName, TruppProtokoll } from './models';
+import {
+  DruckInfo,
+  Einsatz,
+  Geraetetraeger,
+  OrgSettings,
+  ProtokollEintrag,
+  Trupp,
+  TruppMitglied,
+  TruppName,
+  TruppProtokoll
+} from './models';
 import { describeProtokollEintrag } from './protocol-format';
 import { MonitoringService } from './monitoring.service';
 import { RealtimeService } from './realtime.service';
@@ -37,6 +47,7 @@ interface DruckModal {
   trupp: Trupp;
   personId: string;
   personName: string;
+  startdruckBar: number;
   value: number | null;
   last: DruckInfo[];
 }
@@ -53,12 +64,18 @@ interface DeleteModal {
   error: string;
 }
 
-// "Ziel erreicht": Druck beider Geraetetraeger als Grundlage der Rueckzugsberechnung (ueberspringbar).
+// "Ziel erreicht": Druck aller Geraetetraeger als Grundlage der Rueckzugsberechnung (ueberspringbar).
+// werte steht in derselben Reihenfolge wie trupp.mitglieder.
 interface ZielModal {
   trupp: Trupp;
-  p1: number | null;
-  p2: number | null;
+  werte: (number | null)[];
   error: string;
+}
+
+// Eine Zeile im Anlegeformular; die erste ist der Truppfuehrer.
+interface MitgliedForm {
+  personId: string;
+  startdruckBar: number;
 }
 
 interface ProtokollModal {
@@ -123,12 +140,14 @@ export class DashboardPage implements OnInit, OnDestroy {
     alarmzeit: ''
   };
 
+  // Wie im Backend: FwDV 7 verlangt mindestens zwei Personen, mehr als vier passen nicht lesbar auf die Karte.
+  readonly minMitglieder = 2;
+  readonly maxMitglieder = 4;
+  private defaultStartdruck = 300;
+
   truppForm = {
     truppNameId: '',
-    person1Id: '',
-    person2Id: '',
-    startdruckPerson1Bar: 300,
-    startdruckPerson2Bar: 300,
+    mitglieder: [this.emptyMitglied(), this.emptyMitglied()],
     startzeit: '',
     warnzeitMin: 25,
     maxzeitMin: 30
@@ -276,12 +295,28 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   canAddTrupp(): boolean {
-    return Boolean(
-      this.currentEinsatz &&
-        this.truppForm.truppNameId &&
-        this.truppForm.person1Id &&
-        this.truppForm.person2Id
-    );
+    return Boolean(this.currentEinsatz && this.truppForm.truppNameId && this.truppForm.mitglieder.every((m) => m.personId));
+  }
+
+  private emptyMitglied(): MitgliedForm {
+    return { personId: '', startdruckBar: this.defaultStartdruck };
+  }
+
+  addMitgliedRow(): void {
+    if (this.truppForm.mitglieder.length < this.maxMitglieder) {
+      this.truppForm.mitglieder = [...this.truppForm.mitglieder, this.emptyMitglied()];
+    }
+  }
+
+  removeMitgliedRow(index: number): void {
+    if (index > 0 && this.truppForm.mitglieder.length > this.minMitglieder) {
+      this.truppForm.mitglieder = this.truppForm.mitglieder.filter((_, i) => i !== index);
+    }
+  }
+
+  // "Truppfuehrer", "Truppmann" bzw. "Truppmann 2".
+  roleLabel(index: number, count: number): string {
+    return formatRole(index, count, (key) => this.i18n.t(key));
   }
 
   personOptionLabel(person: Geraetetraeger): string {
@@ -292,21 +327,11 @@ export class DashboardPage implements OnInit, OnDestroy {
     return this.activeTruppnamen.filter((t) => !this.isTruppNameInActiveTrupp(t.id));
   }
 
-  get availablePerson1(): Geraetetraeger[] {
+  // Auswahl fuer eine Zeile: aktiv, in keinem aktiven Trupp und nicht schon in einer anderen Zeile gewaehlt.
+  availablePersons(index: number): Geraetetraeger[] {
+    const taken = this.truppForm.mitglieder.filter((_, i) => i !== index).map((m) => m.personId);
     return this.geraetetraeger().filter(
-      (t) =>
-        t.aktiv !== false &&
-        t.id !== this.truppForm.person2Id &&
-        !this.isPersonInActiveTrupp(t.id)
-    );
-  }
-
-  get availablePerson2(): Geraetetraeger[] {
-    return this.geraetetraeger().filter(
-      (t) =>
-        t.aktiv !== false &&
-        t.id !== this.truppForm.person1Id &&
-        !this.isPersonInActiveTrupp(t.id)
+      (t) => t.aktiv !== false && !taken.includes(t.id) && !this.isPersonInActiveTrupp(t.id)
     );
   }
 
@@ -374,8 +399,10 @@ export class DashboardPage implements OnInit, OnDestroy {
   loadOrgSettings(): void {
     this.http.get<OrgSettings>(`${this.baseUrl}/settings`).subscribe((settings) => {
       if (!this.defaultsApplied) {
-        this.truppForm.startdruckPerson1Bar = settings.defaultStartdruckPerson1Bar;
-        this.truppForm.startdruckPerson2Bar = settings.defaultStartdruckPerson2Bar;
+        this.defaultStartdruck = settings.defaultStartdruckBar;
+        for (const m of this.truppForm.mitglieder) {
+          m.startdruckBar = settings.defaultStartdruckBar;
+        }
         this.truppForm.warnzeitMin = settings.defaultWarnzeitMin;
         this.truppForm.maxzeitMin = settings.defaultMaxzeitMin;
         this.defaultsApplied = true;
@@ -499,7 +526,7 @@ export class DashboardPage implements OnInit, OnDestroy {
         if (current && current.einsatz.id === einsatz.id) {
           this.detailsModal.set({
             ...current,
-            trupps: [...list].sort((a, b) => (parseEpoch(a.startzeit) ?? 0) - (parseEpoch(b.startzeit) ?? 0)),
+            trupps: list.map(normalizeTrupp).sort((a, b) => (a.startEpoch ?? 0) - (b.startEpoch ?? 0)),
             loading: false
           });
         }
@@ -529,19 +556,16 @@ export class DashboardPage implements OnInit, OnDestroy {
 
     const payload = {
       truppNameId: this.truppForm.truppNameId,
-      person1Id: this.truppForm.person1Id,
-      person2Id: this.truppForm.person2Id,
-      startdruckPerson1Bar: this.truppForm.startdruckPerson1Bar,
-      startdruckPerson2Bar: this.truppForm.startdruckPerson2Bar,
+      mitglieder: this.truppForm.mitglieder.map((m) => ({ personId: m.personId, startdruckBar: m.startdruckBar })),
       startzeit: autoStartzeit ? null : this.toUtcIso(this.truppForm.startzeit),
       warnzeitMin: this.truppForm.warnzeitMin,
       maxzeitMin: this.truppForm.maxzeitMin
     };
 
-    if (!payload.truppNameId || !payload.person1Id || !payload.person2Id) {
+    if (!this.canAddTrupp()) {
       return;
     }
-    if (this.isPersonInActiveTrupp(payload.person1Id) || this.isPersonInActiveTrupp(payload.person2Id)) {
+    if (payload.mitglieder.some((m) => this.isPersonInActiveTrupp(m.personId))) {
       return;
     }
     if (this.isTruppNameInActiveTrupp(payload.truppNameId)) {
@@ -549,11 +573,10 @@ export class DashboardPage implements OnInit, OnDestroy {
     }
 
     this.truppError.set('');
-    this.http.post<Trupp>(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`, payload).subscribe({
+    this.http.post(`${this.baseUrl}/einsaetze/${einsatz.id}/trupps`, payload).subscribe({
       next: () => {
         this.truppForm.truppNameId = '';
-        this.truppForm.person1Id = '';
-        this.truppForm.person2Id = '';
+        this.truppForm.mitglieder = [this.emptyMitglied(), this.emptyMitglied()];
         this.setAutoStartzeitNow();
         this.monitoring.loadTrupps();
         this.truppDialogOpen.set(false);
@@ -610,7 +633,7 @@ export class DashboardPage implements OnInit, OnDestroy {
 
   changeZustand(trupp: Trupp, zustand: 'arbeit' | 'rueckweg'): void {
     if (zustand === 'arbeit') {
-      this.zielModal.set({ trupp, p1: null, p2: null, error: '' });
+      this.zielModal.set({ trupp, werte: trupp.mitglieder.map(() => null), error: '' });
       this.focusSoon(() => this.zielInput);
       return;
     }
@@ -629,12 +652,8 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   // Hoechster zulaessiger Wert: letzte Messung bzw. Startdruck der Person.
-  maxDruckFor(trupp: Trupp, personId: string): number {
-    const last = personId === trupp.person1Id ? trupp.druckMessungenPerson1 : trupp.druckMessungenPerson2;
-    if (last.length) {
-      return last[0].druckBar;
-    }
-    return personId === trupp.person1Id ? trupp.startdruckPerson1Bar : trupp.startdruckPerson2Bar;
+  maxDruckFor(mitglied: TruppMitglied): number {
+    return currentPressure(mitglied);
   }
 
   // Vorschau im Dialog "Ziel erreicht": Rueckzugsdruck fuer den eingetippten Wert.
@@ -661,28 +680,25 @@ export class DashboardPage implements OnInit, OnDestroy {
     const trupp = modal.trupp;
     let zielDruck: { id: string; personId: string; personName: string; druckBar: number }[] = [];
     if (!druckNichtGemeldet) {
-      const values = [
-        { personId: trupp.person1Id, personName: trupp.person1Name, value: Number(modal.p1) },
-        { personId: trupp.person2Id, personName: trupp.person2Name, value: Number(modal.p2) }
-      ];
-      if (values.some((v) => !modal.p1 || !modal.p2 || !Number.isFinite(v.value) || v.value <= 0)) {
+      const values = trupp.mitglieder.map((m, i) => ({ mitglied: m, value: Number(modal.werte[i]) }));
+      if (values.some((v, i) => !modal.werte[i] || !Number.isFinite(v.value) || v.value <= 0)) {
         this.setZielError(this.i18n.t('crewState.targetPressureMissing'));
         return;
       }
-      const tooHigh = values.find((v) => v.value > this.maxDruckFor(trupp, v.personId));
+      const tooHigh = values.find((v) => v.value > this.maxDruckFor(v.mitglied));
       if (tooHigh) {
         this.setZielError(
           this.i18n.t('crewState.targetPressureTooHigh', {
-            person: tooHigh.personName,
-            value: this.maxDruckFor(trupp, tooHigh.personId)
+            person: tooHigh.mitglied.name,
+            value: this.maxDruckFor(tooHigh.mitglied)
           })
         );
         return;
       }
       zielDruck = values.map((v) => ({
         id: this.monitoring.outbox.newId(),
-        personId: v.personId,
-        personName: v.personName,
+        personId: v.mitglied.personId,
+        personName: v.mitglied.name,
         druckBar: v.value
       }));
     }
@@ -759,10 +775,18 @@ export class DashboardPage implements OnInit, OnDestroy {
   }
 
   addDruckmessung(trupp: Trupp, personId: string): void {
-    const personName = personId === trupp.person1Id ? trupp.person1Name : trupp.person2Name;
-    const last =
-      personId === trupp.person1Id ? trupp.druckMessungenPerson1 : trupp.druckMessungenPerson2;
-    this.druckModal.set({ trupp, personId, personName, value: null, last });
+    const mitglied = mitgliedOf(trupp, personId);
+    if (!mitglied) {
+      return;
+    }
+    this.druckModal.set({
+      trupp,
+      personId,
+      personName: mitglied.name,
+      startdruckBar: mitglied.startdruckBar,
+      value: null,
+      last: mitglied.druckMessungen
+    });
     this.druckModalError.set('');
     window.setTimeout(() => {
       this.druckInput?.nativeElement.focus();
@@ -821,13 +845,11 @@ export class DashboardPage implements OnInit, OnDestroy {
     if (modal.last && modal.last.length > 0) {
       return modal.last[0].druckBar;
     }
-    return modal.personId === modal.trupp.person1Id ? modal.trupp.startdruckPerson1Bar : modal.trupp.startdruckPerson2Bar;
+    return modal.startdruckBar;
   }
 
   isPersonInActiveTrupp(personId: string): boolean {
-    return this.trupps.some(
-      (t) => !t.endzeit && (t.person1Id === personId || t.person2Id === personId)
-    );
+    return this.trupps.some((t) => !t.endzeit && t.mitglieder.some((m) => m.personId === personId));
   }
 
   isTruppNameInActiveTrupp(truppNameId: string): boolean {

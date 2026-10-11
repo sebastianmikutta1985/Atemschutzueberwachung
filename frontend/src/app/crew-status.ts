@@ -1,4 +1,4 @@
-import { DruckInfo, Trupp, TruppZustand } from './models';
+import { DruckInfo, Trupp, TruppMitglied, TruppZustand } from './models';
 import type { OutboxItem } from './outbox.service';
 
 // Reine Berechnungen rund um einen Trupp – ohne Angular-Abhaengigkeiten, damit sie einzeln testbar sind.
@@ -14,20 +14,94 @@ export function parseEpoch(value: string | null | undefined): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+// Gespeicherte Schnappschuesse aus Versionen vor der variablen Truppgroesse kennen nur zwei feste Personen.
+interface LegacyTrupp {
+  person1Id?: string;
+  person2Id?: string;
+  person1Name?: string;
+  person2Name?: string;
+  startdruckPerson1Bar?: number;
+  startdruckPerson2Bar?: number;
+  druckMessungenPerson1?: DruckInfo[];
+  druckMessungenPerson2?: DruckInfo[];
+}
+
+function legacyMitglieder(t: LegacyTrupp): TruppMitglied[] {
+  if (!t.person1Id || !t.person2Id) {
+    return [];
+  }
+  const m1 = t.druckMessungenPerson1 ?? [];
+  const m2 = t.druckMessungenPerson2 ?? [];
+  return [
+    {
+      personId: t.person1Id,
+      name: t.person1Name ?? '',
+      rolle: 'fuehrer',
+      startdruckBar: t.startdruckPerson1Bar ?? 300,
+      druckCount: m1.length,
+      druckMessungen: m1
+    },
+    {
+      personId: t.person2Id,
+      name: t.person2Name ?? '',
+      rolle: 'mitglied',
+      startdruckBar: t.startdruckPerson2Bar ?? 300,
+      druckCount: m2.length,
+      druckMessungen: m2
+    }
+  ];
+}
+
 export function normalizeTrupp(trupp: Trupp): Trupp {
-  const messungen1 = trupp.druckMessungenPerson1 ?? [];
-  const messungen2 = trupp.druckMessungenPerson2 ?? [];
   const endzeit = trupp.endzeit ? trupp.endzeit : null;
+  const mitglieder = (trupp.mitglieder ?? legacyMitglieder(trupp as Trupp & LegacyTrupp)).map((m) => {
+    const druckMessungen = m.druckMessungen ?? [];
+    return { ...m, druckMessungen, druckCount: m.druckCount ?? druckMessungen.length };
+  });
   return {
     ...trupp,
     endzeit,
-    druckMessungenPerson1: messungen1,
-    druckMessungenPerson2: messungen2,
-    druckCountPerson1: trupp.druckCountPerson1 ?? messungen1.length,
-    druckCountPerson2: trupp.druckCountPerson2 ?? messungen2.length,
+    mitglieder,
     startEpoch: parseEpoch(trupp.startzeit),
     endEpoch: endzeit ? parseEpoch(endzeit) : null
   };
+}
+
+export function mitgliedOf(trupp: Trupp, personId: string): TruppMitglied | undefined {
+  return trupp.mitglieder.find((m) => m.personId === personId);
+}
+
+export function memberNames(trupp: Trupp, separator = ' · '): string {
+  return trupp.mitglieder.map((m) => m.name).join(separator);
+}
+
+// Rolle als Uebersetzungsschluessel plus Nummer: Truppfuehrer, dann Truppmann bzw. Truppmann 1, 2, 3.
+// Gilt fuer den Trupp ebenso wie fuer das Anlegeformular (Position in der Liste, Anzahl der Personen).
+export interface MemberRole {
+  key: 'leader' | 'member';
+  no: number | null;
+}
+
+export function memberRole(index: number, count: number): MemberRole {
+  if (index === 0) {
+    return { key: 'leader', no: null };
+  }
+  return { key: 'member', no: count > 2 ? index : null };
+}
+
+// Ausgeschrieben ("Truppmann 2") oder kurz ("TM2"); translate liefert die Texte aus crewCard.
+export function formatRole(index: number, count: number, translate: (key: string) => string, short = false): string {
+  const role = memberRole(index, count);
+  const label = translate(`crewCard.${role.key}${short ? 'Short' : ''}`);
+  if (role.no === null) {
+    return label;
+  }
+  return short ? `${label}${role.no}` : `${label} ${role.no}`;
+}
+
+// Letzter gemeldeter Druck, sonst der Startdruck.
+export function currentPressure(mitglied: TruppMitglied): number {
+  return mitglied.druckMessungen[0]?.druckBar ?? mitglied.startdruckBar;
 }
 
 // Aktive Trupps zuerst, innerhalb davon nach Startzeit.
@@ -92,8 +166,8 @@ export function formatMinSec(totalSeconds: number): string {
   return `${Math.floor(safe / 60)}:${(safe % 60).toString().padStart(2, '0')}`;
 }
 
-// Druckkontrolle nach etwa 1/3 und 2/3 der Einsatzzeit (FwDV 7). Faellig, solange nicht fuer beide
-// Personen mindestens so viele Messungen vorliegen, wie Kontrollpunkte erreicht sind.
+// Druckkontrolle nach etwa 1/3 und 2/3 der Einsatzzeit (FwDV 7). Faellig, solange nicht fuer alle
+// Mitglieder mindestens so viele Messungen vorliegen, wie Kontrollpunkte erreicht sind.
 export function pressureCheckDue(trupp: Trupp, nowEpoch: number): PressureCheckStage | null {
   if (trupp.endzeit) {
     return null;
@@ -104,7 +178,7 @@ export function pressureCheckDue(trupp: Trupp, nowEpoch: number): PressureCheckS
   if (stage === 0) {
     return null;
   }
-  const done = Math.min(trupp.druckCountPerson1, trupp.druckCountPerson2);
+  const done = Math.min(...trupp.mitglieder.map((m) => m.druckCount));
   return done < stage ? stage : null;
 }
 
@@ -114,9 +188,7 @@ export function pressureCheckFraction(stage: PressureCheckStage): string {
 
 // Der Trupp muss sich nach dem Geraet mit dem niedrigsten Druck richten.
 export function lowestPressure(trupp: Trupp): number {
-  const p1 = trupp.druckMessungenPerson1[0]?.druckBar ?? trupp.startdruckPerson1Bar;
-  const p2 = trupp.druckMessungenPerson2[0]?.druckBar ?? trupp.startdruckPerson2Bar;
-  return Math.min(p1, p2);
+  return Math.min(...trupp.mitglieder.map(currentPressure));
 }
 
 // Rueckzugsdruck: der Rueckweg braucht so viel Luft wie der Hinweg; zur Sicherheit wird der doppelte Verbrauch
@@ -185,10 +257,7 @@ export function retreatInfo(trupp: Trupp, nowEpoch: number): RetreatInfo | null 
     }
     return { personId, zielBar: basis.druckBar, verbrauchBar, rueckzugBar, current: latest.druckBar, reached, etaEpoch };
   };
-  const all = [
-    member(trupp.person1Id, trupp.startdruckPerson1Bar, trupp.druckMessungenPerson1),
-    member(trupp.person2Id, trupp.startdruckPerson2Bar, trupp.druckMessungenPerson2)
-  ];
+  const all = trupp.mitglieder.map((m) => member(m.personId, m.startdruckBar, m.druckMessungen));
   const members = all.filter((m): m is RetreatMember => m !== null);
   const reached =
     members.filter((m) => m.reached).sort((a, b) => a.current - a.rueckzugBar - (b.current - b.rueckzugBar))[0] ?? null;
@@ -217,32 +286,24 @@ export function applyPending(trupps: Trupp[], pending: OutboxItem[]): Trupp[] {
     }
     const trupp: Trupp = {
       ...original,
-      druckMessungenPerson1: [...original.druckMessungenPerson1],
-      druckMessungenPerson2: [...original.druckMessungenPerson2]
+      mitglieder: original.mitglieder.map((m) => ({ ...m, druckMessungen: [...m.druckMessungen] }))
+    };
+    const addReading = (reading: DruckInfo) => {
+      const mitglied = reading.personId ? mitgliedOf(trupp, reading.personId) : undefined;
+      if (mitglied) {
+        mitglied.druckMessungen.push(reading);
+        mitglied.druckCount += 1;
+      }
     };
     for (const item of own) {
       if (item.kind === 'druck' && item.druckBar !== undefined) {
-        const reading: DruckInfo = { id: item.id, personId: item.personId, druckBar: item.druckBar, zeit: item.zeit, pending: true };
-        if (item.personId === trupp.person1Id) {
-          trupp.druckMessungenPerson1.push(reading);
-          trupp.druckCountPerson1 += 1;
-        } else if (item.personId === trupp.person2Id) {
-          trupp.druckMessungenPerson2.push(reading);
-          trupp.druckCountPerson2 += 1;
-        }
+        addReading({ id: item.id, personId: item.personId, druckBar: item.druckBar, zeit: item.zeit, pending: true });
       } else if (item.kind === 'zustand' && item.zustand && ZUSTAND_RANG[item.zustand] > ZUSTAND_RANG[zustandOf(trupp)]) {
         trupp.zustand = item.zustand;
         trupp.zustandSeit = item.zeit;
         trupp.zustandPending = true;
         for (const d of item.zielDruck ?? []) {
-          const reading: DruckInfo = { id: d.id, personId: d.personId, druckBar: d.druckBar, zeit: item.zeit, anlass: 'ziel', pending: true };
-          if (d.personId === trupp.person1Id) {
-            trupp.druckMessungenPerson1.push(reading);
-            trupp.druckCountPerson1 += 1;
-          } else if (d.personId === trupp.person2Id) {
-            trupp.druckMessungenPerson2.push(reading);
-            trupp.druckCountPerson2 += 1;
-          }
+          addReading({ id: d.id, personId: d.personId, druckBar: d.druckBar, zeit: item.zeit, anlass: 'ziel', pending: true });
         }
       } else if (item.kind === 'end' && !trupp.endzeit) {
         trupp.endzeit = item.zeit;
@@ -271,8 +332,9 @@ export function applyPending(trupps: Trupp[], pending: OutboxItem[]): Trupp[] {
     }
     // Neueste Messung zuerst, wie vom Server geliefert.
     const newestFirst = (a: DruckInfo, b: DruckInfo) => (parseEpoch(b.zeit) ?? 0) - (parseEpoch(a.zeit) ?? 0);
-    trupp.druckMessungenPerson1.sort(newestFirst);
-    trupp.druckMessungenPerson2.sort(newestFirst);
+    for (const m of trupp.mitglieder) {
+      m.druckMessungen.sort(newestFirst);
+    }
     return trupp;
   });
 }
