@@ -169,12 +169,17 @@ let nextId = 0;
               appButton
               type="button"
               size="lg"
-              icon="gauge"
               [attention]="(pressureStage() ?? 0) > p.count"
               [disabled]="p.count >= maxReadings"
               (click)="pressure.emit(p.id)"
             >
-              {{ (p.role === 'P1' ? 'dashboard.pressureP1Button' : 'dashboard.pressureP2Button') | t: { count: p.count } }}
+              <!-- Symbol als Inhalt statt [icon], damit die Karte es auf schmalen Bildschirmen ausblenden kann -->
+              <span class="karte__druck-label">
+                <app-icon name="gauge" />
+                {{ (p.role === 'P1' ? 'dashboard.pressureP1Button' : 'dashboard.pressureP2Button') | t }}
+                <span class="karte__count" aria-hidden="true">{{ p.count }}</span>
+              </span>
+              <span class="visually-hidden">, {{ 'dashboard.readingCount' | t: { count: p.count } }}</span>
             </button>
           }
         </div>
@@ -182,6 +187,10 @@ let nextId = 0;
           @case ('arbeit') {
             <button appButton variant="primary" size="lg" icon="target" [block]="true" type="button" (click)="zustandChange.emit('arbeit')">
               {{ 'crewState.step_arbeit' | t }}
+            </button>
+            <!-- Abbruch vor Erreichen des Ziels: direkt in den Rueckweg -->
+            <button appButton icon="arrow-return" [block]="true" type="button" (click)="zustandChange.emit('rueckweg')">
+              {{ 'crewState.abort' | t }}
             </button>
           }
           @case ('rueckweg') {
@@ -208,12 +217,6 @@ let nextId = 0;
 
     <div class="karte__secondary">
       <button appButton variant="ghost" icon="list" type="button" (click)="protokoll.emit()">{{ 'protocol.open' | t }}</button>
-      @if (zustand() === 'anmarsch') {
-        <!-- Abbruch vor Erreichen des Ziels: direkt in den Rueckweg -->
-        <button appButton variant="ghost" icon="arrow-return" type="button" (click)="zustandChange.emit('rueckweg')">
-          {{ 'crewState.abort' | t }}
-        </button>
-      }
       @if (!trupp().endzeit && !trupp().maydayAktiv) {
         <!-- Eine Sekunde halten statt Rueckfrage: im Notfall schnell, aber nicht durch einen versehentlichen Tipp -->
         <button
@@ -468,21 +471,43 @@ let nextId = 0;
     .karte__actions {
       display: grid;
       gap: var(--touch-gap);
-      margin-top: auto;
     }
     .karte__druck {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: var(--touch-gap);
     }
+    .karte__druck-label {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      white-space: nowrap;
+    }
+    /* Anzahl der Messungen als kleine Marke, damit die Beschriftung einzeilig bleibt */
+    .karte__count {
+      display: inline-grid;
+      place-items: center;
+      min-width: 1.75em;
+      padding: 0 var(--space-2);
+      border: var(--border-w-thin) solid var(--border);
+      border-radius: var(--radius-pill);
+      background: var(--surface-sunken);
+      font-size: var(--fs-sm);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.5;
+    }
 
+    /* Protokoll links, Mayday fuellt den Rest: in jeder Karte an derselben Stelle */
     .karte__secondary {
       display: flex;
       flex-wrap: wrap;
-      align-items: center;
+      align-items: stretch;
       gap: var(--touch-gap);
       padding-top: var(--space-3);
       border-top: var(--border-w-thin) solid var(--border);
+    }
+    .karte__secondary > button[appButton] {
+      flex: 1 1 auto;
     }
     :host([data-status='beendet']) .karte__secondary {
       margin-top: auto;
@@ -491,8 +516,12 @@ let nextId = 0;
     /* Mayday ausloesen: eine Sekunde halten, der Balken zeigt den Fortschritt */
     .mayday-hold {
       position: relative;
+      display: inline-flex;
+      flex: 1 1 12rem;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
       overflow: hidden;
-      margin-left: auto;
       min-height: var(--touch-min);
       padding: var(--space-2) var(--space-4);
       border: var(--border-w) solid var(--status-crit-solid);
@@ -530,17 +559,13 @@ let nextId = 0;
         padding: var(--space-3);
         padding-top: calc(var(--space-3) + var(--space-2));
       }
-      .mayday-hold {
-        margin-left: 0;
-        flex: 1 1 100%;
-      }
-      /* Protokoll/Abbruch teilen sich die Zeile und sind zusammen so breit wie der Mayday-Knopf */
-      .karte__secondary > button[appButton] {
-        flex: 1 1 0;
-      }
       .karte__druck button {
         padding-inline: var(--space-2);
         font-size: var(--fs-base);
+      }
+      /* Symbol weglassen, damit "Druck P1" und die Anzahl in einer Zeile bleiben */
+      .karte__druck-label app-icon {
+        display: none;
       }
     }
   `
