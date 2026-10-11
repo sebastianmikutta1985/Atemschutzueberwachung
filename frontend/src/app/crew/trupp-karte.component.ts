@@ -1,8 +1,11 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, OnDestroy, output, signal } from '@angular/core';
 import {
+  currentPressure,
   elapsedSeconds,
   lowestPressure,
+  memberRole,
+  MemberRole,
   nextZustand,
   pressureCheckDue,
   pressureCheckFraction,
@@ -21,7 +24,7 @@ import { displayStatus } from './display-status';
 
 interface CrewMember {
   id: string;
-  role: 'P1' | 'P2';
+  role: MemberRole;
   name: string;
   start: number;
   current: number;
@@ -135,7 +138,7 @@ let nextId = 0;
       @for (p of members(); track p.id) {
         <div class="karte__member">
           <app-druck-anzeige
-            [role]="p.role"
+            [role]="('crewCard.' + p.role.key + 'Short' | t) + (p.role.no ?? '')"
             [name]="p.name"
             [value]="p.current"
             [start]="p.start"
@@ -176,7 +179,7 @@ let nextId = 0;
               <!-- Symbol als Inhalt statt [icon], damit die Karte es auf schmalen Bildschirmen ausblenden kann -->
               <span class="karte__druck-label">
                 <app-icon name="gauge" />
-                {{ (p.role === 'P1' ? 'dashboard.pressureP1Button' : 'dashboard.pressureP2Button') | t }}
+                {{ 'crewCard.pressureButton' | t: { role: ('crewCard.' + p.role.key + 'Short' | t) + (p.role.no ?? '') } }}
                 <span class="karte__count" aria-hidden="true">{{ p.count }}</span>
               </span>
               <span class="visually-hidden">, {{ 'dashboard.readingCount' | t: { count: p.count } }}</span>
@@ -563,7 +566,7 @@ let nextId = 0;
         padding-inline: var(--space-2);
         font-size: var(--fs-base);
       }
-      /* Symbol weglassen, damit "Druck P1" und die Anzahl in einer Zeile bleiben */
+      /* Symbol weglassen, damit "Druck TM2" und die Anzahl in einer Zeile bleiben */
       .karte__druck-label app-icon {
         display: none;
       }
@@ -648,29 +651,24 @@ export class TruppKarteComponent implements OnDestroy {
     const t = this.trupp();
     const lowest = lowestPressure(t);
     const retreat = this.retreat();
-    const member = (id: string, role: 'P1' | 'P2', name: string, start: number, newestFirst: DruckInfo[], count: number) => {
-      const current = newestFirst[0]?.druckBar ?? start;
-      const r = retreat?.members.find((m) => m.personId === id);
+    // Haben alle denselben Druck, wird niemand hervorgehoben.
+    const allEqual = t.mitglieder.every((m) => currentPressure(m) === lowest);
+    return t.mitglieder.map((m, i) => {
+      const current = currentPressure(m);
+      const r = retreat?.members.find((x) => x.personId === m.personId);
       return {
-        id,
-        role,
-        name,
-        start,
+        id: m.personId,
+        role: memberRole(i, t.mitglieder.length),
+        name: m.name,
+        start: m.startdruckBar,
         current,
-        readings: newestFirst.slice(0, 3).reverse(),
-        count,
-        lowest: current === lowest,
+        readings: m.druckMessungen.slice(0, 3).reverse(),
+        count: m.druckCount,
+        lowest: !allEqual && current === lowest,
         retreatBar: r?.rueckzugBar ?? null,
         retreatReached: r?.reached ?? false
       };
-    };
-    const p1 = member(t.person1Id, 'P1', t.person1Name, t.startdruckPerson1Bar, t.druckMessungenPerson1, t.druckCountPerson1);
-    const p2 = member(t.person2Id, 'P2', t.person2Name, t.startdruckPerson2Bar, t.druckMessungenPerson2, t.druckCountPerson2);
-    // Bei gleichem Druck niemanden hervorheben.
-    if (p1.current === p2.current) {
-      p1.lowest = p2.lowest = false;
-    }
-    return [p1, p2];
+    });
   });
 
   startHold(): void {

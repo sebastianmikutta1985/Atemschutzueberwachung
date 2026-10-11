@@ -130,16 +130,11 @@
   <app-panel [heading]="'settings.standardSettings' | t" [meta]="'settings.defaultForNewCrews' | t">
     <div class="mf-grid">
       <div class="mf-form">
-        <div class="mf-row">
-          <label>
-            {{ 'dashboard.startPressureP1' | t }}
-            <input type="number" name="osP1" min="0" inputmode="numeric" [(ngModel)]="orgSettingsForm.defaultStartdruckPerson1Bar" />
-          </label>
-          <label>
-            {{ 'dashboard.startPressureP2' | t }}
-            <input type="number" name="osP2" min="0" inputmode="numeric" [(ngModel)]="orgSettingsForm.defaultStartdruckPerson2Bar" />
-          </label>
-        </div>
+        <label>
+          {{ 'dashboard.startPressure' | t }}
+          <input type="number" name="osStartdruck" min="0" inputmode="numeric" [(ngModel)]="orgSettingsForm.defaultStartdruckBar" />
+          <span class="mf-hint">{{ 'settings.startPressureHint' | t }}</span>
+        </label>
         <div class="mf-row">
           <label>
             {{ 'dashboard.warnTime' | t }}
@@ -162,8 +157,7 @@
       </div>
       <dl class="defaults">
         <dt>{{ 'settings.activeDefaults' | t }}</dt>
-        <dd>{{ 'settings.startPressureP1' | t: { value: orgSettingsForm.defaultStartdruckPerson1Bar } }}</dd>
-        <dd>{{ 'settings.startPressureP2' | t: { value: orgSettingsForm.defaultStartdruckPerson2Bar } }}</dd>
+        <dd>{{ 'settings.startPressureValue' | t: { value: orgSettingsForm.defaultStartdruckBar } }}</dd>
         <dd>{{ 'settings.warnTimeValue' | t: { value: orgSettingsForm.defaultWarnzeitMin } }}</dd>
         <dd>{{ 'settings.maxTimeValue' | t: { value: orgSettingsForm.defaultMaxzeitMin } }}</dd>
         <dd>{{ 'retreat.reserveValue' | t: { value: orgSettingsForm.defaultRueckzugReserveBar } }}</dd>

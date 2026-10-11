@@ -2,7 +2,10 @@ import {
   applyPending,
   elapsedSeconds,
   formatMinSec,
+  formatRole,
   lowestPressure,
+  memberNames,
+  memberRole,
   nextZustand,
   normalizeTrupp,
   pressureCheckDue,
@@ -12,30 +15,38 @@ import {
   statusFor,
   zustandOf
 } from './crew-status';
-import { Trupp } from './models';
+import { DruckInfo, Trupp, TruppMitglied } from './models';
 
 const start = Date.parse('2026-09-26T10:00:00Z');
 const min = 60_000;
 
-function crew(overrides: Partial<Trupp> = {}): Trupp {
+function person(personId: string, name: string, startdruckBar: number, druckMessungen: DruckInfo[] = []): TruppMitglied {
+  return { personId, name, rolle: 'mitglied', startdruckBar, druckCount: druckMessungen.length, druckMessungen };
+}
+
+// Standard: Truppfuehrer A (300 bar) und Truppmann B (280 bar). readings/counts je Mitglied in dieser Reihenfolge,
+// extra haengt weitere Truppmaenner an.
+interface CrewOptions {
+  readings?: DruckInfo[][];
+  counts?: number[];
+  extra?: TruppMitglied[];
+}
+
+function crew(overrides: Partial<Trupp> = {}, options: CrewOptions = {}): Trupp {
+  const base = [{ ...person('p1', 'A', 300), rolle: 'fuehrer' as const }, person('p2', 'B', 280), ...(options.extra ?? [])];
+  const mitglieder = base.map((m, i) => {
+    const druckMessungen = options.readings?.[i] ?? m.druckMessungen;
+    return { ...m, druckMessungen, druckCount: options.counts?.[i] ?? druckMessungen.length };
+  });
   return normalizeTrupp({
     id: 't1',
     einsatzId: 'e1',
     bezeichnung: 'Angriffstrupp',
-    person1Id: 'p1',
-    person2Id: 'p2',
-    person1Name: 'A',
-    person2Name: 'B',
-    startdruckPerson1Bar: 300,
-    startdruckPerson2Bar: 280,
+    mitglieder,
     startzeit: '2026-09-26T10:00:00Z',
     warnzeitMin: 25,
     maxzeitMin: 30,
     endzeit: null,
-    druckCountPerson1: 0,
-    druckCountPerson2: 0,
-    druckMessungenPerson1: [],
-    druckMessungenPerson2: [],
     ...overrides
   });
 }
@@ -55,29 +66,38 @@ describe('crew-status', () => {
     expect(remainingSeconds(t, start + 45 * min)).toBe(0);
   });
 
-  it('requests pressure checks at 1/3 and 2/3 until both persons have enough readings', () => {
+  it('requests pressure checks at 1/3 and 2/3 until every member has enough readings', () => {
     expect(pressureCheckDue(crew(), start + 9 * min)).toBeNull();
     expect(pressureCheckDue(crew(), start + 10 * min)).toBe(1);
-    expect(pressureCheckDue(crew({ druckCountPerson1: 1 }), start + 10 * min)).toBe(1);
-    expect(pressureCheckDue(crew({ druckCountPerson1: 1, druckCountPerson2: 1 }), start + 10 * min)).toBeNull();
-    expect(pressureCheckDue(crew({ druckCountPerson1: 1, druckCountPerson2: 1 }), start + 20 * min)).toBe(2);
+    expect(pressureCheckDue(crew({}, { counts: [1, 0] }), start + 10 * min)).toBe(1);
+    expect(pressureCheckDue(crew({}, { counts: [1, 1] }), start + 10 * min)).toBeNull();
+    expect(pressureCheckDue(crew({}, { counts: [1, 1] }), start + 20 * min)).toBe(2);
     expect(pressureCheckDue(crew({ endzeit: '2026-09-26T10:05:00Z' }), start + 20 * min)).toBeNull();
+  });
+
+  it('keeps the pressure check due until the third member of a larger crew is measured', () => {
+    const extra = [person('p3', 'C', 300)];
+    expect(pressureCheckDue(crew({}, { extra, counts: [1, 1, 0] }), start + 10 * min)).toBe(1);
+    expect(pressureCheckDue(crew({}, { extra, counts: [1, 1, 1] }), start + 10 * min)).toBeNull();
   });
 
   it('uses the latest reading per person for the lowest pressure', () => {
     expect(lowestPressure(crew())).toBe(280);
-    const t = crew({
-      druckMessungenPerson1: [{ id: 'm2', personId: 'p1', druckBar: 150, zeit: '2026-09-26T10:20:00Z' }],
-      druckMessungenPerson2: [{ id: 'm1', personId: 'p2', druckBar: 200, zeit: '2026-09-26T10:10:00Z' }]
-    });
+    const t = crew(
+      {},
+      {
+        readings: [
+          [{ id: 'm2', personId: 'p1', druckBar: 150, zeit: '2026-09-26T10:20:00Z' }],
+          [{ id: 'm1', personId: 'p2', druckBar: 200, zeit: '2026-09-26T10:10:00Z' }]
+        ]
+      }
+    );
     expect(lowestPressure(t)).toBe(150);
+    expect(lowestPressure(crew({}, { extra: [person('p3', 'C', 300, [{ druckBar: 120, zeit: '2026-09-26T10:20:00Z' }])] }))).toBe(120);
   });
 
   it('shows pending entries immediately and counts them for pressure checks and alarms', () => {
-    const t = crew({
-      druckCountPerson1: 1,
-      druckMessungenPerson1: [{ druckBar: 260, zeit: '2026-09-26T10:08:00Z' }]
-    });
+    const t = crew({}, { readings: [[{ druckBar: 260, zeit: '2026-09-26T10:08:00Z' }]] });
     const [merged] = applyPending(
       [t],
       [
@@ -87,13 +107,23 @@ describe('crew-status', () => {
         { id: 'x', kind: 'druck', truppId: 'other', truppName: 'X', personId: 'p1', druckBar: 100, zeit: '2026-09-26T10:13:00Z' }
       ]
     );
-    expect(merged.druckCountPerson1).toBe(2);
-    expect(merged.druckMessungenPerson1.map((m) => [m.druckBar, !!m.pending])).toEqual([[240, true], [260, false]]);
+    expect(merged.mitglieder[0].druckCount).toBe(2);
+    expect(merged.mitglieder[0].druckMessungen.map((m) => [m.druckBar, !!m.pending])).toEqual([[240, true], [260, false]]);
     expect(lowestPressure(merged)).toBe(240);
     expect(pressureCheckDue(merged, start + 10 * min)).toBeNull();
     expect(merged.warnAcked).toBe(true);
     // Das Original bleibt unveraendert.
-    expect(t.druckCountPerson1).toBe(1);
+    expect(t.mitglieder[0].druckCount).toBe(1);
+    expect(t.mitglieder[0].druckMessungen).toHaveLength(1);
+  });
+
+  it('assigns pending readings to the right member of a larger crew', () => {
+    const [merged] = applyPending(
+      [crew({}, { extra: [person('p3', 'C', 300)] })],
+      [{ id: 'm3', kind: 'druck', truppId: 't1', truppName: 'AT', personId: 'p3', druckBar: 210, zeit: '2026-09-26T10:12:00Z' }]
+    );
+    expect(merged.mitglieder.map((m) => m.druckCount)).toEqual([0, 0, 1]);
+    expect(lowestPressure(merged)).toBe(210);
   });
 
   it('ends a crew locally with the captured time while the end is pending', () => {
@@ -141,8 +171,8 @@ describe('crew-status', () => {
     expect(zustandOf(merged)).toBe('arbeit');
     expect(merged.zustandPending).toBe(true);
     expect(merged.zustandSeit).toBe('2026-09-26T10:06:00Z');
-    expect(merged.druckCountPerson1).toBe(1);
-    expect(merged.druckMessungenPerson2[0]).toEqual(expect.objectContaining({ druckBar: 240, anlass: 'ziel', pending: true }));
+    expect(merged.mitglieder[0].druckCount).toBe(1);
+    expect(merged.mitglieder[1].druckMessungen[0]).toEqual(expect.objectContaining({ druckBar: 240, anlass: 'ziel', pending: true }));
     expect(lowestPressure(merged)).toBe(240);
 
     const [unchanged] = applyPending(
@@ -174,23 +204,58 @@ describe('crew-status', () => {
     expect(closed.maydayAktiv).toBe(false);
   });
 
+  it('reads a stored snapshot from the version with two fixed persons', () => {
+    const legacy = {
+      id: 't1',
+      einsatzId: 'e1',
+      bezeichnung: 'AT',
+      person1Id: 'p1',
+      person2Id: 'p2',
+      person1Name: 'A',
+      person2Name: 'B',
+      startdruckPerson1Bar: 300,
+      startdruckPerson2Bar: 270,
+      druckMessungenPerson1: [{ druckBar: 250, zeit: '2026-09-26T10:10:00Z' }],
+      druckMessungenPerson2: [],
+      startzeit: '2026-09-26T10:00:00Z',
+      warnzeitMin: 25,
+      maxzeitMin: 30
+    } as unknown as Trupp;
+    const t = normalizeTrupp(legacy);
+    expect(t.mitglieder.map((m) => [m.personId, m.name, m.rolle, m.startdruckBar, m.druckCount])).toEqual([
+      ['p1', 'A', 'fuehrer', 300, 1],
+      ['p2', 'B', 'mitglied', 270, 0]
+    ]);
+    expect(lowestPressure(t)).toBe(250);
+    expect(memberNames(t)).toBe('A · B');
+  });
+
+  it('names the roles: leader first, members numbered only when there is more than one', () => {
+    expect(memberRole(0, 2)).toEqual({ key: 'leader', no: null });
+    expect(memberRole(1, 2)).toEqual({ key: 'member', no: null });
+    expect(memberRole(2, 4)).toEqual({ key: 'member', no: 2 });
+    const translate = (key: string) => ({ 'crewCard.member': 'Truppmann', 'crewCard.memberShort': 'TM' })[key] ?? key;
+    expect(formatRole(1, 2, translate)).toBe('Truppmann');
+    expect(formatRole(3, 4, translate)).toBe('Truppmann 3');
+    expect(formatRole(3, 4, translate, true)).toBe('TM3');
+  });
+
   describe('retreat pressure', () => {
     const at = (m: number) => new Date(start + m * min).toISOString();
-    const working = (overrides: Partial<Trupp> = {}) =>
-      crew({
-        zustand: 'arbeit',
-        zustandSeit: at(8),
-        druckMessungenPerson1: [{ druckBar: 260, zeit: at(8), anlass: 'ziel' }],
-        druckMessungenPerson2: [{ druckBar: 250, zeit: at(8), anlass: 'ziel' }],
-        ...overrides
-      });
+    const ziel = (druckBar: number): DruckInfo => ({ druckBar, zeit: at(8), anlass: 'ziel' });
+    // Am Ziel nach 8 min: A 300 -> 260, B 280 -> 250. Weitere Messungen je Mitglied ueber readings.
+    const working = (overrides: Partial<Trupp> = {}, options: CrewOptions = {}) =>
+      crew(
+        { zustand: 'arbeit', zustandSeit: at(8), ...overrides },
+        { ...options, readings: options.readings ?? [[ziel(260)], [ziel(250)]] }
+      );
 
     it('needs twice the outbound consumption plus the reserve and predicts when it is reached', () => {
       const info = retreatInfo(working(), start + 9 * min)!;
-      // P1: 300 -> 260 = 40 bar, 2 x 40 + 10 = 90; P2: 280 -> 250 = 30 bar, 2 x 30 + 10 = 70
+      // A: 300 -> 260 = 40 bar, 2 x 40 + 10 = 90; B: 280 -> 250 = 30 bar, 2 x 30 + 10 = 70
       expect(info.members.map((m) => [m.verbrauchBar, m.rueckzugBar])).toEqual([[40, 90], [30, 70]]);
       expect(info.reached).toBeNull();
-      // Hinweg: P1 5 bar/min, (260 - 90) / 5 = 34 min nach dem Ziel; P2 spaeter
+      // Hinweg: A 5 bar/min, (260 - 90) / 5 = 34 min nach dem Ziel; B spaeter
       expect(info.etaEpoch).toBe(start + 42 * min);
       expect(info.estimatedReached).toBe(false);
       expect(retreatInfo(working(), start + 42 * min)!.estimatedReached).toBe(true);
@@ -199,12 +264,7 @@ describe('crew-status', () => {
 
     it('uses the consumption since reaching the target once a later reading exists', () => {
       const info = retreatInfo(
-        working({
-          druckMessungenPerson1: [
-            { druckBar: 200, zeit: at(18) },
-            { druckBar: 260, zeit: at(8), anlass: 'ziel' }
-          ]
-        }),
+        working({}, { readings: [[{ druckBar: 200, zeit: at(18) }, ziel(260)], [ziel(250)]] }),
         start + 18 * min
       )!;
       // 6 bar/min seit dem Ziel: (200 - 90) / 6 = 18 min 20 s nach der letzten Messung
@@ -213,29 +273,40 @@ describe('crew-status', () => {
 
     it('reports the crew member who reached the retreat pressure', () => {
       const info = retreatInfo(
-        working({
-          druckMessungenPerson2: [
-            { druckBar: 70, zeit: at(30) },
-            { druckBar: 250, zeit: at(8), anlass: 'ziel' }
-          ]
-        }),
+        working({}, { readings: [[ziel(260)], [{ druckBar: 70, zeit: at(30) }, ziel(250)]] }),
         start + 30 * min
       )!;
       expect(info.reached?.personId).toBe('p2');
       expect(info.etaEpoch).toBeNull();
       // Bereits am Ziel zu viel verbraucht: sofort zurueck
-      expect(retreatInfo(working({ druckMessungenPerson1: [{ druckBar: 200, zeit: at(8), anlass: 'ziel' }] }), start)!.reached?.personId).toBe('p1');
+      expect(retreatInfo(working({}, { readings: [[ziel(200)], [ziel(250)]] }), start)!.reached?.personId).toBe('p1');
+    });
+
+    it('includes every member of a larger crew', () => {
+      const info = retreatInfo(
+        working({}, { extra: [person('p3', 'C', 300)], readings: [[ziel(260)], [ziel(250)], [ziel(200)]] }),
+        start + 9 * min
+      )!;
+      // C: 300 -> 200 = 100 bar, 2 x 100 + 10 = 210 > 200: Rueckzug sofort
+      expect(info.members.map((m) => m.rueckzugBar)).toEqual([90, 70, 210]);
+      expect(info.reached?.personId).toBe('p3');
+      expect(info.missing).toBe(false);
     });
 
     it('falls back to the first reading at the target and flags crews without one', () => {
-      const skipped = working({
-        druckMessungenPerson1: [
-          { druckBar: 240, zeit: at(15) },
-          { druckBar: 250, zeit: at(12) },
-          { druckBar: 280, zeit: at(5) }
-        ],
-        druckMessungenPerson2: []
-      });
+      const skipped = working(
+        {},
+        {
+          readings: [
+            [
+              { druckBar: 240, zeit: at(15) },
+              { druckBar: 250, zeit: at(12) },
+              { druckBar: 280, zeit: at(5) }
+            ],
+            []
+          ]
+        }
+      );
       const info = retreatInfo(skipped, start + 15 * min)!;
       expect(info.missing).toBe(true);
       expect(info.members).toHaveLength(1);

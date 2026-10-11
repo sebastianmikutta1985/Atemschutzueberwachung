@@ -14,13 +14,22 @@ Base: /api
 
 ## Beispiel: Trupp anlegen
 POST /api/einsaetze/{einsatzId}/trupps
+
+Zwei bis vier Personen; die erste ist der Truppfuehrer. Startdruck, Warn- und Maxzeit 0 = Voreinstellung der Organisation,
+Startzeit leer = Serverzeit.
 {
-  "bezeichnung": "Trupp 1",
-  "person1": "M. Meyer",
-  "person2": "L. Schulz",
-  "startdruck_bar": 300,
-  "startzeit": "2026-03-17T09:10:00Z",
-  "warnzeit_min": 25,
-  "maxzeit_min": 30
+  "truppNameId": "<Id aus /truppnamen>",
+  "mitglieder": [
+    { "personId": "<Id aus /geraetetraeger>", "startdruckBar": 300 },
+    { "personId": "<Id>", "startdruckBar": 0 },
+    { "personId": "<Id>", "startdruckBar": 290 }
+  ],
+  "startzeit": null,
+  "warnzeitMin": 25,
+  "maxzeitMin": 30
 }
 
+Die Trupp-Liste liefert je Trupp `mitglieder` (personId, name, rolle "fuehrer"/"mitglied", startdruckBar,
+druckCount, druckMessungen neueste zuerst). Uebergangsweise nimmt der Endpunkt auch noch person1Id/person2Id an und
+die Liste enthaelt zusaetzlich die Felder person1*/person2* der ersten beiden Mitglieder (fuer zwischengespeicherte
+aeltere App-Versionen; entfaellt im naechsten Release).
